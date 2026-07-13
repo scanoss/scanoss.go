@@ -1,0 +1,117 @@
+{
+  "scan_id": "019f2239-23ad-7a2f-a5c6-8422e3b78a7a",
+  "status": "completed",
+  "received_bytes": 107247,
+  "total_bytes": 107247,
+  "upload_percent": 100,
+  "phase": "Final: fetch components",
+  "phase_done": 1,
+  "phase_total": 1,
+  "files_total": 3,
+  "result": {
+    "files": [
+      {
+        "path": "zlib.h",
+        "file_hash": "0338828e9d00c94645648b1517108324",
+        "source_hash": "0338828e9d00c94645648b1517108324",
+        "match_type": "file",
+        "matches": [
+          {
+            "url_hash": "00970cf622bd5b46f68eec9383753870",
+            "oss_file_path": "zlib/zlib.h"
+          },
+          {
+            "url_hash": "113c66b229df6d32ca5262829b44c2b6"
+          }
+        ]
+      },
+      {
+        "path": "deflate.c",
+        "file_hash": "9e645d2cc17f3e324028b90d25edc969",
+        "match_type": "file",
+        "matches": [
+          {
+            "url_hash": "00970cf622bd5b46f68eec9383753870"
+          },
+          {
+            "url_hash": "113c66b229df6d32ca5262829b44c2b6"
+          }
+        ]
+      },
+      {
+        "path": "jquery.js",
+        "file_hash": "2849239b95f5a9a2aea3f6ed9420bb88",
+        "match_type": "file",
+        "matches": [
+          {
+            "url_hash": "013cf2d3f1fb2a5bef11a2f7d2ab5c73"
+          },
+          {
+            "url_hash": "138ec3263bde1eb81c1f85e3a4d88b93"
+          }
+        ]
+      }
+    ],
+    "components": {
+      "00970cf622bd5b46f68eec9383753870": {
+        "component": "ghostpdl-downloads",
+        "file": "ghostscript-9.50.tar.gz",
+        "purls": [
+          "pkg:github/artifexsoftware/ghostpdl-downloads",
+          "pkg:conda/ghostscript"
+        ],
+        "rank": 5,
+        "release_date": "2019-10-15",
+        "url": "https://github.com/ArtifexSoftware/ghostpdl-downloads",
+        "vendor": "ArtifexSoftware",
+        "version": "gs950"
+      },
+      "013cf2d3f1fb2a5bef11a2f7d2ab5c73": {
+        "component": "ghostpdl-downloads",
+        "file": "ghostpdl-10.04.0rc1.tar.gz",
+        "purls": [
+          "pkg:github/artifexsoftware/ghostpdl-downloads",
+          "pkg:conda/ghostscript"
+        ],
+        "rank": 5,
+        "release_date": "2024-09-06",
+        "url": "https://github.com/ArtifexSoftware/ghostpdl-downloads",
+        "vendor": "ArtifexSoftware",
+        "version": "gs10040rc1"
+      },
+      "113c66b229df6d32ca5262829b44c2b6": {
+        "component": "ghostpdl",
+        "file": "ghostpdl-9.55-test-base-0.zip",
+        "purls": [
+          "pkg:github/artifexsoftware/ghostpdl"
+        ],
+        "rank": 6,
+        "release_date": "2021-07-14",
+        "url": "https://github.com/artifexsoftware/ghostpdl",
+        "vendor": "ArtifexSoftware",
+        "version": "ghostpdl-9.55-test-base-0"
+      },
+      "138ec3263bde1eb81c1f85e3a4d88b93": {
+        "component": "ghostpdl",
+        "file": "rjw-test3.zip",
+        "purls": [
+          "pkg:github/artifexsoftware/ghostpdl"
+        ],
+        "rank": 6,
+        "release_date": "2024-09-19",
+        "url": "https://github.com/artifexsoftware/ghostpdl",
+        "vendor": "artifexsoftware",
+        "version": "rjw-test3"
+      }
+    },
+    "server": {
+      "api_version": "0.0.2",
+      "knowledge_base": {
+        "monthly_version": "25.06",
+        "daily_version": "25.06.30"
+      },
+      "hostname": "scanner-01",
+      "elapsed_ms": 1234
+    }
+  }
+}

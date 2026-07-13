@@ -1,0 +1,174 @@
+name: Build libscanoss Binaries
+
+# Full cross-platform build/test, run only at release time (called by release.yml)
+# or on manual dispatch — never on PRs. PRs get a cheap native libscanoss
+# build + wrapper smoke test from ci.yml instead. It never creates a release.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux:
+    name: Build Linux Binaries
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Install cross-compilation tools
+        if: matrix.arch == 'arm64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Build libscanoss.so (AMD64)
+        if: matrix.arch == 'amd64'
+        run: |
+          cd libscanoss/core
+          chmod +x build.sh
+          ./build.sh
+          mv libscanoss.so libscanoss-linux-amd64.so
+
+      - name: Build libscanoss.so (ARM64)
+        if: matrix.arch == 'arm64'
+        run: |
+          cd libscanoss/core
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc \
+            go build -buildmode=c-shared -o libscanoss-linux-arm64.so libscanoss.go
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: libscanoss-linux-${{ matrix.arch }}
+          path: libscanoss/core/libscanoss-linux-${{ matrix.arch }}.so
+          retention-days: 7
+
+  build-macos:
+    name: Build macOS Binaries
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Build libscanoss.dylib (AMD64)
+        if: matrix.arch == 'amd64'
+        run: |
+          cd libscanoss/core
+          GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 \
+            go build -buildmode=c-shared -o libscanoss-darwin-amd64.dylib libscanoss.go
+
+      - name: Build libscanoss.dylib (ARM64)
+        if: matrix.arch == 'arm64'
+        run: |
+          cd libscanoss/core
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 \
+            go build -buildmode=c-shared -o libscanoss-darwin-arm64.dylib libscanoss.go
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: libscanoss-darwin-${{ matrix.arch }}
+          path: libscanoss/core/libscanoss-darwin-${{ matrix.arch }}.dylib
+          retention-days: 7
+
+  build-windows:
+    name: Build Windows Binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Install MinGW for cross-compilation
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-mingw-w64-x86-64
+
+      - name: Build libscanoss.dll (AMD64)
+        run: |
+          cd libscanoss/core
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc \
+            go build -buildmode=c-shared -o libscanoss-windows-amd64.dll libscanoss.go
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: libscanoss-windows-amd64
+          path: libscanoss/core/libscanoss-windows-amd64.dll
+          retention-days: 7
+
+  test-binaries:
+    name: Test Binaries
+    needs: [build-linux, build-macos, build-windows]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: libscanoss-linux-amd64
+            binary: libscanoss-linux-amd64.so
+          - os: macos-latest
+            artifact: libscanoss-darwin-arm64
+            binary: libscanoss-darwin-arm64.dylib
+          - os: windows-latest
+            artifact: libscanoss-windows-amd64
+            binary: libscanoss-windows-amd64.dll
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Download artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ matrix.artifact }}
+          path: libscanoss/core
+
+      - name: Test Python wrapper (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          cd libscanoss/python
+          # Update wrapper to use the built binary
+          python3 -c "
+          from scanoss_lib import ScanossLib
+          import sys
+          sys.path.insert(0, '.')
+          lib = ScanossLib('../core/${{ matrix.binary }}')
+          version = lib.get_version()
+          print(f'✓ Library version: {version}')
+          assert version, f'empty version: {version!r}'
+          print('✓ All tests passed')
+          "
+
+      - name: Test Python wrapper (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cd libscanoss/python
+          python -c "from scanoss_lib import ScanossLib; lib = ScanossLib('../core/${{ matrix.binary }}'); print(f'Library version: {lib.get_version()}')"

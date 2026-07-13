@@ -1,0 +1,20 @@
+{
+  "scan_id": "019f2232-9b5c-736e-8c98-a44e21bfd5e3",
+  "status": "completed",
+  "received_bytes": 2251,
+  "total_bytes": 2251,
+  "upload_percent": 100,
+  "phase": "Final: fetch components",
+  "files_total": 1,
+  "result": {
+    "files": [
+      {
+        "path": "scan.go",
+        "file_hash": "c3188ce98248f22d6e8ae3b8df3e36e7",
+        "match_type": "none",
+        "matches": []
+      }
+    ],
+    "components": {}
+  }
+}
