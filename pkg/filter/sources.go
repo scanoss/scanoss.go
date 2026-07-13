@@ -1,0 +1,159 @@
+// SPDX-License-Identifier: MIT
+/*
+ * Copyright (c) 2026, SCANOSS
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+
+package filter
+
+import (
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+)
+
+// Defaults holds the skip lists and size bounds a DefaultSource turns into
+// matchers. Callers normally start from StdDefaults and override fields as
+// needed.
+type Defaults struct {
+	Dirs    []string // directory names skipped wholesale
+	DirExts []string // directory-name suffixes skipped (e.g. ".egg-info")
+	Files   []string // exact file names skipped
+	Exts    []string // file extensions skipped (leading dot)
+	Endings []string // non-extension file-name suffixes skipped
+	MinSize int64    // minimum file size; 0 disables
+	MaxSize int64    // maximum file size; 0 disables (unlimited)
+}
+
+// StdDefaults returns the built-in default skip lists and size bounds.
+func StdDefaults() Defaults {
+	return Defaults{
+		Dirs:    DefaultSkippedDirs,
+		DirExts: DefaultSkippedDirExts,
+		Files:   DefaultSkippedFiles,
+		Exts:    DefaultSkippedExts,
+		Endings: DefaultSkippedFileEndings,
+		MinSize: DefaultMinFileSize,
+		MaxSize: DefaultMaxFileSize,
+	}
+}
+
+// DefaultSource turns the default skip lists and size bounds into matchers.
+func DefaultSource(d Defaults) []Matcher {
+	var ms []Matcher
+	for _, name := range d.Dirs {
+		ms = append(ms, newDirNameMatcher(name))
+	}
+	for _, suffix := range d.DirExts {
+		ms = append(ms, newDirSuffixMatcher(suffix))
+	}
+	for _, name := range d.Files {
+		ms = append(ms, newNameMatcher(name))
+	}
+	// Simple (single-dot) extensions collapse into one map-backed matcher; only
+	// compound endings like ".min.js" (where filepath.Ext yields ".js") stay as
+	// individual suffix matchers.
+	extSet := make(map[string]bool, len(d.Exts))
+	extKeys := make([]string, 0, len(d.Exts))
+	for _, ext := range d.Exts {
+		lower := strings.ToLower(ext)
+		if filepath.Ext(lower) == lower {
+			if !extSet[lower] {
+				extSet[lower] = true
+				extKeys = append(extKeys, lower)
+			}
+			continue
+		}
+		ms = append(ms, newExtMatcher(ext))
+	}
+	if len(extSet) > 0 {
+		sort.Strings(extKeys)
+		ms = append(ms, newExtSetMatcher(extSet, "extset:"+strings.Join(extKeys, ",")))
+	}
+	for _, ending := range d.Endings {
+		ms = append(ms, newEndingMatcher(ending))
+	}
+	if d.MinSize > 0 || d.MaxSize > 0 {
+		ms = append(ms, newSizeMatcher(d.MinSize, d.MaxSize))
+	}
+	return ms
+}
+
+// SizeRule is one scanoss.json skip.sizes entry: files matching any of Patterns
+// are skipped when smaller than Min or larger than Max (0 disables a bound).
+type SizeRule struct {
+	Patterns []string
+	Min      int64
+	Max      int64
+}
+
+// Skip mirrors the scanoss.json settings.skip subset filter consumes, already
+// resolved to a single operation (scanning, fingerprinting, or dependencies).
+type Skip struct {
+	Patterns []string   // gitignore-style globs
+	Sizes    []SizeRule // per-pattern size limits
+}
+
+// Settings is the local, dependency-free mirror of the scanoss.json bits filter
+// needs. Callers map settings.Settings into this.
+type Settings struct {
+	Skip Skip
+}
+
+// SettingsSource turns scanoss.json skip rules into matchers. Returns nil when s
+// is nil.
+func SettingsSource(s *Settings) []Matcher {
+	if s == nil {
+		return nil
+	}
+	var ms []Matcher
+	if len(s.Skip.Patterns) > 0 {
+		ms = append(ms, newGlobMatcher(s.Skip.Patterns, "scanoss-skip"))
+	}
+	for _, rule := range s.Skip.Sizes {
+		if len(rule.Patterns) == 0 {
+			continue
+		}
+		ms = append(ms, newScopedSizeMatcher(rule.Patterns, rule.Min, rule.Max))
+	}
+	return ms
+}
+
+// GitIgnoreSource reads the .gitignore at the root of the tree (if present) and
+// returns a matcher for its patterns. If root is a file rather than a directory,
+// its parent directory is used. Missing file is not an error.
+func GitIgnoreSource(root string) ([]Matcher, error) {
+	dir := root
+	if info, err := os.Stat(root); err == nil && !info.IsDir() {
+		dir = filepath.Dir(root)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, ".gitignore"))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(string(data), "\n")
+	return []Matcher{newGlobMatcher(lines, "gitignore")}, nil
+}

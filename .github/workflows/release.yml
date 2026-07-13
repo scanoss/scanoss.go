@@ -1,0 +1,117 @@
+name: Release scanoss CLI
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0)'
+        required: true
+        default: 'v0.0.0-dev'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  # Build the C shared libraries (libscanoss) — attached to the release below.
+  build-libscanoss:
+    name: Build libscanoss
+    uses: ./.github/workflows/build-libscanoss.yml
+
+  release:
+    name: Release
+    needs: build-libscanoss
+    runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Download libscanoss artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: libscanoss-artifacts
+          pattern: libscanoss-*
+
+      - name: Package libscanoss libraries
+        run: |
+          mkdir -p release-extra
+          find libscanoss-artifacts -type f \( -name '*.so' -o -name '*.dylib' \) -exec cp {} release-extra/ \;
+          find libscanoss-artifacts -type f -name '*.dll' -exec cp {} release-extra/ \;
+          cd release-extra
+          for lib in libscanoss-*.so libscanoss-*.dylib; do
+            [ -e "$lib" ] || continue
+            tar czf "${lib}.tar.gz" "$lib" && rm "$lib"
+            sha256sum "${lib}.tar.gz" > "${lib}.tar.gz.sha256"
+          done
+          for lib in libscanoss-*.dll; do
+            [ -e "$lib" ] || continue
+            zip -q "${lib}.zip" "$lib" && rm "$lib"
+            sha256sum "${lib}.zip" > "${lib}.zip.sha256"
+          done
+          ls -lh
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  test-release-binaries:
+    name: Test Release Binaries
+    needs: release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            archive: scanoss-linux-amd64.tar.gz
+          - os: macos-latest
+            archive: scanoss-darwin-arm64.tar.gz
+          - os: windows-latest
+            archive: scanoss-windows-amd64.zip
+    steps:
+      - name: Download release archive
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release download "${{ github.ref_name }}" --repo "${{ github.repository }}" --pattern "${{ matrix.archive }}" --dir .
+
+      - name: Extract and test (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          tar xzf "${{ matrix.archive }}"
+          chmod +x scanoss
+          ./scanoss --version
+          ./scanoss --help
+
+      - name: Extract and test (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          Expand-Archive -Path "${{ matrix.archive }}" -DestinationPath .
+          .\scanoss.exe --version
+          .\scanoss.exe --help

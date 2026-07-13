@@ -1,0 +1,22 @@
+{
+  "name": "scanoss-lib",
+  "version": "0.0.0",
+  "description": "SCANOSS shared library for Node.js",
+  "main": "scanoss_lib.js",
+  "scripts": {
+    "test": "node scanoss_lib.js"
+  },
+  "keywords": [
+    "scanoss",
+    "fingerprint",
+    "wfp",
+    "security",
+    "open-source",
+    "component-detection"
+  ],
+  "author": "SCANOSS",
+  "license": "MIT",
+  "dependencies": {
+    "koffi": "^2.15.0"
+  }
+}

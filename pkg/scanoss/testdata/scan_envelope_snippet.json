@@ -1,0 +1,95 @@
+{
+  "scan_id": "019f2240-45af-70f4-8a49-1d8ef290da7b",
+  "status": "completed",
+  "received_bytes": 9534,
+  "total_bytes": 9534,
+  "upload_percent": 100,
+  "phase": "Final: fetch components",
+  "phase_done": 1,
+  "phase_total": 1,
+  "files_total": 1,
+  "result": {
+    "files": [
+      {
+        "path": "deflate_modified.c",
+        "file_hash": "180b6932931ab660225f646c4d3ede8f",
+        "source_hash": "a1b2c3d4e5f6708192a3b4c5d6e7f809",
+        "match_type": "snippet",
+        "matches": [
+          {
+            "url_hash": "5ac289f77f2478dd6b8a833fed33ea55",
+            "match_percentage": 58,
+            "oss_file_path": "gcc/deflate.c",
+            "input_line_ranges": [
+              {
+                "start_line": 82,
+                "end_line": 209
+              },
+              {
+                "start_line": 303,
+                "end_line": 775
+              },
+              {
+                "start_line": 846,
+                "end_line": 867
+              },
+              {
+                "start_line": 908,
+                "end_line": 1006
+              },
+              {
+                "start_line": 1086,
+                "end_line": 1146
+              },
+              {
+                "start_line": 1249,
+                "end_line": 1301
+              }
+            ],
+            "oss_line_ranges": [
+              {
+                "start_line": 77,
+                "end_line": 204
+              },
+              {
+                "start_line": 298,
+                "end_line": 770
+              },
+              {
+                "start_line": 841,
+                "end_line": 862
+              },
+              {
+                "start_line": 903,
+                "end_line": 1001
+              },
+              {
+                "start_line": 1081,
+                "end_line": 1141
+              },
+              {
+                "start_line": 1244,
+                "end_line": 1296
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "components": {
+      "5ac289f77f2478dd6b8a833fed33ea55": {
+        "component": "gcc",
+        "file": "gcc-9.zip",
+        "purls": [
+          "pkg:github/gcc-mirror/gcc",
+          "pkg:golang/github.com/gcc-mirror/gcc"
+        ],
+        "rank": 1,
+        "release_date": "1988-11-23",
+        "url": "https://github.com/gcc-mirror/gcc",
+        "vendor": "gcc-mirror",
+        "version": "basepoints"
+      }
+    }
+  }
+}

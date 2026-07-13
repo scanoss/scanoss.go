@@ -1,0 +1,12 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  # Standard set: errcheck, govet, ineffassign, staticcheck, unused.
+  default: standard
+  exclusions:
+    # Do not apply linters to test files.
+    paths:
+      - _test\.go$
