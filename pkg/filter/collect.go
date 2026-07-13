@@ -1,0 +1,222 @@
+// SPDX-License-Identifier: MIT
+/*
+ * Copyright (c) 2026, SCANOSS
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+
+package filter
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/scanoss/scanoss.go/pkg/manifests"
+)
+
+// absPath returns the absolute path for p, falling back to p on error.
+func absPath(p string) string {
+	if abs, err := filepath.Abs(p); err == nil {
+		return abs
+	}
+	return p
+}
+
+// Options configures a Collect call. Set the Skip* fields to replace the
+// corresponding default list. Use DefaultOptions for the common case where the
+// built-in defaults and .gitignore are applied.
+type Options struct {
+	// Skip* replace the matching built-in default list when non-nil.
+	SkipDirs       []string
+	SkipFiles      []string
+	SkipExtensions []string
+
+	MinSize int64 // minimum file size; 0 uses DefaultMinFileSize
+	MaxSize int64 // maximum file size; 0 uses DefaultMaxFileSize (unlimited)
+
+	Defaults  bool // apply the built-in default skip lists
+	GitIgnore bool // honor .gitignore
+
+	// Settings is the scanoss.json skip/folders rules, already resolved to a
+	// single operation. Nil when there is no scanoss.json.
+	Settings *Settings
+
+	// PreserveDependencyManifests keeps dependency manifest files
+	// (package.json, go.mod, pom.xml, … — see pkg/manifests) even when a skip
+	// rule would otherwise drop them. Use it for stages that consume manifests
+	// (extraction/upload feeding the dependency parser) while still pruning
+	// everything else. Fingerprint scanning leaves this false — manifests are
+	// not useful for matching. Default false → unchanged behavior.
+	PreserveDependencyManifests bool
+
+	HFH bool // reserved: high-file-hashing (folder hashing) variants; not yet used
+}
+
+// DefaultOptions returns the common-case Options: the built-in default skip
+// lists and .gitignore are applied, with no scanoss.json.
+func DefaultOptions() Options {
+	return Options{Defaults: true, GitIgnore: true}
+}
+
+// ScanOptions returns the options for fingerprint scanning: the built-in
+// defaults and .gitignore, with dependency manifests skipped (they are not
+// useful for matching). Alias of DefaultOptions, named for intent.
+func ScanOptions() Options {
+	return Options{Defaults: true, GitIgnore: true}
+}
+
+// IngestOptions returns the options for materialising files a later stage
+// consumes (extraction/upload feeding the dependency parser): the same prune as
+// ScanOptions, but dependency manifests are preserved.
+func IngestOptions() Options {
+	return Options{Defaults: true, GitIgnore: true, PreserveDependencyManifests: true}
+}
+
+// keepMatcher wraps a base skip matcher with the PreserveDependencyManifests
+// exemption: a file that a base rule would skip is kept when it is a dependency
+// manifest. The exemption applies to files only — directories are matched by the
+// base matcher unchanged (so skipped dirs like node_modules are not descended).
+type keepMatcher struct {
+	base              Matcher
+	preserveManifests bool
+}
+
+func (m *keepMatcher) Match(rel string, info os.FileInfo) bool {
+	if !m.base.Match(rel, info) {
+		return false
+	}
+	if m.preserveManifests && !info.IsDir() && manifests.Is(rel) {
+		return false // kept despite the skip rule
+	}
+	return true
+}
+
+func (m *keepMatcher) Key() string { return "keep:" + m.base.Key() }
+
+// NewMatcher builds a per-path skip Matcher from o, for callers that evaluate
+// entries one at a time (e.g. a streaming archive extractor) instead of walking
+// a tree with Collect. It applies the default and scanoss.json (Settings) rules
+// and honors PreserveDependencyManifests, so a caller filters exactly the way
+// Collect does — from the same Options. It does NOT apply .gitignore (that needs
+// the whole tree; use Collect). Match returns true when the entry should be
+// skipped.
+func NewMatcher(o Options) Matcher {
+	var sources [][]Matcher
+	if o.Defaults {
+		sources = append(sources, DefaultSource(o.defaults()))
+	}
+	if o.Settings != nil {
+		sources = append(sources, SettingsSource(o.Settings))
+	}
+	return &keepMatcher{base: Build(sources...), preserveManifests: o.PreserveDependencyManifests}
+}
+
+// CollectResult is the outcome of a Collect: the absolute paths to scan and how
+// many files were skipped. The skipped files themselves are not retained.
+type CollectResult struct {
+	Files        []string
+	SkippedCount int
+}
+
+// defaults builds the Defaults to use, applying any overrides from o.
+func (o Options) defaults() Defaults {
+	d := StdDefaults()
+	if o.SkipDirs != nil {
+		d.Dirs = o.SkipDirs
+	}
+	if o.SkipFiles != nil {
+		d.Files = o.SkipFiles
+	}
+	if o.SkipExtensions != nil {
+		d.Exts = o.SkipExtensions
+	}
+	if o.MinSize != 0 {
+		d.MinSize = o.MinSize
+	}
+	if o.MaxSize != 0 {
+		d.MaxSize = o.MaxSize
+	}
+	return d
+}
+
+// Collect walks root once, returning the files to scan and a count of those
+// skipped. Rules are loaded from the enabled sources (defaults, scanoss.json,
+// .gitignore), deduplicated, and applied as a single composite. Hidden files and
+// directories (names beginning with ".") are always skipped, preserving prior
+// behavior. Symlinked directories are not followed. Returned paths are absolute.
+func Collect(root string, o Options) (*CollectResult, error) {
+	var sources [][]Matcher
+	if o.Defaults {
+		sources = append(sources, DefaultSource(o.defaults()))
+	}
+	if o.Settings != nil {
+		sources = append(sources, SettingsSource(o.Settings))
+	}
+	if o.GitIgnore {
+		gi, err := GitIgnoreSource(root)
+		if err != nil {
+			return nil, err
+		}
+		if gi != nil {
+			sources = append(sources, gi)
+		}
+	}
+	skip := &keepMatcher{base: Build(sources...), preserveManifests: o.PreserveDependencyManifests}
+
+	res := &CollectResult{}
+	walkErr := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			rel = path
+		}
+
+		if info.IsDir() {
+			if path == root {
+				return nil
+			}
+			if strings.HasPrefix(info.Name(), ".") {
+				return filepath.SkipDir
+			}
+			if skip.Match(rel, info) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		if strings.HasPrefix(info.Name(), ".") {
+			res.SkippedCount++
+			return nil
+		}
+		if skip.Match(rel, info) {
+			res.SkippedCount++
+			return nil
+		}
+
+		res.Files = append(res.Files, absPath(path))
+		return nil
+	})
+	if walkErr != nil {
+		return nil, walkErr
+	}
+	return res, nil
+}
