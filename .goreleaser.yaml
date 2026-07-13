@@ -1,0 +1,115 @@
+# GoReleaser configuration for the SCANOSS Go CLI.
+# Docs: https://goreleaser.com
+version: 2
+
+project_name: scanoss
+
+builds:
+  - id: scanoss
+    main: ./cmd/scanoss
+    binary: scanoss
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64, arm]
+    goarm: ["7"]
+    ignore:
+      # We only ship arm/v7 on Linux; macOS and Windows are amd64/arm64 only.
+      - goos: darwin
+        goarch: arm
+      - goos: windows
+        goarch: arm
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    ldflags:
+      - -s -w -X github.com/scanoss/scanoss.go/internal/version.version={{ .Tag }}
+
+  # HarmonyOS (OpenHarmony) runs the Linux arm64 binary; published under its own
+  # name so users find it. Same artifact as scanoss-linux-arm64.
+  - id: harmonyos
+    main: ./cmd/scanoss
+    binary: scanoss
+    env:
+      - CGO_ENABLED=0
+    goos: [linux]
+    goarch: [arm64]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    ldflags:
+      - -s -w -X github.com/scanoss/scanoss.go/internal/version.version={{ .Tag }}
+
+archives:
+  - id: cli
+    ids: [scanoss]
+    name_template: "scanoss-{{ .Os }}-{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+  - id: harmonyos
+    ids: [harmonyos]
+    name_template: "scanoss-harmonyos-arm64"
+    formats: [tar.gz]
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+dockers_v2:
+  - id: scanoss
+    ids: [scanoss]
+    dockerfile: Dockerfile
+    images:
+      - ghcr.io/scanoss/scanoss
+    tags:
+      - "{{ .Version }}"
+      - latest
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      org.opencontainers.image.title: scanoss
+      org.opencontainers.image.source: https://github.com/scanoss/scanoss.go
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+
+release:
+  draft: true
+  prerelease: false
+  # libscanoss shared libraries are built by the reusable build-libscanoss.yml
+  # workflow and packaged into ./release-extra before GoReleaser runs.
+  extra_files:
+    - glob: ./release-extra/*
+  footer: |
+    ## Install
+
+    **Prebuilt binary:** download the archive for your platform below, extract it,
+    and move `scanoss` onto your `PATH`. On Linux (amd64):
+
+    ```bash
+    tar xzf scanoss-linux-amd64.tar.gz
+    sudo mv scanoss /usr/local/bin/
+    ```
+
+    Verify a download against `checksums.txt`:
+
+    ```bash
+    sha256sum -c --ignore-missing checksums.txt
+    ```
+
+    **Go:**
+
+    ```bash
+    go install github.com/scanoss/scanoss.go/cmd/scanoss@latest
+    ```
+
+    See the [README](https://github.com/scanoss/scanoss.go/blob/main/README.md) and
+    [CLIENT_HELP.md](https://github.com/scanoss/scanoss.go/blob/main/CLIENT_HELP.md)
+    to get started.

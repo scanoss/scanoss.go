@@ -1,0 +1,139 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test Go Code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Run tests
+        run: go test -v ./...
+
+      - name: Run go vet
+        run: go vet ./...
+
+  build-cli:
+    name: Build CLI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Build scanoss
+        run: go build -v -o scanoss ./cmd/scanoss
+
+      - name: Test CLI
+        run: |
+          ./scanoss --version
+          ./scanoss wfp cmd/scanoss/main.go
+
+  build-and-test-libscanoss:
+    name: Build and Test libscanoss
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Build libscanoss
+        run: |
+          cd libscanoss/core
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Verify binary exists
+        run: |
+          if [ "${{ runner.os }}" == "Linux" ]; then
+            ls -lh libscanoss/core/libscanoss.so
+          else
+            ls -lh libscanoss/core/libscanoss.dylib
+          fi
+
+      - name: Test Python wrapper
+        run: |
+          cd libscanoss/python
+          python3 -c "
+          from scanoss_lib import ScanossLib
+          lib = ScanossLib()
+          version = lib.get_version()
+          print(f'✓ Python wrapper - Library version: {version}')
+          assert version, f'empty version: {version!r}'
+          fp = lib.generate_wfp('../../cmd/scanoss/main.go')
+          assert len(fp) > 0
+          print(f'✓ Python wrapper - Generated fingerprint: {len(fp)} bytes')
+          "
+
+      - name: Test Node.js wrapper
+        run: |
+          cd libscanoss/nodejs
+          npm install
+          node -e "
+          const ScanossLib = require('./scanoss_lib.js');
+          const lib = new ScanossLib();
+          const version = lib.getVersion();
+          console.log('✓ Node.js wrapper - Library version:', version);
+          if (!version) throw new Error('empty version');
+          const fp = lib.generateWFP('../../cmd/scanoss/main.go');
+          if (!fp || fp.length === 0) throw new Error('Fingerprint generation failed');
+          console.log('✓ Node.js wrapper - Generated fingerprint:', fp.length, 'bytes');
+          "
+
+  lint:
+    name: Lint Code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Check formatting (gofmt)
+        run: make fmt-check
+
+      - name: Install golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.10.1
+
+      - name: Run golangci-lint
+        run: golangci-lint run --timeout=5m

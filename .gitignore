@@ -1,0 +1,28 @@
+/scanoss
+coverage.html
+coverage.out
+
+# Build / release artifacts
+dist/
+*.so
+*.dylib
+*.dll
+
+# CI release staging (created by the release workflow)
+release-extra/
+libscanoss-artifacts/
+
+# Node.js bindings
+node_modules/
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Secrets / local env
+.env
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea
