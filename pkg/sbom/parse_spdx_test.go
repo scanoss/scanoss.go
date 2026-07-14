@@ -47,9 +47,9 @@ const spdxDoc = `{
       "licenseDeclared": "GPL-2.0-only",
       "licenseConcluded": "NOASSERTION",
       "copyrightText": "NOASSERTION",
-      "checksums": [{"algorithm": "MD5", "checksumValue": "abc123"}],
       "externalRefs": [
-        {"referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:github/scanoss/engine"}
+        {"referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:github/scanoss/engine"},
+        {"referenceCategory": "OTHER", "referenceType": "scanoss-url-hash", "referenceLocator": "abc123"}
       ]
     }
   ]

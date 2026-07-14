@@ -138,11 +138,24 @@ func TestSPDXLite_Package(t *testing.T) {
 	if pkg.PackageLicenseConcluded != "NOASSERTION" {
 		t.Errorf("licenseConcluded = %q, want NOASSERTION (no concluded licenses)", pkg.PackageLicenseConcluded)
 	}
-	if len(pkg.PackageExternalReferences) != 1 || pkg.PackageExternalReferences[0].Locator != "pkg:github/scanoss/engine" {
-		t.Errorf("externalRefs = %+v", pkg.PackageExternalReferences)
+	var purlRef, hashRef string
+	for _, r := range pkg.PackageExternalReferences {
+		switch r.RefType {
+		case "purl":
+			purlRef = r.Locator
+		case "scanoss-url-hash":
+			hashRef = r.Locator
+		}
 	}
-	if len(pkg.PackageChecksums) != 1 || pkg.PackageChecksums[0].Value != "abc123" {
-		t.Errorf("checksums = %+v", pkg.PackageChecksums)
+	if purlRef != "pkg:github/scanoss/engine" {
+		t.Errorf("purl externalRef = %q", purlRef)
+	}
+	// url_hash (a CRC64) is preserved as an OTHER externalRef, not an (invalid) MD5 checksum.
+	if hashRef != "abc123" {
+		t.Errorf("scanoss-url-hash externalRef = %q, want abc123", hashRef)
+	}
+	if len(pkg.PackageChecksums) != 0 {
+		t.Errorf("expected no checksums, got %+v", pkg.PackageChecksums)
 	}
 }
 

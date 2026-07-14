@@ -35,6 +35,10 @@ import (
 	"github.com/scanoss/scanoss.go/internal/config"
 )
 
+// scanossURLHashProp is the CycloneDX component property carrying the scanoss url_hash
+// (a CRC64), which has no standard CycloneDX hash algorithm.
+const scanossURLHashProp = "scanoss:url_hash"
+
 // buildCycloneDX renders the inventory as a CycloneDX 1.7 JSON document using the
 // official cyclonedx-go encoder, whose version-aware serialization keeps the output
 // schema-valid.
@@ -122,6 +126,12 @@ func cycloneDXComponent(comp Component) cdx.Component {
 			ev.Identity = &cdx.EvidenceIdentityChoice{Identities: &ids}
 		}
 		c.Evidence = ev
+	}
+
+	// Preserve the scanoss url_hash (a CRC64) as a property — CycloneDX has no hash
+	// algorithm for it.
+	if comp.URLHash != "" {
+		c.Properties = &[]cdx.Property{{Name: scanossURLHashProp, Value: comp.URLHash}}
 	}
 
 	return c

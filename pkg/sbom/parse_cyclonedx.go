@@ -108,6 +108,15 @@ func cycloneDXToComponent(c cdx.Component) Component {
 		}
 	}
 
+	if c.Properties != nil {
+		for _, p := range *c.Properties {
+			if p.Name == scanossURLHashProp {
+				comp.URLHash = p.Value
+				break
+			}
+		}
+	}
+
 	comp.AliasPurls = cycloneDXAliasPurls(c, purl, version)
 	return comp
 }

@@ -37,6 +37,7 @@ func TestRoundTrip_CycloneDX(t *testing.T) {
 			Vendor:   "scanoss",
 			Version:  "5.4.7",
 			URL:      "https://github.com/scanoss/engine",
+			URLHash:  "08d3df7638b3a9f1",
 			Licenses: []License{{ID: "GPL-2.0-only", Acknowledgement: AckDeclared}},
 		}},
 		Vulnerabilities: []Vulnerability{{
@@ -72,7 +73,7 @@ func TestRoundTrip_SPDX(t *testing.T) {
 			Vendor:           "scanoss",
 			Version:          "5.4.7",
 			URL:              "https://github.com/scanoss/engine",
-			URLHash:          "d41d8cd98f00b204e9800998ecf8427e",
+			URLHash:          "08d3df7638b3a9f1",
 			DownloadLocation: "https://github.com/scanoss/engine",
 			Licenses:         []License{{ID: "GPL-2.0-only", Acknowledgement: AckDeclared}},
 		}},
