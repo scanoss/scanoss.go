@@ -210,8 +210,8 @@ Polls `GET /v3/wfp/scan/<scan-id>` until complete.
 
 ## Convert (`convert`)
 
-Convert an existing SBOM or scan result between formats, **entirely offline** — no
-scanning, no API calls. The input format is detected from the file content.
+Convert an existing SBOM or scan result between formats. The input format is detected
+from the file content.
 
 ```bash
 # SPDX -> CycloneDX
