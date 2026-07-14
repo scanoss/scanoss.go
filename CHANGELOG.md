@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the input format is detected from the file content. Best-effort: SPDX cannot represent
   vulnerabilities, so they are dropped (with a warning) when converting to spdx.
 
+### Fixed
+- SBOM export no longer emits the scanoss `url_hash` (a CRC64) as an `MD5` package
+  checksum, which produced invalid-length checksums in SPDX. The `url_hash` is now
+  preserved as metadata: an `OTHER` external reference in SPDX and a `scanoss:url_hash`
+  property in CycloneDX.
+
 ## [0.1.0] - 2026-07-14
 
 Initial public release of the SCANOSS Go CLI and SDK (`scanoss`).

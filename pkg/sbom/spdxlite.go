@@ -42,6 +42,10 @@ import (
 // spdxTimeFormat is the SPDX creation-timestamp layout (UTC, second precision).
 const spdxTimeFormat = "2006-01-02T15:04:05Z"
 
+// scanossURLHashRef is the SPDX OTHER external-reference type carrying the scanoss url_hash
+// (a CRC64), which has no standard SPDX checksum algorithm.
+const scanossURLHashRef = "scanoss-url-hash"
+
 // buildSPDXLite renders the inventory as an SPDX 2.3 JSON document (restricted to the
 // SPDX Lite field subset) via the official tools-golang library. Vulnerabilities and
 // file evidence do not apply to SPDX.
@@ -115,8 +119,15 @@ func spdxPackage(comp Component) *v2_3.Package {
 		PackageExternalReferences: purlExternalRefs(comp),
 	}
 
+	// The scanoss url_hash is a CRC64, which SPDX 2.3 has no checksum algorithm for, so it
+	// is preserved as an OTHER external reference rather than emitted as an (invalid) MD5
+	// checksum.
 	if comp.URLHash != "" {
-		pkg.PackageChecksums = []common.Checksum{{Algorithm: common.MD5, Value: comp.URLHash}}
+		pkg.PackageExternalReferences = append(pkg.PackageExternalReferences, &v2_3.PackageExternalReference{
+			Category: "OTHER",
+			RefType:  scanossURLHashRef,
+			Locator:  comp.URLHash,
+		})
 	}
 
 	return pkg

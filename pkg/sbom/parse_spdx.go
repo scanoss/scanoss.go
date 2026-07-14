@@ -29,7 +29,6 @@ import (
 	"strings"
 
 	spdxjson "github.com/spdx/tools-golang/json"
-	"github.com/spdx/tools-golang/spdx/v2/common"
 	"github.com/spdx/tools-golang/spdx/v2/v2_3"
 )
 
@@ -58,11 +57,18 @@ func spdxToComponent(pkg *v2_3.Package) Component {
 	comp := Component{Version: normalizeAssertion(pkg.PackageVersion)}
 
 	// PURLs live in the PACKAGE-MANAGER externalRefs (first is canonical, rest are aliases);
-	// the writer also sets PackageName to the canonical PURL as a fallback.
+	// the scanoss url_hash is carried in an OTHER externalRef; PackageName is the canonical
+	// PURL fallback.
 	var purls []string
 	for _, ref := range pkg.PackageExternalReferences {
-		if ref != nil && ref.RefType == "purl" {
+		if ref == nil {
+			continue
+		}
+		switch ref.RefType {
+		case "purl":
 			purls = append(purls, ref.Locator)
+		case scanossURLHashRef:
+			comp.URLHash = ref.Locator
 		}
 	}
 	switch {
@@ -82,12 +88,6 @@ func spdxToComponent(pkg *v2_3.Package) Component {
 	}
 	if d := normalizeAssertion(pkg.PackageDownloadLocation); d != "" {
 		comp.DownloadLocation = d
-	}
-	for _, ck := range pkg.PackageChecksums {
-		if ck.Algorithm == common.MD5 {
-			comp.URLHash = ck.Value
-			break
-		}
 	}
 
 	comp.Licenses = append(comp.Licenses, spdxLicenses(pkg.PackageLicenseDeclared, AckDeclared)...)
