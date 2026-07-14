@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`convert`** — offline conversion between the raw scanoss result, CycloneDX 1.7, and
+  SPDX 2.3 (`scanoss convert <input> --format cyclonedx|spdx`). No scanning or API calls;
+  the input format is detected from the file content. Best-effort: SPDX cannot represent
+  vulnerabilities, so they are dropped (with a warning) when converting to spdx.
+
 ## [0.1.0] - 2026-07-14
 
 Initial public release of the SCANOSS Go CLI and SDK (`scanoss`).
