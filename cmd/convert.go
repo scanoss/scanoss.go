@@ -47,9 +47,8 @@ const (
 
 var convertCmd = &cobra.Command{
 	Use:   "convert <input>",
-	Short: "Convert an SBOM/scan result between formats (offline)",
-	Long: `Convert an existing SBOM or scan result between formats, entirely offline — no
-scanning and no API calls.
+	Short: "Convert an SBOM/scan result between formats",
+	Long: `Convert an existing SBOM or scan result between formats.
 
 The input format is detected from the file content (a scanoss raw result, a CycloneDX
 document, or an SPDX document); the target format is chosen with --format. Conversion is
