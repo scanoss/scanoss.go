@@ -26,6 +26,7 @@ package sbom
 import (
 	"bytes"
 	"fmt"
+	"strconv"
 	"strings"
 
 	cdx "github.com/CycloneDX/cyclonedx-go"
@@ -151,7 +152,26 @@ func cycloneDXToVulnerability(v cdx.Vulnerability, refToPurl map[string]string) 
 		vuln.Source = v.Source.Name
 	}
 	if v.Ratings != nil && len(*v.Ratings) > 0 {
-		vuln.Severity = string((*v.Ratings)[0].Severity)
+		r := (*v.Ratings)[0]
+		vuln.Severity = string(r.Severity)
+		if r.Score != nil {
+			score := *r.Score
+			vuln.CVSSScore = &score
+		}
+		vuln.CVSSVector = r.Vector
+		vuln.CVSSMethod = string(r.Method)
+	}
+	if v.CWEs != nil && len(*v.CWEs) > 0 {
+		vuln.CWEs = append([]int(nil), (*v.CWEs)...)
+	}
+	if v.Properties != nil {
+		for _, p := range *v.Properties {
+			if p.Name == scanossEPSSProp {
+				if f, err := strconv.ParseFloat(p.Value, 64); err == nil {
+					vuln.EPSSScore = &f
+				}
+			}
+		}
 	}
 	if v.Advisories != nil && len(*v.Advisories) > 0 {
 		vuln.URL = (*v.Advisories)[0].URL

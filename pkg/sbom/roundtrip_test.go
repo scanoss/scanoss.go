@@ -28,6 +28,8 @@ import (
 	"testing"
 )
 
+func ptrFloat(f float64) *float64 { return &f }
+
 // TestRoundTrip_CycloneDX writes an Inventory to CycloneDX and reads it back, asserting the
 // modeled fields survive. CycloneDX carries components, licenses and vulnerabilities.
 func TestRoundTrip_CycloneDX(t *testing.T) {
@@ -41,12 +43,17 @@ func TestRoundTrip_CycloneDX(t *testing.T) {
 			Licenses: []License{{ID: "GPL-2.0-only", Acknowledgement: AckDeclared}},
 		}},
 		Vulnerabilities: []Vulnerability{{
-			ID:       "CVE-2023-1234",
-			Severity: "high",
-			Source:   "NVD",
-			URL:      "https://nvd.nist.gov/vuln/detail/CVE-2023-1234",
-			Summary:  "Example heap overflow.",
-			Purls:    []string{"pkg:github/scanoss/engine"},
+			ID:         "CVE-2023-1234",
+			Severity:   "high",
+			Source:     "NVD",
+			URL:        "https://nvd.nist.gov/vuln/detail/CVE-2023-1234",
+			Summary:    "Example heap overflow.",
+			Purls:      []string{"pkg:github/scanoss/engine"},
+			CVSSScore:  ptrFloat(7.2),
+			CVSSVector: "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:H",
+			CVSSMethod: "CVSSv31",
+			CWEs:       []int{77},
+			EPSSScore:  ptrFloat(0.224),
 		}},
 	}
 
