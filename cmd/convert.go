@@ -26,6 +26,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 
 	scanossapi "github.com/scanoss/scanoss.api-sdk"
@@ -106,6 +107,8 @@ func runConvert(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	warnDroppedLayers(target, inv)
+
 	out, err := sbom.Generate(inv, sbom.Format(target))
 	if err != nil {
 		return fmt.Errorf("error generating %s output: %w", target, err)
@@ -118,6 +121,16 @@ func runConvert(cmd *cobra.Command, args []string) error {
 	}
 	defer func() { _ = writer.Close() }()
 	return writer.Write(out)
+}
+
+// warnDroppedLayers warns, once per layer, when the target format cannot represent data
+// present in the inventory. SPDX 2.3 has no vulnerability model, so vulnerabilities are
+// dropped when converting to spdx.
+func warnDroppedLayers(target string, inv sbom.Inventory) {
+	if target == config.FormatSPDX && len(inv.Vulnerabilities) > 0 {
+		slog.Warn("spdx cannot represent vulnerabilities; omitted from the SPDX document",
+			"dropped", len(inv.Vulnerabilities))
+	}
 }
 
 // identifyFormat inspects the input's content and returns its format. It checks each
