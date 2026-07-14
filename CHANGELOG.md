@@ -7,18 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- **`convert`** — offline conversion between the raw scanoss result, CycloneDX 1.7, and
-  SPDX 2.3 (`scanoss convert <input> --format cyclonedx|spdx`). No scanning or API calls;
-  the input format is detected from the file content. Best-effort: SPDX cannot represent
-  vulnerabilities, so they are dropped (with a warning) when converting to spdx.
-
-### Fixed
-- SBOM export no longer emits the scanoss `url_hash` (a CRC64) as an `MD5` package
-  checksum, which produced invalid-length checksums in SPDX. The `url_hash` is now
-  preserved as metadata: an `OTHER` external reference in SPDX and a `scanoss:url_hash`
-  property in CycloneDX.
-
 ## [0.1.0] - 2026-07-14
 
 Initial public release of the SCANOSS Go CLI and SDK (`scanoss`).
@@ -40,5 +28,18 @@ Initial public release of the SCANOSS Go CLI and SDK (`scanoss`).
 - `-v, --verbose` enables structured debug logging (standard-library
   `log/slog`) to stderr — the scan flow, each API request (method/URL/status/
   duration), fingerprinting, and decoration. 
+- The `url_hash` is now
+  preserved as metadata: an `OTHER` external reference in SPDX and a `scanoss:url_hash`
+  property in CycloneDX.
+- **`convert`** — offline conversion between the raw scanoss result, CycloneDX 1.7, and
+    SPDX 2.3 (`scanoss convert <input> --format cyclonedx|spdx`). No scanning or API calls;
+    the input format is detected from the file content. Best-effort: SPDX cannot represent
+    vulnerabilities, so they are dropped (with a warning) when converting to spdx.
+- **SBOM vulnerability detail** — `sbom.Vulnerability` gains optional CVSS
+  (score/vector/method), CWE, and EPSS fields; CycloneDX renders them as `ratings`/`cwes`
+  (EPSS as a `scanoss:epss_score` property). Absent fields render exactly as before.
+- **SBOM document metadata options** — `sbom.WithTool`, `sbom.WithAuthor`, and
+  `sbom.WithTimestamp` let SDK embedders set the generating tool, author, and creation
+  timestamp of the document (defaults unchanged).
 
 [0.1.0]: https://github.com/scanoss/scanoss.go/releases/tag/v0.1.0

@@ -4,19 +4,19 @@
 
 Atomic, one commit each; tree builds and `make check` stays green after every step.
 
-- [ ] **T1 — Richer vulnerability model + CycloneDX rendering.** Add optional
+- [x] **T1 — Richer vulnerability model + CycloneDX rendering.** Add optional
   `CVSSScore/CVSSVector/CVSSMethod/CWEs/EPSSScore` to `sbom.Vulnerability`; render CVSS as a
   `ratings[]` entry (score/vector/method), `cwes`, and EPSS as a `scanoss:epss_score`
   property in `cyclonedx.go`. Severity-only path unchanged. Tests. (FR-001–FR-003)
 
-- [ ] **T2 — Round-trip the new fields.** Extend `ParseCycloneDX` to read the CVSS
+- [x] **T2 — Round-trip the new fields.** Extend `ParseCycloneDX` to read the CVSS
   rating / `cwes` / EPSS property back into the model; extend the round-trip test. (FR-004)
 
-- [ ] **T3 — Configurable document metadata.** Add `WithTool`/`WithAuthor`/`WithTimestamp`
+- [x] **T3 — Configurable document metadata.** Add `WithTool`/`WithAuthor`/`WithTimestamp`
   (+ `resolvedTimestamp`) in `options.go`; wire `cyclonedx.go` metadata and `spdxlite.go`
   creationInfo to use them; defaults preserve current output. Tests. (FR-005, FR-006)
 
-- [ ] **T4 — Docs + changelog.** `CHANGELOG.md` (Added, under `[Unreleased]`); a short SDK
+- [x] **T4 — Docs + changelog.** `CHANGELOG.md` (Added, under `[Unreleased]`); a short SDK
   note in `README.md`/`CLIENT_HELP.md` if warranted.
 
 ## Commit sequence
