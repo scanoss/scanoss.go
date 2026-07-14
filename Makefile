@@ -1,7 +1,8 @@
 # Makefile for scanoss — tests, linting, and common dev tasks.
 
-GO            ?= go
-GOLANGCI_LINT ?= golangci-lint
+GO               ?= go
+GOLANGCI_LINT    ?= golangci-lint
+GOLANGCI_VERSION ?= v2.10.1
 PKGS          ?= ./...
 BIN           ?= scanoss
 GOFMT_FILES   := $(shell find . -name '*.go' -not -path './vendor/*')
@@ -45,6 +46,11 @@ fmt-check: ## Fail if any Go file is not gofmt-clean
 	if [ -n "$$unformatted" ]; then \
 		echo "These files are not gofmt-clean:"; echo "$$unformatted"; exit 1; \
 	fi
+
+.PHONY: lint-install
+lint-install: ## Install the pinned golangci-lint version
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/$(GOLANGCI_VERSION)/install.sh \
+		| sh -s -- -b $(shell $(GO) env GOPATH)/bin $(GOLANGCI_VERSION)
 
 .PHONY: lint
 lint: ## Run golangci-lint
