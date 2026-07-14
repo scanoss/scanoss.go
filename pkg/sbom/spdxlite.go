@@ -30,13 +30,10 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"time"
 
 	spdxjson "github.com/spdx/tools-golang/json"
 	"github.com/spdx/tools-golang/spdx/v2/common"
 	"github.com/spdx/tools-golang/spdx/v2/v2_3"
-
-	"github.com/scanoss/scanoss.go/internal/config"
 )
 
 // spdxTimeFormat is the SPDX creation-timestamp layout (UTC, second precision).
@@ -58,10 +55,10 @@ func buildSPDXLite(inv Inventory, o options) (string, error) {
 		DocumentNamespace: spdxNamespace(o.projectName, inv.Components),
 		CreationInfo: &v2_3.CreationInfo{
 			Creators: []common.Creator{
-				{CreatorType: "Tool", Creator: fmt.Sprintf("%s-%s", config.AppName, config.AppVersion)},
-				{CreatorType: "Organization", Creator: config.OrganizationName},
+				{CreatorType: "Tool", Creator: o.toolName},
+				{CreatorType: "Organization", Creator: o.author},
 			},
-			Created: time.Now().UTC().Format(spdxTimeFormat),
+			Created: o.resolvedTimestamp().Format(spdxTimeFormat),
 		},
 	}
 

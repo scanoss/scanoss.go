@@ -31,8 +31,6 @@ import (
 	"time"
 
 	cdx "github.com/CycloneDX/cyclonedx-go"
-
-	"github.com/scanoss/scanoss.go/internal/config"
 )
 
 // scanossURLHashProp is the CycloneDX component property carrying the scanoss url_hash
@@ -45,8 +43,11 @@ const scanossURLHashProp = "scanoss:url_hash"
 func buildCycloneDX(inv Inventory, o options) (string, error) {
 	bom := cdx.NewBOM()
 	bom.Metadata = &cdx.Metadata{
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
-		Authors:   &[]cdx.OrganizationalContact{{Name: config.OrganizationName}},
+		Timestamp: o.resolvedTimestamp().Format(time.RFC3339),
+		Authors:   &[]cdx.OrganizationalContact{{Name: o.author}},
+		Tools: &cdx.ToolsChoice{
+			Components: &[]cdx.Component{{Type: cdx.ComponentTypeApplication, Name: o.toolName}},
+		},
 		Component: &cdx.Component{
 			Type:    cdx.ComponentTypeApplication,
 			Name:    o.projectName,

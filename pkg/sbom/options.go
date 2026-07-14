@@ -23,12 +23,21 @@
 
 package sbom
 
+import (
+	"time"
+
+	"github.com/scanoss/scanoss.go/internal/config"
+)
+
 // defaultProjectName names the top-level component / document when none is supplied.
 const defaultProjectName = "scanoss-project"
 
 // options holds the resolved per-call configuration.
 type options struct {
 	projectName string
+	toolName    string    // recorded as the generating tool in document metadata
+	author      string    // recorded as the author / organization in document metadata
+	timestamp   time.Time // document creation timestamp; zero => resolved to now at render
 }
 
 // Option configures SBOM generation.
@@ -44,10 +53,54 @@ func WithProjectName(name string) Option {
 	}
 }
 
+// WithTool sets the generating tool recorded in the document metadata. Empty values are
+// ignored (default: "<app>-<version>").
+func WithTool(name string) Option {
+	return func(o *options) {
+		if name != "" {
+			o.toolName = name
+		}
+	}
+}
+
+// WithAuthor sets the author / organization recorded in the document metadata. Empty
+// values are ignored (default: the SCANOSS organization name).
+func WithAuthor(name string) Option {
+	return func(o *options) {
+		if name != "" {
+			o.author = name
+		}
+	}
+}
+
+// WithTimestamp sets the document creation timestamp (e.g. a point-in-time snapshot time,
+// or a fixed value for reproducible output). The zero time is ignored and the current time
+// is used at render.
+func WithTimestamp(t time.Time) Option {
+	return func(o *options) {
+		if !t.IsZero() {
+			o.timestamp = t
+		}
+	}
+}
+
 func newOptions(opts ...Option) options {
-	o := options{projectName: defaultProjectName}
+	o := options{
+		projectName: defaultProjectName,
+		toolName:    config.AppName + "-" + config.AppVersion,
+		author:      config.OrganizationName,
+	}
 	for _, opt := range opts {
 		opt(&o)
 	}
 	return o
+}
+
+// resolvedTimestamp returns the configured timestamp, or the current UTC time when none
+// was supplied.
+func (o options) resolvedTimestamp() time.Time {
+	if o.timestamp.IsZero() {
+		return time.Now().UTC()
+	}
+	return o.timestamp
 }
