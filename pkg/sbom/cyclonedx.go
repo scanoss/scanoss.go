@@ -248,8 +248,16 @@ func cycloneDXVulnerabilities(inv Inventory) []cdx.Vulnerability {
 		if v.Source != "" {
 			cv.Source = &cdx.Source{Name: v.Source}
 		}
-		if sev := mapSeverity(v.Severity); sev != "" {
-			cv.Ratings = &[]cdx.VulnerabilityRating{{Severity: sev}}
+		if rating := cycloneDXRating(v); rating != (cdx.VulnerabilityRating{}) {
+			cv.Ratings = &[]cdx.VulnerabilityRating{rating}
+		}
+		if len(v.CWEs) > 0 {
+			cwes := append([]int(nil), v.CWEs...)
+			cv.CWEs = &cwes
+		}
+		// EPSS has no native CycloneDX field; carry it as a namespaced property.
+		if v.EPSSScore != nil {
+			cv.Properties = &[]cdx.Property{{Name: scanossEPSSProp, Value: strconv.FormatFloat(*v.EPSSScore, 'f', -1, 64)}}
 		}
 		if v.URL != "" {
 			cv.Advisories = &[]cdx.Advisory{{URL: v.URL}}
@@ -268,6 +276,25 @@ func cycloneDXVulnerabilities(inv Inventory) []cdx.Vulnerability {
 		out = append(out, cv)
 	}
 	return out
+}
+
+// scanossEPSSProp is the CycloneDX vulnerability property carrying the EPSS score, which
+// has no native CycloneDX field.
+const scanossEPSSProp = "scanoss:epss_score"
+
+// cycloneDXRating builds a single rating from the qualitative severity and any CVSS data.
+// Returns the zero value when the vulnerability has neither, so no rating is emitted.
+func cycloneDXRating(v Vulnerability) cdx.VulnerabilityRating {
+	rating := cdx.VulnerabilityRating{Severity: mapSeverity(v.Severity)}
+	if v.CVSSScore != nil {
+		score := *v.CVSSScore
+		rating.Score = &score
+	}
+	rating.Vector = v.CVSSVector
+	if v.CVSSMethod != "" {
+		rating.Method = cdx.ScoringMethod(v.CVSSMethod)
+	}
+	return rating
 }
 
 // mapSeverity maps a SCANOSS severity string to a CycloneDX severity. An empty input

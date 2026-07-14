@@ -94,6 +94,14 @@ type Vulnerability struct {
 	URL      string   // advisory URL (optional)
 	Summary  string   // short description (optional)
 	Purls    []string // base PURLs of affected components (join key to Component.Purl)
+
+	// Optional quantitative scoring. All fields are optional: when unset they are not
+	// rendered, and the output is identical to a severity-only vulnerability.
+	CVSSScore  *float64 // CVSS base score 0.0–10.0
+	CVSSVector string   // CVSS vector string, e.g. "CVSS:3.1/AV:N/..."
+	CVSSMethod string   // CVSS scoring method, e.g. "CVSSv31"
+	CWEs       []int    // CWE ids, e.g. [77]
+	EPSSScore  *float64 // EPSS probability 0.0–1.0 (no native CycloneDX field; emitted as a property)
 }
 
 // Format is a supported SBOM output format.
