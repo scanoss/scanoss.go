@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   WFP → scan declared dependencies from the source tree → gather + enrich into an
   `sbom.Inventory`); `Build` is the lower layer (scan result → enriched inventory) for callers
   that already have a result. Rendering is left to `sbom.Generate` / the raw JSON encoding.
+- **Scan progress** — the concurrent enrichment layers each show a live progress bar under an
+  `Enriching components` header, and a `Results written to <path>` line confirms the destination
+  when `--output` is set.
 
 ### Changed
 - **`raw` output format** (renamed from `plain`, still the default) is now the neutral inventory

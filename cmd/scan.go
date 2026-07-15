@@ -40,6 +40,8 @@ import (
 	"github.com/scanoss/scanoss.go/pkg/settings"
 	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
+	"github.com/vbauerster/mpb/v8"
+	"github.com/vbauerster/mpb/v8/decor"
 )
 
 // scanProgress adapts scanoss.Progress updates to terminal progress bars. The
@@ -52,7 +54,8 @@ type scanProgress struct {
 	fpDone     bool
 	uploaded   bool
 	serverDone bool
-	layers     map[string]bool // enrichment layers already reported done
+	enrich     *mpb.Progress       // multi-bar container for the concurrent enrichment layers
+	layerBars  map[string]*mpb.Bar // one live bar per decoration service, keyed by Service name
 }
 
 // fingerprint renders fingerprinting progress. The pipeline calls it before the scan, so it is
@@ -87,18 +90,31 @@ func (s *scanProgress) fn(p scanoss.Progress) {
 		}
 		_ = s.server.Set(p.Done)
 	case "purls":
-		// Enrichment layer progress. Layers run concurrently, so rather than competing bars,
-		// print one line as each layer completes.
+		// Enrichment layers run concurrently — render one live bar per layer via mpb.
 		s.finishFingerprintLocked()
 		s.finishUploadLocked()
 		s.finishServerLocked()
-		if s.layers == nil {
-			s.layers = make(map[string]bool)
+		if p.Service == "" {
+			return
 		}
-		if p.Service != "" && p.Total > 0 && p.Done >= p.Total && !s.layers[p.Service] {
-			s.layers[p.Service] = true
-			fmt.Fprintf(os.Stderr, "Gathered %s\n", layerLabel(p.Service))
+		if s.enrich == nil {
+			fmt.Fprintln(os.Stderr, "Enriching components")
+			s.enrich = mpb.New(mpb.WithOutput(os.Stderr), mpb.WithWidth(40))
+			s.layerBars = make(map[string]*mpb.Bar)
 		}
+		bar, ok := s.layerBars[p.Service]
+		if !ok {
+			// Match the schollz phase-bar look: "<name> <pct>% |████…| (done/total)".
+			bar = s.enrich.New(int64(p.Total),
+				mpb.BarStyle().Lbound(" |").Filler("█").Tip("█").Padding(" ").Rbound("|"),
+				mpb.PrependDecorators(
+					decor.Name(fmt.Sprintf("  %-24s ", layerLabel(p.Service))),
+					decor.NewPercentage("%d"), // percentageType already appends "%"
+				),
+			)
+			s.layerBars[p.Service] = bar
+		}
+		bar.SetCurrent(int64(p.Done))
 	}
 }
 
@@ -111,11 +127,25 @@ func (s *scanProgress) finishUpload() {
 	s.finishUploadLocked()
 }
 
-// finishFingerprint finalizes the fingerprinting bar; called once the pipeline returns.
-func (s *scanProgress) finishFingerprint() {
+// finish finalizes all progress rendering once the pipeline returns: the sequential schollz
+// phase bars and the mpb enrichment container (waiting for its render goroutine to flush).
+func (s *scanProgress) finish() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.finishFingerprintLocked()
+	s.finishUploadLocked()
+	s.finishServerLocked()
+	enrich, bars := s.enrich, s.layerBars
+	s.mu.Unlock()
+
+	if enrich == nil {
+		return
+	}
+	for _, b := range bars {
+		if !b.Completed() {
+			b.Abort(false) // a layer that errored never reaches total; stop its bar so Wait returns
+		}
+	}
+	enrich.Wait()
 }
 
 func (s *scanProgress) finishFingerprintLocked() {
@@ -152,7 +182,7 @@ func layerLabel(service string) string {
 	case "cryptography.algorithms":
 		return "cryptographic algorithms"
 	case "geoprovenance.origin":
-		return "geographic provenance"
+		return "provenance"
 	case "dependencies":
 		return "declared dependencies"
 	default:
@@ -399,7 +429,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 		},
 		OnFingerprint: prog.fingerprint,
 	})
-	prog.finishFingerprint()
+	prog.finish()
 	if err != nil {
 		return renderAPIError(fmt.Errorf("scan failed: %w", err))
 	}
@@ -478,6 +508,7 @@ func runScanWFP(cmd *cobra.Command, args []string) error {
 	}
 
 	inv, err := scanpipeline.Build(ctx, client, res.Result, layers, nil)
+	prog.finish()
 	if err != nil {
 		return err
 	}
@@ -545,6 +576,8 @@ func emitInventory(cmd *cobra.Command, inv sbom.Inventory, scanPath string) erro
 	}
 	if err := writer.Write(out); err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing: %v\n", err)
+	} else if outputFile != "" {
+		fmt.Fprintf(os.Stderr, "Results written to %s\n", outputFile)
 	}
 	return nil
 }
