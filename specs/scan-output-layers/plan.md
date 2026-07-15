@@ -16,11 +16,13 @@ inside a versioned envelope (`schema_version` + `metadata`), assembled in `cmd` 
 
 ## Pipeline — `pkg/scanpipeline` (thin `cmd`)
 The SOURCE → ENRICH orchestration lives in a reusable package, not in `cmd`:
-- **`Run(ctx, Options)`** — the full flow over a source path: collect files (filters) →
-  fingerprint (`pkg/scanner`) → scan (`client.Scan.WFP`) → source declared dependencies from the
-  **same** collected files (`pkg/dependencies`, no second walk) → enrich → `Inventory`. Progress
-  for the scan and each layer flows through the SDK's own `scanoss.WithProgress` (per `Service`);
-  only fingerprinting needs an `OnFingerprint` hook, and `OnCollect` reports the filtered count.
+- **`Run(ctx, Options)`** — the full flow over a source path: collect files (filters) → run the
+  scan (fingerprint via `pkg/scanner` → `client.Scan.WFP`) and declared-dependency resolution
+  (`pkg/dependencies` → resolve) **concurrently** → enrich once both finish → `Inventory`. The two
+  halves hit different endpoints and share no state, so they run in parallel; declared deps come
+  from a dedicated manifest collection (see SOURCE). Progress for the scan and each layer flows
+  through the SDK's own `scanoss.WithProgress` (per `Service`); only fingerprinting needs an
+  `OnFingerprint` hook, and `OnCollect` reports the filtered count.
 - **`Build(ctx, client, result, layers, declared)`** — the lower half (scan result → enriched
   `Inventory`), for callers that already have a result (e.g. `scan wfp`, or an SDK consumer).
 - `cmd/scan.go` stays thin: parse flags → build the client + `Options` → `Run`/`Build` → render.
