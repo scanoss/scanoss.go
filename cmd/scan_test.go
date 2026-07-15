@@ -24,14 +24,14 @@
 package cmd
 
 import (
-	"context"
-	scanossapi "github.com/scanoss/scanoss.api-sdk"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/scanoss/scanoss.go/pkg/scanoss"
+	scanossapi "github.com/scanoss/scanoss.api-sdk"
+
+	"github.com/scanoss/scanoss.go/pkg/sbom"
+	"github.com/scanoss/scanoss.go/pkg/scanpipeline"
+	"github.com/spf13/cobra"
 )
 
 func testScanResult() *scanossapi.ScanResult {
@@ -45,89 +45,150 @@ func testScanResult() *scanossapi.ScanResult {
 	}
 }
 
-// decorationServer routes the licenses and vulnerabilities decoration endpoints to
-// canned responses, so renderResult can be exercised without a live API.
-func decorationServer() *httptest.Server {
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case strings.Contains(r.URL.Path, "/vulnerabilities"):
-			_, _ = w.Write([]byte(`{"components":[{"purl":"pkg:npm/lodash","vulnerabilities":[{"id":"CVE-2021-23337","severity":"HIGH","source":"NVD"}]}]}`))
-		case strings.Contains(r.URL.Path, "/licenses"):
-			// requirement echoes the queried version (testScanResult => 4.17.20).
-			_, _ = w.Write([]byte(`{"components":[{"purl":"pkg:npm/lodash","requirement":"4.17.20","licenses":[{"id":"MIT"}]}]}`))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
+// sampleInventory is a gathered inventory (a detected component with a license, plus a
+// vulnerability) used to exercise renderInventory independently of the pipeline.
+func sampleInventory() sbom.Inventory {
+	return sbom.Inventory{
+		Components: []sbom.Component{{
+			Purl:     "pkg:npm/lodash",
+			Scope:    sbom.ScopeDetected,
+			Name:     "lodash",
+			Version:  "4.17.20",
+			Licenses: []sbom.License{{ID: "MIT", Acknowledgement: sbom.AckDeclared}},
+		}},
+		Vulnerabilities: []sbom.Vulnerability{
+			{ID: "CVE-2021-23337", Severity: "high", Source: "NVD", Purls: []string{"pkg:npm/lodash"}},
+		},
+	}
 }
 
-func TestRenderResult_Plain(t *testing.T) {
-	// plain makes no decoration call, so a nil client is fine.
-	out, err := renderResult(context.Background(), nil, testScanResult(), "plain", "proj")
+func TestRenderInventory_Raw(t *testing.T) {
+	out, err := renderInventory(sampleInventory(), "raw", "proj")
 	if err != nil {
-		t.Fatalf("renderResult: %v", err)
+		t.Fatalf("renderInventory: %v", err)
+	}
+	if !strings.Contains(out, `"schema_version"`) || !strings.Contains(out, `"metadata"`) {
+		t.Errorf("raw output should be the versioned envelope, got:\n%s", out)
 	}
 	if !strings.Contains(out, `"components"`) || !strings.Contains(out, "pkg:npm/lodash") {
-		t.Errorf("plain output should be the raw result JSON, got:\n%s", out)
+		t.Errorf("raw output should carry the inventory components, got:\n%s", out)
+	}
+	if !strings.Contains(out, `"scope": "detected"`) {
+		t.Errorf("raw output should carry the component scope, got:\n%s", out)
+	}
+	if !strings.Contains(out, "CVE-2021-23337") {
+		t.Errorf("raw output should carry the gathered vulnerabilities, got:\n%s", out)
 	}
 }
 
-func TestRenderResult_SPDXLite(t *testing.T) {
-	srv := decorationServer()
-	defer srv.Close()
-	client := scanoss.New(scanoss.WithAPIURL(srv.URL), scanoss.WithAPIKey("x"))
-
-	out, err := renderResult(context.Background(), client, testScanResult(), "spdx", "proj")
+func TestRenderInventory_SPDXLite(t *testing.T) {
+	out, err := renderInventory(sampleInventory(), "spdx", "proj")
 	if err != nil {
-		t.Fatalf("renderResult: %v", err)
+		t.Fatalf("renderInventory: %v", err)
 	}
 	if !strings.Contains(out, `"spdxVersion": "SPDX-2.3"`) {
 		t.Errorf("expected SPDX 2.3 document, got:\n%s", out)
 	}
-	// declared license fetched from the decoration service, matched by PURL.
 	if !strings.Contains(out, `"licenseDeclared": "MIT"`) {
-		t.Errorf("expected the decoration license in licenseDeclared, got:\n%s", out)
+		t.Errorf("expected the license in licenseDeclared, got:\n%s", out)
 	}
 }
 
-func TestRenderResult_CycloneDXWithDecoration(t *testing.T) {
-	srv := decorationServer()
-	defer srv.Close()
-	client := scanoss.New(scanoss.WithAPIURL(srv.URL), scanoss.WithAPIKey("x"))
-
-	out, err := renderResult(context.Background(), client, testScanResult(), "cyclonedx", "proj")
+func TestRenderInventory_CycloneDX(t *testing.T) {
+	out, err := renderInventory(sampleInventory(), "cyclonedx", "proj")
 	if err != nil {
-		t.Fatalf("renderResult: %v", err)
+		t.Fatalf("renderInventory: %v", err)
 	}
 	if !strings.Contains(out, `"specVersion": "1.7"`) {
 		t.Errorf("expected CycloneDX 1.7, got:\n%s", out)
 	}
 	if !strings.Contains(out, `"id": "MIT"`) {
-		t.Errorf("expected the fetched license in the CycloneDX output, got:\n%s", out)
+		t.Errorf("expected the license in the CycloneDX output, got:\n%s", out)
 	}
 	if !strings.Contains(out, "CVE-2021-23337") {
-		t.Errorf("expected the fetched vulnerability in the CycloneDX output, got:\n%s", out)
+		t.Errorf("expected the vulnerability in the CycloneDX output, got:\n%s", out)
 	}
 }
 
-func TestRenderResult_DecorationFailureNonFatal(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer srv.Close()
-	client := scanoss.New(scanoss.WithAPIURL(srv.URL), scanoss.WithAPIKey("x"))
-
-	out, err := renderResult(context.Background(), client, testScanResult(), "cyclonedx", "proj")
-	if err != nil {
-		t.Fatalf("a decoration failure should be non-fatal, got error: %v", err)
-	}
-	if !strings.Contains(out, `"specVersion": "1.7"`) {
-		t.Errorf("expected a valid CycloneDX document despite the decoration failure")
-	}
-}
-
-func TestRenderResult_UnknownFormat(t *testing.T) {
-	if _, err := renderResult(context.Background(), nil, testScanResult(), "xml", "proj"); err == nil {
+func TestRenderInventory_UnknownFormat(t *testing.T) {
+	if _, err := renderInventory(sampleInventory(), "xml", "proj"); err == nil {
 		t.Error("expected an error for an unsupported format")
+	}
+}
+
+func TestUnsupportedLayers(t *testing.T) {
+	all := scanpipeline.Set{
+		scanpipeline.LayerDeps: true, scanpipeline.LayerVulns: true, scanpipeline.LayerLicenses: true,
+		scanpipeline.LayerCrypto: true, scanpipeline.LayerGeo: true,
+	}
+	cases := []struct {
+		format string
+		layers scanpipeline.Set
+		want   []scanpipeline.Layer
+	}{
+		{"raw", all, nil},
+		{"cyclonedx", all, []scanpipeline.Layer{scanpipeline.LayerCrypto, scanpipeline.LayerGeo}},
+		{"spdx", all, []scanpipeline.Layer{scanpipeline.LayerVulns, scanpipeline.LayerCrypto, scanpipeline.LayerGeo}},
+		{"spdx", scanpipeline.Set{scanpipeline.LayerDeps: true, scanpipeline.LayerLicenses: true}, nil},
+	}
+	for _, c := range cases {
+		got := unsupportedLayers(c.format, c.layers)
+		if len(got) != len(c.want) {
+			t.Errorf("%s: got %v, want %v", c.format, got, c.want)
+			continue
+		}
+		for i := range got {
+			if got[i] != c.want[i] {
+				t.Errorf("%s: got %v, want %v", c.format, got, c.want)
+				break
+			}
+		}
+	}
+}
+
+func TestEffectiveLayers(t *testing.T) {
+	all := scanpipeline.Set{
+		scanpipeline.LayerDeps: true, scanpipeline.LayerVulns: true, scanpipeline.LayerLicenses: true,
+		scanpipeline.LayerCrypto: true, scanpipeline.LayerGeo: true,
+	}
+	// spdx keeps only deps + licenses; the rest are not gathered.
+	eff := effectiveLayers("spdx", all)
+	if len(eff) != 2 || !eff.Has(scanpipeline.LayerDeps) || !eff.Has(scanpipeline.LayerLicenses) {
+		t.Errorf("spdx effective = %v, want {deps, licenses}", eff)
+	}
+	// cyclonedx additionally keeps vulns.
+	if eff := effectiveLayers("cyclonedx", all); len(eff) != 3 || eff.Has(scanpipeline.LayerCrypto) || eff.Has(scanpipeline.LayerGeo) {
+		t.Errorf("cyclonedx effective = %v, want {deps, licenses, vulns}", eff)
+	}
+	// raw keeps everything.
+	if eff := effectiveLayers("raw", all); len(eff) != 5 {
+		t.Errorf("raw effective = %v, want all 5", eff)
+	}
+}
+
+func TestScanLayers(t *testing.T) {
+	newCmd := func(include string) *cobra.Command {
+		c := &cobra.Command{}
+		c.Flags().StringSlice("include", nil, "")
+		if include != "" {
+			_ = c.Flags().Set("include", include)
+		}
+		return c
+	}
+
+	set, err := scanLayers(newCmd("deps,vulns"))
+	if err != nil {
+		t.Fatalf("scanLayers: %v", err)
+	}
+	if !set[scanpipeline.LayerDeps] || !set[scanpipeline.LayerVulns] || len(set) != 2 {
+		t.Errorf("got %v, want {deps, vulns}", set)
+	}
+
+	if empty, err := scanLayers(newCmd("")); err != nil || len(empty) != 0 {
+		t.Errorf("empty --include should yield an empty set, got %v (err %v)", empty, err)
+	}
+
+	if _, err := scanLayers(newCmd("bogus")); err == nil {
+		t.Error("expected an error for an unknown --include layer")
 	}
 }
