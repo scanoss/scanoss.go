@@ -57,7 +57,7 @@ type Component struct {
 	Cryptography     []CryptoAlgorithm `json:"cryptography,omitempty"`      // cryptographic algorithms detected (crypto layer)
 	Geoprovenance    []GeoLocation     `json:"geoprovenance,omitempty"`     // contributor geographic origin (geo layer)
 	DownloadLocation string            `json:"download_location,omitempty"` // download location (defaults to URL)
-	Files            []FileEvidence    `json:"files,omitempty"`             // scanned files that matched this component
+	Evidence         []FileEvidence    `json:"evidence,omitempty"`          // scanned files that matched this component
 }
 
 // CryptoAlgorithm is a cryptographic algorithm detected in a component (crypto layer).

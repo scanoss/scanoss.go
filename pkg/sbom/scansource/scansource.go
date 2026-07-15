@@ -71,7 +71,7 @@ func FromScanResult(result *scanossapi.ScanResult) sbom.Inventory {
 			Version:    comp.Version,
 			URL:        comp.Url,
 			URLHash:    hash,
-			Files:      filesByHash[hash],
+			Evidence:   filesByHash[hash],
 		})
 	}
 	return sbom.Inventory{Components: components}
