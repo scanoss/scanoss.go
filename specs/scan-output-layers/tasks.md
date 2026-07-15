@@ -28,6 +28,10 @@ Atomic, one commit each; tree builds and `make check` stays green after every st
 - [x] **T6c — CLI progress & output.** Live per-layer enrichment bars via `vbauerster/mpb`
   (Unlicense, `cmd`-only) under an `Enriching components` header, styled to match the sequential
   `schollz` bars; a `Results written to <path>` line when `--output` is set. (UX)
+- [x] **T6d — Dependency manifests via a dedicated filter (fix).** `--include deps` no longer
+  reuses the fingerprint file set (from which the default filter strips manifests); it re-collects
+  with `PreserveDependencyManifests` and parses only the manifests, so declared dependencies are
+  actually sourced. (fix)
 - [ ] **T6b — Dependency graph (deferred).** Declared deps render as ordinary components; the
   CycloneDX `dependencies[]` graph and SPDX `DEPENDS_ON` edges are not built. (FR-006)
 - [ ] **T7 — Rename `convert` → `sbom` (deferred).** `cmd/convert.go` unchanged this pass. (FR-007)
@@ -61,6 +65,7 @@ The SDD update (`specs/scan-output-layers/*`) is amended into the existing
    `cmd/scan_test.go`, `internal/config/config.go` (T2–T5, T6a) + `CHANGELOG.md`.
 7. `chore(deps): add github.com/vbauerster/mpb` — `go.mod`, `go.sum`.
 8. `feat(scan): live per-layer enrichment progress + output path message` — `cmd/scan.go` (T6c).
+9. `fix(scanpipeline): source dependency manifests via a dedicated filter` — `pkg/scanpipeline/scanpipeline.go` (T6d).
 
 ## Notes
 - FR-001 (refined): the fused `scan` gathers `--include` ∩ format capabilities (skipping the
