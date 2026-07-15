@@ -36,6 +36,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	scanossapi "github.com/scanoss/scanoss.api-sdk"
 
@@ -166,42 +167,69 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 	if opts.OnCollect != nil {
 		opts.OnCollect(skipped)
 	}
-	if len(files) == 0 {
-		return Result{}, nil
-	}
 
 	threads := opts.Threads
 	if threads < 1 {
 		threads = 1
 	}
-	wfp, errs := scanner.GenerateWFP(files, threads, scanRoot, opts.OnFingerprint)
-	if len(wfp) == 0 {
-		return Result{ProcessErrors: len(errs)}, nil
-	}
 
-	res, err := opts.Client.Scan.WFP(ctx, wfp, opts.ScanOptions...)
-	if err != nil {
-		return Result{}, err
-	}
-	if res.Result == nil {
-		return Result{}, fmt.Errorf("scan completed without a result")
-	}
+	// Run the two independent halves concurrently: the scan (fingerprint → upload → server) and
+	// the declared-dependency resolution (parse manifests → resolve). They hit different API
+	// endpoints and share no state, so there is no reason to serialize them. Enrichment waits for
+	// both, since it decorates detected and declared components together.
+	var (
+		scanResult    *scanossapi.ScanResult
+		wfp           []byte
+		procErrors    int
+		scanErr       error
+		declaredComps []sbom.Component
+		wg            sync.WaitGroup
+	)
 
-	// Source the declared dependencies from the manifests set aside for the deps layer.
-	var declared *parsers.LocalDependencies
-	if len(manifestFiles) > 0 {
-		declared, err = dependencies.NewDependencyParser().ParseFiles(manifestFiles)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: dependency scan failed: %v\n", err)
-			declared = nil
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		w, errs := scanner.GenerateWFP(files, threads, scanRoot, opts.OnFingerprint)
+		wfp, procErrors = w, len(errs)
+		if len(w) == 0 {
+			return
 		}
+		res, err := opts.Client.Scan.WFP(ctx, w, opts.ScanOptions...)
+		if err != nil {
+			scanErr = err
+			return
+		}
+		if res.Result == nil {
+			scanErr = fmt.Errorf("scan completed without a result")
+			return
+		}
+		scanResult = res.Result
+	}()
+
+	// manifestFiles is populated only when the deps layer is requested (see the collection above).
+	if len(manifestFiles) > 0 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			parsed, err := dependencies.NewDependencyParser().ParseFiles(manifestFiles)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: dependency scan failed: %v\n", err)
+				return
+			}
+			declaredComps = resolveDeclared(ctx, opts.Client, parsed)
+		}()
 	}
 
-	inv, err := Build(ctx, opts.Client, res.Result, opts.Layers, declared)
-	if err != nil {
-		return Result{}, err
+	wg.Wait()
+	if scanErr != nil {
+		return Result{}, scanErr
 	}
-	return Result{Inventory: inv, WFP: wfp, ProcessErrors: len(errs)}, nil
+	if scanResult == nil && len(declaredComps) == 0 {
+		return Result{ProcessErrors: procErrors}, nil
+	}
+
+	inv := assemble(ctx, opts.Client, scanResult, declaredComps, opts.Layers)
+	return Result{Inventory: inv, WFP: wfp, ProcessErrors: procErrors}, nil
 }
 
 // Build sources an Inventory from a scan result and enriches it with the requested layers. It is
@@ -213,24 +241,27 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 // decide what is gathered. Enrichment is non-fatal: a failed service is logged and skipped so a
 // partial inventory is still returned.
 func Build(ctx context.Context, client *scanoss.Client, result *scanossapi.ScanResult, layers Set, declared *parsers.LocalDependencies) (sbom.Inventory, error) {
-	inv := scansource.FromScanResult(result)
-
-	// SOURCE the declared dependency components (opt-in via the deps layer) before enrichment,
-	// so the decoration pipeline below enriches them alongside the scan matches. Resolving them
-	// is a separate call because they start from a different input set (manifest-declared PURLs)
-	// than the scan matches; once resolved they are ordinary components.
+	// SOURCE the declared dependency components (opt-in via the deps layer). Resolving them is a
+	// separate call because they start from a different input set (manifest-declared PURLs) than
+	// the scan matches; once resolved they are ordinary components.
+	var declaredComps []sbom.Component
 	if layers.Has(LayerDeps) && declared != nil && len(declared.Files) > 0 {
-		appendDeclared(ctx, client, &inv, declared)
+		declaredComps = resolveDeclared(ctx, client, declared)
 	}
+	return assemble(ctx, client, result, declaredComps, layers), nil
+}
 
-	// ENRICH every component (detected + declared) via the decoration pipeline, gathering
-	// exactly the requested purl-layers. With none requested this is a no-op: a bare scan does
-	// no decoration work.
+// assemble merges the detected components (from the scan result) with the already-resolved
+// declared components into one inventory, then enriches every component with the requested
+// purl-layers. With no purl-layer requested the enrich step is a no-op — a bare scan does no
+// decoration work.
+func assemble(ctx context.Context, client *scanoss.Client, result *scanossapi.ScanResult, declaredComps []sbom.Component, layers Set) sbom.Inventory {
+	inv := scansource.FromScanResult(result)
+	inv.Components = append(inv.Components, declaredComps...)
 	if len(inv.Components) > 0 {
 		enrich(ctx, client, &inv, layers)
 	}
-
-	return inv, nil
+	return inv
 }
 
 // enrich runs the decoration pipeline over the inventory's components and attaches the requested
@@ -306,10 +337,10 @@ func enrich(ctx context.Context, client *scanoss.Client, inv *sbom.Inventory, la
 	}
 }
 
-// appendDeclared resolves the declared dependencies parsed from manifests and adds them to the
-// single Components list as ScopeDeclared components, joining each back to its manifest origin
-// by PURL. They then enrich alongside the scan matches.
-func appendDeclared(ctx context.Context, client *scanoss.Client, inv *sbom.Inventory, declared *parsers.LocalDependencies) {
+// resolveDeclared resolves the declared dependencies parsed from manifests into ScopeDeclared
+// components, joining each back to its manifest origin by PURL. They then enrich alongside the
+// scan matches. Resolution is non-fatal: a failure is logged and yields no declared components.
+func resolveDeclared(ctx context.Context, client *scanoss.Client, declared *parsers.LocalDependencies) []sbom.Component {
 	var comps []scanoss.Component
 	declaredIn := make(map[string]string)
 	for _, file := range declared.Files {
@@ -324,12 +355,12 @@ func appendDeclared(ctx context.Context, client *scanoss.Client, inv *sbom.Inven
 	resp, err := client.Dependencies.Dependencies(ctx, comps)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: could not resolve declared dependencies: %v\n", err)
-		return
+		return nil
 	}
 
 	deps := scansource.DeclaredFrom(resp)
 	for i := range deps {
 		deps[i].DeclaredIn = declaredIn[deps[i].Purl]
 	}
-	inv.Components = append(inv.Components, deps...)
+	return deps
 }
