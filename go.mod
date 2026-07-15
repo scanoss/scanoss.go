@@ -6,7 +6,7 @@ require (
 	github.com/CycloneDX/cyclonedx-go v0.11.0
 	github.com/go-git/go-git/v5 v5.19.1
 	github.com/google/uuid v1.6.0
-	github.com/scanoss/scanoss.api-sdk v0.4.4
+	github.com/scanoss/scanoss.api-sdk v0.5.0
 	github.com/schollz/progressbar/v3 v3.19.1
 	github.com/spdx/tools-golang v0.5.7
 	github.com/spf13/cobra v1.10.2
