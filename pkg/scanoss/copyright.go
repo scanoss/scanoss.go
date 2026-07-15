@@ -32,8 +32,8 @@ import (
 // Copyright service endpoints (v3): per-file copyright evidence and the distinct
 // set of copyright holders. Both accept one or many components in a single POST.
 var (
-	ServiceCopyrightEvidence = Service{name: "copyright.evidence", endpoint: "/v3/copyright/evidence"}
-	ServiceCopyrightHolders  = Service{name: "copyright.holders", endpoint: "/v3/copyright/holders"}
+	ServiceCopyrightEvidence = Service{Name: "copyright.evidence", endpoint: "/v3/copyright/evidence"}
+	ServiceCopyrightHolders  = Service{Name: "copyright.holders", endpoint: "/v3/copyright/holders"}
 )
 
 // CopyrightAPI is the copyright service surface. Responses are typed from the

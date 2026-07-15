@@ -34,7 +34,7 @@ import (
 // ServiceScan is the v3 batch scan endpoint. WFP fingerprints are uploaded as
 // octet-stream byte ranges (Content-Range); the server assigns a scan id and
 // queues the scan once all bytes are received.
-var ServiceScan = Service{name: "scan", endpoint: "/v3/wfp/scan"}
+var ServiceScan = Service{Name: "scan", endpoint: "/v3/wfp/scan"}
 
 // DefaultScanPollInterval is the cadence for polling the scan status endpoint
 // when the caller does not override it with WithPollInterval.
