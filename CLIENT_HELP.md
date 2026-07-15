@@ -217,8 +217,10 @@ scanoss scan ./my-project --api-key "$SCANOSS_API_KEY" --format raw       --outp
 - `spdx` — SPDX 2.3.
 - `cyclonedx` — CycloneDX 1.7 (licenses, evidence, vulnerabilities).
 
-Components are deduplicated by base PURL (keeping the highest version); multiple
-licenses are combined with `AND`.
+Components that share the same identity (PURL + version) are collapsed into one — so the same
+package listed in both `package.json` and `package-lock.json`, or detected and also declared, is
+emitted once; different versions of the same PURL are kept. In SPDX, multiple licenses on a
+component are combined with `AND`.
 
 ## Resuming a scan (`results`)
 

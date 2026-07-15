@@ -263,3 +263,49 @@ func TestBuildEnrichesAllPurlLayers(t *testing.T) {
 		t.Errorf("expected the US origin, got %v", lodash.Geoprovenance)
 	}
 }
+
+// TestDedupeComponents proves duplicate identities (PURL+version) collapse to one — so SBOM ids
+// stay unique — while distinct versions of the same PURL are kept, and a detected/declared
+// overlap merges into a single detected component that keeps the manifest origin.
+func TestDedupeComponents(t *testing.T) {
+	in := []sbom.Component{
+		{Purl: "pkg:npm/lodash", Version: "4.17.21", Scope: sbom.ScopeDetected, Evidence: []sbom.FileEvidence{{Path: "a.js"}}},
+		{Purl: "pkg:npm/lodash", Version: "4.17.21", Scope: sbom.ScopeDeclared, DeclaredIn: "package.json"}, // dup of the above
+		{Purl: "pkg:npm/abort-controller", Version: "3.0.0", Scope: sbom.ScopeDeclared, DeclaredIn: "package.json"},
+		{Purl: "pkg:npm/abort-controller", Version: "3.0.0", Scope: sbom.ScopeDeclared, DeclaredIn: "package-lock.json"}, // exact dup
+		{Purl: "pkg:npm/tar", Version: "6.2.0", Scope: sbom.ScopeDeclared},
+		{Purl: "pkg:npm/tar", Version: "7.5.7", Scope: sbom.ScopeDeclared}, // same purl, different version — kept
+	}
+
+	out := dedupeComponents(in)
+	if len(out) != 4 {
+		t.Fatalf("got %d components, want 4: %+v", len(out), out)
+	}
+
+	// lodash: detected wins, manifest origin preserved, evidence kept.
+	lodash := out[0]
+	if lodash.Scope != sbom.ScopeDetected || lodash.DeclaredIn != "package.json" || len(lodash.Evidence) != 1 {
+		t.Errorf("lodash merge wrong: %+v", lodash)
+	}
+
+	// tar keeps both versions.
+	var tarVersions []string
+	for _, c := range out {
+		if c.Purl == "pkg:npm/tar" {
+			tarVersions = append(tarVersions, c.Version)
+		}
+	}
+	if len(tarVersions) != 2 {
+		t.Errorf("tar should keep both versions, got %v", tarVersions)
+	}
+
+	// every (purl,version) is unique.
+	seen := map[string]bool{}
+	for _, c := range out {
+		k := c.Purl + "@" + c.Version
+		if seen[k] {
+			t.Errorf("duplicate identity survived: %s", k)
+		}
+		seen[k] = true
+	}
+}

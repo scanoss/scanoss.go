@@ -258,10 +258,47 @@ func Build(ctx context.Context, client *scanoss.Client, result *scanossapi.ScanR
 func assemble(ctx context.Context, client *scanoss.Client, result *scanossapi.ScanResult, declaredComps []sbom.Component, layers Set) sbom.Inventory {
 	inv := scansource.FromScanResult(result)
 	inv.Components = append(inv.Components, declaredComps...)
+	inv.Components = dedupeComponents(inv.Components)
 	if len(inv.Components) > 0 {
 		enrich(ctx, client, &inv, layers)
 	}
 	return inv
+}
+
+// dedupeComponents collapses components that share the same identity (PURL + version) into one.
+// The scan and the manifests routinely surface the same component — a package listed in both
+// package.json and package-lock.json, or a detected match that is also a declared dependency —
+// and left in place the duplicates repeat in the raw output and, worse, produce clashing SBOM
+// identifiers (SPDX SPDXID / CycloneDX bom-ref are keyed by PURL+version), making the document
+// invalid. Different versions of the same PURL are kept (distinct identity).
+func dedupeComponents(comps []sbom.Component) []sbom.Component {
+	index := make(map[string]int, len(comps))
+	out := make([]sbom.Component, 0, len(comps))
+	for _, c := range comps {
+		key := c.Purl + "@" + c.Version
+		if i, ok := index[key]; ok {
+			mergeComponent(&out[i], c)
+			continue
+		}
+		index[key] = len(out)
+		out = append(out, c)
+	}
+	return out
+}
+
+// mergeComponent folds src into dst (same identity): a detected scope wins over declared (it
+// carries the file evidence), and the manifest origin and evidence are filled in from whichever
+// copy has them.
+func mergeComponent(dst *sbom.Component, src sbom.Component) {
+	if dst.Scope == sbom.ScopeDeclared && src.Scope == sbom.ScopeDetected {
+		dst.Scope = sbom.ScopeDetected
+	}
+	if dst.DeclaredIn == "" {
+		dst.DeclaredIn = src.DeclaredIn
+	}
+	if len(dst.Evidence) == 0 {
+		dst.Evidence = src.Evidence
+	}
 }
 
 // enrich runs the decoration pipeline over the inventory's components and attaches the requested
