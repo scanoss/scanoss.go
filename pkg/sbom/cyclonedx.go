@@ -116,7 +116,7 @@ func cycloneDXComponent(comp Component) cdx.Component {
 	// A CycloneDX component carries a single purl. When a component has more than one,
 	// record every purl in evidence.identity (the spec's field for identifying a
 	// component by multiple identifiers), so the aliases aren't lost.
-	occ := cycloneDXOccurrences(comp.Files)
+	occ := cycloneDXOccurrences(comp.Evidence)
 	ids := purlIdentities(comp)
 	if len(occ) > 0 || len(ids) > 0 {
 		ev := &cdx.Evidence{}

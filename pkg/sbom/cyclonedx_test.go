@@ -41,7 +41,7 @@ func sampleInventory() Inventory {
 				URL:      "https://github.com/scanoss/engine",
 				Licenses: []License{{ID: "MIT", Acknowledgement: AckDeclared}, {ID: "Apache-2.0", Acknowledgement: AckDeclared}},
 				URLHash:  "abc123",
-				Files: []FileEvidence{
+				Evidence: []FileEvidence{
 					{Path: "src/a.c", MatchType: "file"},
 					{Path: "src/b.c", MatchType: "snippet", InputLineRanges: []string{"12-48"}, OssLineRanges: []string{"100-136"}},
 				},

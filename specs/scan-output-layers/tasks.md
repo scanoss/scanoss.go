@@ -36,6 +36,9 @@ Atomic, one commit each; tree builds and `make check` stays green after every st
   and the declared-dependency resolution concurrently, then enriches once both finish. `Build`
   split into `assemble` + `resolveDeclared` so the resolved components can be merged after the
   concurrent halves join. (perf)
+- [x] **T6f — Rename component `files` → `evidence`.** The per-component matched-files array in
+  the raw output is `evidence` (the field names inside each entry — `path`, `source_hash`,
+  `match_type`, `oss_file_path`, … — are unchanged). (raw shape)
 - [ ] **T6b — Dependency graph (deferred).** Declared deps render as ordinary components; the
   CycloneDX `dependencies[]` graph and SPDX `DEPENDS_ON` edges are not built. (FR-006)
 - [ ] **T7 — Rename `convert` → `sbom` (deferred).** `cmd/convert.go` unchanged this pass. (FR-007)
@@ -71,6 +74,7 @@ The SDD update (`specs/scan-output-layers/*`) is amended into the existing
 8. `feat(scan): live per-layer enrichment progress + output path message` — `cmd/scan.go` (T6c).
 9. `fix(scanpipeline): source dependency manifests via a dedicated filter` — `pkg/scanpipeline/scanpipeline.go` (T6d).
 10. `refactor(scanpipeline): run scan and dependency resolution in parallel` — `pkg/scanpipeline/scanpipeline.go` (T6e).
+11. `refactor(sbom): rename component files to evidence` — `pkg/sbom/` (T6f).
 
 ## Notes
 - FR-001 (refined): the fused `scan` gathers `--include` ∩ format capabilities (skipping the
