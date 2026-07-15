@@ -114,13 +114,13 @@ func purlsOf(components []Component) []string {
 // per-service methods (e.g. Vulnerabilities).
 func (c *Client) decorate(ctx context.Context, svc Service, components []Component) (*Result, error) {
 	if svc.endpoint == "" {
-		return nil, fmt.Errorf("service %q has no endpoint", svc.name)
+		return nil, fmt.Errorf("service %q has no endpoint", svc.Name)
 	}
 	if len(components) == 0 {
 		return nil, fmt.Errorf("no components to query")
 	}
 
-	c.log.Debug("decorating components", "service", svc.name, "count", len(components), "purls", purlsOf(components))
+	c.log.Debug("decorating components", "service", svc.Name, "count", len(components), "purls", purlsOf(components))
 
 	chunks := chunk(components, c.chunkSize)
 
@@ -179,7 +179,7 @@ func (c *Client) decorate(ctx context.Context, svc Service, components []Compone
 		done += len(chunks[r.idx])
 		if c.onProgress != nil {
 			c.onProgress(Progress{
-				Service: svc.name,
+				Service: svc.Name,
 				Done:    done,
 				Total:   len(components),
 				Unit:    "purls",
@@ -208,7 +208,7 @@ func (c *Client) decorate(ctx context.Context, svc Service, components []Compone
 // Vulnerability). No chunking or worker pool — single is one request.
 func (c *Client) decorateOne(ctx context.Context, svc Service, comp Component) (*Result, error) {
 	if svc.endpoint == "" {
-		return nil, fmt.Errorf("service %q has no endpoint", svc.name)
+		return nil, fmt.Errorf("service %q has no endpoint", svc.Name)
 	}
 	if comp.Purl == "" {
 		return nil, fmt.Errorf("no component to query")

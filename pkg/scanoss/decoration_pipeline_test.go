@@ -155,7 +155,7 @@ func TestPipelineNoServices(t *testing.T) {
 func serviceNames(p *DecorationPipeline) []string {
 	out := make([]string, 0, len(p.Services()))
 	for _, s := range p.Services() {
-		out = append(out, s.name)
+		out = append(out, s.Name)
 	}
 	return out
 }

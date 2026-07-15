@@ -35,10 +35,10 @@ import (
 // Components service endpoints (v3): free-form search, version listing, and
 // lifecycle status (single GET / batch POST share the same status path).
 var (
-	ServiceComponentsSearch   = Service{name: "components.search", endpoint: "/v3/components/search"}
-	ServiceComponentsVersions = Service{name: "components.versions", endpoint: "/v3/components/versions"}
-	ServiceComponentsStatus   = Service{name: "components.status", endpoint: "/v3/components/status"}
-	ServiceComponentStatus    = Service{name: "component.status", endpoint: "/v3/components/status"}
+	ServiceComponentsSearch   = Service{Name: "components.search", endpoint: "/v3/components/search"}
+	ServiceComponentsVersions = Service{Name: "components.versions", endpoint: "/v3/components/versions"}
+	ServiceComponentsStatus   = Service{Name: "components.status", endpoint: "/v3/components/status"}
+	ServiceComponentStatus    = Service{Name: "component.status", endpoint: "/v3/components/status"}
 )
 
 // ComponentSearch holds the filters for a component search. At least one of

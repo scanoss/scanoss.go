@@ -35,7 +35,7 @@ import (
 // with Client.DecorationPipeline and reuse it; configure the service set with Add/Remove.
 type DecorationPipeline struct {
 	client   *Client
-	services []Service // ordered, deduped by Service.name
+	services []Service // ordered, deduped by Service.Name
 
 	mu         sync.Mutex
 	snapshot   map[string]Progress // per-service latest progress (during Run)
@@ -52,7 +52,7 @@ func (c *Client) DecorationPipeline(services ...Service) *DecorationPipeline {
 // Add appends services that are not already present (dedupe by name). Chainable.
 func (p *DecorationPipeline) Add(services ...Service) *DecorationPipeline {
 	for _, s := range services {
-		if p.indexOf(s.name) < 0 {
+		if p.indexOf(s.Name) < 0 {
 			p.services = append(p.services, s)
 		}
 	}
@@ -62,7 +62,7 @@ func (p *DecorationPipeline) Add(services ...Service) *DecorationPipeline {
 // Remove drops the named services if present. Chainable.
 func (p *DecorationPipeline) Remove(services ...Service) *DecorationPipeline {
 	for _, s := range services {
-		if i := p.indexOf(s.name); i >= 0 {
+		if i := p.indexOf(s.Name); i >= 0 {
 			p.services = append(p.services[:i], p.services[i+1:]...)
 		}
 	}
@@ -105,7 +105,7 @@ func (p *DecorationPipeline) Services() []Service {
 
 func (p *DecorationPipeline) indexOf(name string) int {
 	for i, s := range p.services {
-		if s.name == name {
+		if s.Name == name {
 			return i
 		}
 	}
@@ -158,7 +158,7 @@ func (p *DecorationPipeline) Run(ctx context.Context, components []Component) (*
 		go func(svc Service) {
 			defer wg.Done()
 			res, err := pc.decorate(ctx, svc, components)
-			ch <- outcome{name: svc.name, res: res, err: err}
+			ch <- outcome{name: svc.Name, res: res, err: err}
 		}(svc)
 	}
 	wg.Wait() // barrier: every service has finished

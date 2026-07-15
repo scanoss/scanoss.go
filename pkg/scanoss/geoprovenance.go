@@ -32,10 +32,10 @@ import (
 // Geoprovenance service endpoints: country of origin vs contributor countries,
 // each as a batch (POST, many components) and a single (GET, one component) endpoint.
 var (
-	ServiceGeoprovenanceOrigin       = Service{name: "geoprovenance.origin", endpoint: "/v3/geoprovenance/origin"}
-	ServiceGeoprovenanceOriginOne    = Service{name: "geoprovenance.origin.one", endpoint: "/v3/geoprovenance/origin"}
-	ServiceGeoprovenanceCountries    = Service{name: "geoprovenance.countries", endpoint: "/v3/geoprovenance/countries"}
-	ServiceGeoprovenanceCountriesOne = Service{name: "geoprovenance.countries.one", endpoint: "/v3/geoprovenance/countries"}
+	ServiceGeoprovenanceOrigin       = Service{Name: "geoprovenance.origin", endpoint: "/v3/geoprovenance/origin"}
+	ServiceGeoprovenanceOriginOne    = Service{Name: "geoprovenance.origin.one", endpoint: "/v3/geoprovenance/origin"}
+	ServiceGeoprovenanceCountries    = Service{Name: "geoprovenance.countries", endpoint: "/v3/geoprovenance/countries"}
+	ServiceGeoprovenanceCountriesOne = Service{Name: "geoprovenance.countries.one", endpoint: "/v3/geoprovenance/countries"}
 )
 
 // GeoprovenanceAPI is the geoprovenance service surface: country of origin and
