@@ -125,7 +125,8 @@ scanoss scan wfp project.wfp --api-key "$SCANOSS_API_KEY"
 > (see [`results`](#resuming-a-scan-results)).
 
 Flags (persistent flags are shared with `scan wfp`): `--api-url`, `--api-key`,
-`-f, --format` (`plain`/`spdx`/`cyclonedx`), `-o, --output`, `--settings`,
+`-f, --format` (`raw`/`spdx`/`cyclonedx`), `--include` (extra output layers — see
+[Output layers](#output-layers---include)), `-o, --output`, `--settings`,
 `--chunk-size` (1 MiB), `--ignore-cert-errors`, `-t, --threads` (10),
 `--save-wfp`, `--max-size` (0 = unlimited),
 `--default-filters` (true), `--gitignore` (true).
@@ -182,15 +183,37 @@ scanoss scan ./my-project --api-key "$SCANOSS_API_KEY" --settings my-config.json
 > its PURLs from that removal). `bom.include` is **not yet honored server-side**,
 > and `identify`/`ignore`/`replace` are not applied.
 
+### Output layers (`--include`)
+
+By default a scan reports only the components it detected. `--include` opts into extra output
+layers, gathered over both detected and declared components:
+
+| Layer | What it adds |
+|-------|--------------|
+| `deps` | Declared dependencies parsed from the project's manifests (`package.json`, `go.mod`, …) and resolved. Needs a source tree, so it is ignored for `scan wfp`. |
+| `vulns` | Known vulnerabilities. |
+| `licenses` | Declared/concluded licenses per component. |
+| `crypto` | Cryptographic algorithms. |
+| `geo` | Contributor geographic provenance. |
+
+```bash
+scanoss scan ./my-project --api-key "$SCANOSS_API_KEY" --include deps,vulns,licenses
+```
+
+Gathering follows `--include`, narrowed to what the chosen `--format` can render: a layer the
+format can't represent is **skipped** (not gathered) with an up-front `Skipping <layer>` message.
+`raw` renders every layer; `cyclonedx` drops `crypto`/`geo`; `spdx` drops `vulns`/`crypto`/`geo`.
+
 ### SBOM output
 
 ```bash
 scanoss scan ./my-project --api-key "$SCANOSS_API_KEY" --format spdx      --output sbom-spdx.json
 scanoss scan ./my-project --api-key "$SCANOSS_API_KEY" --format cyclonedx --output sbom-cdx.json
-scanoss scan ./my-project --api-key "$SCANOSS_API_KEY" --format plain     --output results.json
+scanoss scan ./my-project --api-key "$SCANOSS_API_KEY" --format raw       --output results.json
 ```
 
-- `plain` — the scan result JSON (default).
+- `raw` — the neutral inventory (components tagged by `scope`, per-component layers inline, and a
+  flat vulnerabilities list) wrapped in a versioned envelope. **Default.**
 - `spdx` — SPDX 2.3.
 - `cyclonedx` — CycloneDX 1.7 (licenses, evidence, vulnerabilities).
 
@@ -387,7 +410,7 @@ with `--settings`. It carries BOM context and file-skip rules.
 |---------|---------|-------|
 | `--api-url` | `https://api.scanoss.com` | Default endpoint requires `--api-key` |
 | `--threads` (scan/wfp) | `10` | Fingerprint workers |
-| `--format` | `plain` | `plain` / `spdx` / `cyclonedx` |
+| `--format` | `raw` | `raw` / `spdx` / `cyclonedx` |
 | `--chunk-size` (scan) | `1048576` | WFP upload block size (bytes) |
 | `--chunk-size` (decoration) | `10` | PURLs per request |
 | `--workers` (decoration) | `5` | Max concurrent requests |
