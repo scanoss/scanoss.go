@@ -38,153 +38,126 @@ import (
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
 	"github.com/scanoss/scanoss.go/pkg/scanpipeline"
 	"github.com/scanoss/scanoss.go/pkg/settings"
-	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 	"github.com/vbauerster/mpb/v8"
-	"github.com/vbauerster/mpb/v8/decor"
 )
 
-// scanProgress adapts scanoss.Progress updates to terminal progress bars. The
-// SDK may call it concurrently (parallel uploads), so it is mutex-guarded.
+// scanProgress adapts scanoss.Progress updates to terminal progress bars. Every phase — the scan
+// (fingerprint, upload, server) and each purl-keyed service (declared-dependency resolution and
+// the enrichment layers) — is a bar in one shared mpb container, so phases that run concurrently
+// render side by side. The SDK may call it from several goroutines, so it is mutex-guarded.
 type scanProgress struct {
-	mu         sync.Mutex
-	fp         *progressbar.ProgressBar
-	upload     *progressbar.ProgressBar
-	server     *progressbar.ProgressBar
-	fpDone     bool
-	uploaded   bool
-	serverDone bool
-	enrich     *mpb.Progress       // multi-bar container for the concurrent enrichment layers
-	layerBars  map[string]*mpb.Bar // one live bar per decoration service, keyed by Service name
+	mu   sync.Mutex
+	p    *mpb.Progress       // shared multi-bar container (lazily created on first update)
+	bars map[string]*mpb.Bar // one live bar per phase/service, keyed by phase key or Service name
 }
 
-// fingerprint renders fingerprinting progress. The pipeline calls it before the scan, so it is
-// the first phase; the scan and layer phases below arrive later via fn.
+// fingerprint renders fingerprinting progress. The pipeline calls it as fingerprinting proceeds;
+// it is one bar among the phases, and can render alongside the dependency phase running in parallel.
 func (s *scanProgress) fingerprint(done, total int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.fp == nil {
-		s.fp = newPhaseBar(total, "Fingerprinting")
-	}
-	_ = s.fp.Set(done)
+	s.barLocked("fingerprint", "Fingerprinting", total).SetCurrent(int64(done))
 }
 
-// fn renders the SDK's per-service progress: the scan (upload chunks, then server phase) and
-// each enrichment layer (Unit "purls"), keyed by Service. It runs the phases in order,
-// finalizing each bar as the next begins.
+// fn renders the SDK's per-service progress in the shared container: the scan (upload chunks,
+// then server phase) and every purl-keyed service (declared-dependency resolution and each
+// enrichment layer, Unit "purls"), keyed by Service. Each bar fills independently, so the scan
+// and dependency phases render side by side while they run in parallel.
 func (s *scanProgress) fn(p scanoss.Progress) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	switch p.Unit {
 	case "chunks":
-		s.finishFingerprintLocked()
-		if s.upload == nil {
-			s.upload = newPhaseBar(p.Total, "Uploading WFP")
-		}
-		_ = s.upload.Set(p.Done)
+		s.barLocked("upload", "Uploading WFP", p.Total).SetCurrent(int64(p.Done))
 	case "phase":
-		s.finishFingerprintLocked()
-		s.finishUploadLocked()
-		if s.server == nil {
-			s.server = newPhaseBar(p.Total, "Server processing")
-		}
-		_ = s.server.Set(p.Done)
+		s.barLocked("server", "Scanning", p.Total).SetCurrent(int64(p.Done))
 	case "purls":
-		// Enrichment layers run concurrently — render one live bar per layer via mpb.
-		s.finishFingerprintLocked()
-		s.finishUploadLocked()
-		s.finishServerLocked()
 		if p.Service == "" {
 			return
 		}
-		if s.enrich == nil {
-			fmt.Fprintln(os.Stderr, "Enriching components")
-			s.enrich = mpb.New(mpb.WithOutput(os.Stderr), mpb.WithWidth(40))
-			s.layerBars = make(map[string]*mpb.Bar)
+		// The enrichment layers start after the scan phase (dependency resolution is part of that
+		// phase); separate the two groups with a blank line the first time a layer appears.
+		if p.Service != scanoss.ServiceDependencies.Name {
+			s.spacerLocked()
 		}
-		bar, ok := s.layerBars[p.Service]
-		if !ok {
-			// Match the schollz phase-bar look: "<name> <pct>% |████…| (done/total)".
-			bar = s.enrich.New(int64(p.Total),
-				mpb.BarStyle().Lbound(" |").Filler("█").Tip("█").Padding(" ").Rbound("|"),
-				mpb.PrependDecorators(
-					decor.Name(fmt.Sprintf("  %-24s ", layerLabel(p.Service))),
-					decor.NewPercentage("%d"), // percentageType already appends "%"
-				),
-			)
-			s.layerBars[p.Service] = bar
-		}
-		bar.SetCurrent(int64(p.Done))
+		s.barLocked(p.Service, layerLabel(p.Service), p.Total).SetCurrent(int64(p.Done))
 	}
 }
 
-// finishUpload finalizes the upload bar exactly once so later output starts on a
-// clean line. Called from the scan-id notify (which fires after the upload) and as
-// a fallback when the server phase begins.
-func (s *scanProgress) finishUpload() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.finishUploadLocked()
+// initLocked creates the shared container on first use. Caller holds s.mu.
+func (s *scanProgress) initLocked() {
+	if s.p == nil {
+		s.p = newProgress()
+		s.bars = make(map[string]*mpb.Bar)
+	}
 }
 
-// finish finalizes all progress rendering once the pipeline returns: the sequential schollz
-// phase bars and the mpb enrichment container (waiting for its render goroutine to flush).
+// spacerLocked adds a blank line once, separating the scan-phase bars (fingerprint, upload,
+// scan, dependency resolution) from the enrichment layer bars below. It is a completed no-op bar,
+// so it just occupies an empty line and never blocks Wait. Caller holds s.mu.
+func (s *scanProgress) spacerLocked() {
+	s.initLocked()
+	if _, ok := s.bars["_spacer"]; ok {
+		return
+	}
+	bar := s.p.New(1, mpb.NopStyle())
+	bar.SetCurrent(1)
+	s.bars["_spacer"] = bar
+}
+
+// barLocked returns the bar for key, creating it in the shared container on first use. Caller
+// holds s.mu.
+func (s *scanProgress) barLocked(key, label string, total int) *mpb.Bar {
+	s.initLocked()
+	bar, ok := s.bars[key]
+	if !ok {
+		bar = addBar(s.p, total, label)
+		s.bars[key] = bar
+	}
+	return bar
+}
+
+// writeLine prints a line above the running bars (e.g. the scan-id notice) without corrupting the
+// bar area — mpb's *Progress is an io.Writer that interleaves the line at the next refresh.
+func (s *scanProgress) writeLine(msg string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.initLocked()
+	_, _ = fmt.Fprintln(s.p, msg)
+}
+
+// finish finalizes all progress once the pipeline returns: any bar that never reached its total
+// (e.g. a service that errored) is aborted so the container's render goroutine can flush and stop.
 func (s *scanProgress) finish() {
 	s.mu.Lock()
-	s.finishFingerprintLocked()
-	s.finishUploadLocked()
-	s.finishServerLocked()
-	enrich, bars := s.enrich, s.layerBars
+	p, bars := s.p, s.bars
 	s.mu.Unlock()
 
-	if enrich == nil {
+	if p == nil {
 		return
 	}
 	for _, b := range bars {
 		if !b.Completed() {
-			b.Abort(false) // a layer that errored never reaches total; stop its bar so Wait returns
+			b.Abort(false)
 		}
 	}
-	enrich.Wait()
-}
-
-func (s *scanProgress) finishFingerprintLocked() {
-	if s.fp != nil && !s.fpDone {
-		_ = s.fp.Finish()
-		fmt.Fprintln(os.Stderr)
-		s.fpDone = true
-	}
-}
-
-func (s *scanProgress) finishUploadLocked() {
-	if s.upload != nil && !s.uploaded {
-		_ = s.upload.Finish()
-		fmt.Fprintln(os.Stderr)
-		s.uploaded = true
-	}
-}
-
-func (s *scanProgress) finishServerLocked() {
-	if s.server != nil && !s.serverDone {
-		_ = s.server.Finish()
-		fmt.Fprintln(os.Stderr)
-		s.serverDone = true
-	}
+	p.Wait()
 }
 
 // layerLabel maps a decoration service name to a human phrase for the "Gathered …" progress line.
 func layerLabel(service string) string {
 	switch service {
 	case "licenses":
-		return "licenses"
+		return "Licenses"
 	case "vulnerabilities":
-		return "vulnerabilities"
+		return "Vulnerabilities"
 	case "cryptography.algorithms":
-		return "cryptographic algorithms"
+		return "Cryptography"
 	case "geoprovenance.origin":
-		return "provenance"
+		return "Geoprovenance"
 	case "dependencies":
-		return "declared dependencies"
+		return "Resolving dependencies"
 	default:
 		return service
 	}
@@ -247,16 +220,6 @@ func reportSkippedLayers(format string, layers scanpipeline.Set) {
 	for _, l := range unsupportedLayers(format, layers) {
 		fmt.Fprintf(os.Stderr, "Skipping %s: not supported by the %s format\n", layerName(l), format)
 	}
-}
-
-func newPhaseBar(total int, desc string) *progressbar.ProgressBar {
-	return progressbar.NewOptions(total,
-		progressbar.OptionSetDescription(desc),
-		progressbar.OptionSetWriter(os.Stderr),
-		progressbar.OptionShowCount(),
-		progressbar.OptionSetWidth(40),
-		progressbar.OptionSetRenderBlankState(true),
-	)
 }
 
 // buildResultsCommand constructs the resume command printed for recovery.
@@ -527,9 +490,8 @@ func buildScanClient(cmd *cobra.Command, prog *scanProgress) *scanoss.Client {
 		scanoss.WithAPIKey(apiKey),
 		scanoss.WithProgress(prog.fn),
 		scanoss.WithScanIDNotify(func(id string) {
-			prog.finishUpload()
-			fmt.Fprintf(os.Stderr, "\nScan id: %s\n", id)
-			fmt.Fprintf(os.Stderr, "If interrupted, resume with:\n%s\n\n", buildResultsCommand(id, apiURL, apiKey))
+			prog.writeLine(fmt.Sprintf("Scan id: %s", id))
+			prog.writeLine("If interrupted, resume with:\n" + buildResultsCommand(id, apiURL, apiKey))
 		}),
 	}
 	if ignoreCertErrors {

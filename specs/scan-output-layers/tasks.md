@@ -39,6 +39,10 @@ Atomic, one commit each; tree builds and `make check` stays green after every st
 - [x] **T6f — Rename component `files` → `evidence`.** The per-component matched-files array in
   the raw output is `evidence` (the field names inside each entry — `path`, `source_hash`,
   `match_type`, `oss_file_path`, … — are unchanged). (raw shape)
+- [x] **T6g — Unify progress on mpb.** All commands (`scan`, `wfp`, `dependencies`, purl queries)
+  render through one library (`vbauerster/mpb`) via shared `newProgress`/`addBar` helpers; `schollz`
+  is dropped. `scan` renders all phases in one container (parallel phases side by side) and prints
+  the `Scan id:` notice above the bars via `Progress.Write`. (UX)
 - [ ] **T6b — Dependency graph (deferred).** Declared deps render as ordinary components; the
   CycloneDX `dependencies[]` graph and SPDX `DEPENDS_ON` edges are not built. (FR-006)
 - [ ] **T7 — Rename `convert` → `sbom` (deferred).** `cmd/convert.go` unchanged this pass. (FR-007)
@@ -75,6 +79,7 @@ The SDD update (`specs/scan-output-layers/*`) is amended into the existing
 9. `fix(scanpipeline): source dependency manifests via a dedicated filter` — `pkg/scanpipeline/scanpipeline.go` (T6d).
 10. `refactor(scanpipeline): run scan and dependency resolution in parallel` — `pkg/scanpipeline/scanpipeline.go` (T6e).
 11. `refactor(sbom): rename component files to evidence` — `pkg/sbom/` (T6f).
+12. `refactor(cmd): unify progress on mpb, drop schollz` — `cmd/` (`progress.go`, `scan.go`, `wfp.go`, `purlcommon.go`, `dependencies.go`), `go.mod`, `go.sum` (T6g).
 
 ## Notes
 - FR-001 (refined): the fused `scan` gathers `--include` ∩ format capabilities (skipping the

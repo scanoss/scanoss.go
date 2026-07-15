@@ -76,14 +76,15 @@ The SOURCE → ENRICH orchestration lives in a reusable package, not in `cmd`:
   `scope:"declared"` components.
 
 ## CLI progress & output
-- **Sequential phases** (fingerprint → upload → server poll) render as single-line
-  `schollz/progressbar` bars, one at a time — kept on schollz so the mid-upload `Scan id:` notice
-  can print without corrupting a persistent multi-line area.
-- **Enrichment** runs the decoration layers concurrently, so it renders **one live bar per layer**
-  via `vbauerster/mpb` (Unlicense, `cmd`-only — the SDK/`pkg/*` never pull it) under an
-  `Enriching components` header. Bars are styled to match the schollz look (`|████…|` + a single
-  percentage); `finish()` aborts any incomplete bar so `Wait()` never blocks. Layer labels are
-  friendly (`geoprovenance.origin` → `provenance`, etc.).
+- **One progress library** — every command (`scan`, `wfp`, `dependencies`, purl queries) renders
+  through `vbauerster/mpb` (Unlicense) via the shared `newProgress`/`addBar` helpers; `schollz` is
+  gone. Bars share one look (label + a single percentage + `|████…|`).
+- **`scan`** puts every phase — fingerprint, upload, server, declared-dependency resolution, and
+  each enrichment layer — as a bar in **one shared container**, so the phases that run in parallel
+  (scan vs dependency resolution) render side by side. The `Scan id:` notice prints **above** the
+  bars via `Progress.Write` (mpb's line interleave), so it never corrupts the bar area. `finish()`
+  aborts any bar that never reached its total (e.g. a service that errored) so `Wait()` never
+  blocks. Layer labels are friendly (`geoprovenance.origin` → `provenance`, etc.).
 - When `--output` is set, a final `Results written to <path>` line confirms where the output went.
 
 ## Phase 2 — `enrich` + pipe
