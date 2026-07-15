@@ -1,0 +1,265 @@
+// SPDX-License-Identifier: MIT
+/*
+ * Copyright (c) 2026, SCANOSS
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+
+package scanpipeline
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	scanossapi "github.com/scanoss/scanoss.api-sdk"
+
+	"github.com/scanoss/scanoss.go/pkg/dependencies/parsers"
+	"github.com/scanoss/scanoss.go/pkg/sbom"
+	"github.com/scanoss/scanoss.go/pkg/scanoss"
+)
+
+func TestParseLayers(t *testing.T) {
+	set, err := ParseLayers([]string{"deps", " vulns ", ""})
+	if err != nil {
+		t.Fatalf("ParseLayers: %v", err)
+	}
+	if !set.Has(LayerDeps) || !set.Has(LayerVulns) || len(set) != 2 {
+		t.Errorf("got %v, want {deps, vulns}", set)
+	}
+	if _, err := ParseLayers([]string{"bogus"}); err == nil {
+		t.Error("expected an error for an unknown layer")
+	}
+}
+
+// decorationServer answers the licenses, vulnerabilities, dependency-resolve, cryptography,
+// geoprovenance and copyright endpoints with canned responses so Build can be exercised
+// without a live API.
+func decorationServer() *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/dependencies/dependencies"):
+			_, _ = w.Write([]byte(`{"components":[{"purl":"pkg:npm/left-pad","version":"1.3.0"}],"status":{"status":"success"}}`))
+		case strings.Contains(r.URL.Path, "/vulnerabilities"):
+			_, _ = w.Write([]byte(`{"components":[{"purl":"pkg:npm/lodash","vulnerabilities":[{"id":"CVE-2021-23337","severity":"HIGH","source":"NVD"}]},{"purl":"pkg:npm/left-pad","vulnerabilities":[{"id":"CVE-2099-0001","severity":"LOW","source":"NVD"}]}]}`))
+		case strings.Contains(r.URL.Path, "/licenses"):
+			_, _ = w.Write([]byte(`{"components":[{"purl":"pkg:npm/lodash","requirement":"4.17.20","licenses":[{"id":"MIT"}]}]}`))
+		case strings.Contains(r.URL.Path, "/cryptography/algorithms"):
+			_, _ = w.Write([]byte(`{"components":[{"purl":"pkg:npm/lodash","requirement":"4.17.20","algorithms":[{"algorithm":"aes","strength":"256"}]}],"status":{"status":"success"}}`))
+		case strings.Contains(r.URL.Path, "/geoprovenance/origin"):
+			_, _ = w.Write([]byte(`{"components_locations":[{"purl":"pkg:npm/lodash","locations":[{"name":"US","percentage":80}]}],"status":{"status":"success"}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+}
+
+func detectedResult() *scanossapi.ScanResult {
+	return &scanossapi.ScanResult{
+		Files: []scanossapi.FileResult{
+			{Path: "a.go", MatchType: "file", Matches: []scanossapi.MatchResult{{UrlHash: "h1"}}},
+		},
+		Components: map[string]scanossapi.ComponentResult{
+			"h1": {Purls: []string{"pkg:npm/lodash"}, Vendor: "lodash", Version: "4.17.20"},
+		},
+	}
+}
+
+// declaredLeftPad is the parsed-manifest input for a single declared dependency.
+func declaredLeftPad() *parsers.LocalDependencies {
+	return &parsers.LocalDependencies{
+		Files: []parsers.LocalDependency{
+			{File: "package.json", Purls: []parsers.LocalPurl{{Purl: "pkg:npm/left-pad", Requirement: "^1.3.0"}}},
+		},
+	}
+}
+
+func findComponent(inv sbom.Inventory, purl string) *sbom.Component {
+	for i := range inv.Components {
+		if inv.Components[i].Purl == purl {
+			return &inv.Components[i]
+		}
+	}
+	return nil
+}
+
+func hasVuln(inv sbom.Inventory, id string) bool {
+	for _, v := range inv.Vulnerabilities {
+		if v.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func TestBuildEnrichesDetected(t *testing.T) {
+	srv := decorationServer()
+	defer srv.Close()
+	client := scanoss.New(scanoss.WithAPIURL(srv.URL), scanoss.WithAPIKey("x"))
+
+	inv, err := Build(context.Background(), client, detectedResult(), Set{LayerLicenses: true, LayerVulns: true}, nil)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	lodash := findComponent(inv, "pkg:npm/lodash")
+	if lodash == nil {
+		t.Fatal("detected component pkg:npm/lodash missing")
+	}
+	if len(lodash.Licenses) != 1 || lodash.Licenses[0].ID != "MIT" {
+		t.Errorf("expected MIT license on lodash, got %v", lodash.Licenses)
+	}
+	if !hasVuln(inv, "CVE-2021-23337") {
+		t.Errorf("expected CVE-2021-23337, got %v", inv.Vulnerabilities)
+	}
+}
+
+// TestBuildLayersAreOptIn proves no purl-layer is gathered unless requested: a bare Build
+// enriches nothing, so a plain scan does no decoration work.
+func TestBuildLayersAreOptIn(t *testing.T) {
+	srv := decorationServer()
+	defer srv.Close()
+	client := scanoss.New(scanoss.WithAPIURL(srv.URL), scanoss.WithAPIKey("x"))
+
+	inv, err := Build(context.Background(), client, detectedResult(), Set{}, nil)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	lodash := findComponent(inv, "pkg:npm/lodash")
+	if lodash == nil {
+		t.Fatal("detected component pkg:npm/lodash missing")
+	}
+	if len(lodash.Licenses) != 0 {
+		t.Errorf("licenses must not be gathered without --include licenses, got %v", lodash.Licenses)
+	}
+	if len(inv.Vulnerabilities) != 0 {
+		t.Errorf("vulnerabilities must not be gathered without --include vulns, got %v", inv.Vulnerabilities)
+	}
+}
+
+// TestBuildDepsDrivenByLayer proves declared dependencies are gathered only when the deps
+// layer is requested — never implicitly.
+func TestBuildDepsDrivenByLayer(t *testing.T) {
+	srv := decorationServer()
+	defer srv.Close()
+	client := scanoss.New(scanoss.WithAPIURL(srv.URL), scanoss.WithAPIKey("x"))
+
+	// deps NOT requested: the declared input is ignored.
+	inv, err := Build(context.Background(), client, detectedResult(), Set{}, declaredLeftPad())
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if findComponent(inv, "pkg:npm/left-pad") != nil {
+		t.Error("declared dependency must not appear without --include deps")
+	}
+
+	// deps requested: the declared dependency is resolved into inv.Dependencies.
+	inv, err = Build(context.Background(), client, detectedResult(), Set{LayerDeps: true}, declaredLeftPad())
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	leftPad := findComponent(inv, "pkg:npm/left-pad")
+	if leftPad == nil {
+		t.Fatal("declared dependency pkg:npm/left-pad missing with --include deps")
+	}
+	if !leftPad.IsDeclared() {
+		t.Errorf("left-pad should have declared scope, got %q", leftPad.Scope)
+	}
+	if leftPad.Version != "1.3.0" {
+		t.Errorf("expected resolved version 1.3.0, got %q", leftPad.Version)
+	}
+	if leftPad.DeclaredIn != "package.json" {
+		t.Errorf("expected DeclaredIn package.json, got %q", leftPad.DeclaredIn)
+	}
+}
+
+// TestBuildDeclaredEnrichedForVulns proves declared dependencies are sourced before the
+// decoration pipeline, so requesting vulns enriches them alongside the scan matches.
+func TestBuildDeclaredEnrichedForVulns(t *testing.T) {
+	srv := decorationServer()
+	defer srv.Close()
+	client := scanoss.New(scanoss.WithAPIURL(srv.URL), scanoss.WithAPIKey("x"))
+
+	inv, err := Build(context.Background(), client, detectedResult(), Set{LayerDeps: true, LayerVulns: true}, declaredLeftPad())
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	var forDetected, forDeclared bool
+	for _, v := range inv.Vulnerabilities {
+		for _, p := range v.Purls {
+			if p == "pkg:npm/lodash" && v.ID == "CVE-2021-23337" {
+				forDetected = true
+			}
+			if p == "pkg:npm/left-pad" && v.ID == "CVE-2099-0001" {
+				forDeclared = true
+			}
+		}
+	}
+	if !forDetected {
+		t.Error("expected the detected component's vulnerability")
+	}
+	if !forDeclared {
+		t.Error("expected the declared dependency to be enriched with its vulnerability")
+	}
+}
+
+// TestBuildDepsWithoutDetectedMatches proves a project with only declared dependencies (no
+// scan matches) still yields those components.
+func TestBuildDepsWithoutDetectedMatches(t *testing.T) {
+	srv := decorationServer()
+	defer srv.Close()
+	client := scanoss.New(scanoss.WithAPIURL(srv.URL), scanoss.WithAPIKey("x"))
+
+	inv, err := Build(context.Background(), client, &scanossapi.ScanResult{}, Set{LayerDeps: true}, declaredLeftPad())
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if len(inv.Components) != 1 || inv.Components[0].Purl != "pkg:npm/left-pad" {
+		t.Fatalf("expected only the declared dependency, got %+v", inv.Components)
+	}
+	if !inv.Components[0].IsDeclared() {
+		t.Errorf("the dependency should have declared scope, got %q", inv.Components[0].Scope)
+	}
+}
+
+// TestBuildEnrichesAllPurlLayers proves the crypto and geo layers are gathered and attached
+// inline on the component when requested.
+func TestBuildEnrichesAllPurlLayers(t *testing.T) {
+	srv := decorationServer()
+	defer srv.Close()
+	client := scanoss.New(scanoss.WithAPIURL(srv.URL), scanoss.WithAPIKey("x"))
+
+	inv, err := Build(context.Background(), client, detectedResult(), Set{LayerCrypto: true, LayerGeo: true}, nil)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	lodash := findComponent(inv, "pkg:npm/lodash")
+	if lodash == nil {
+		t.Fatal("detected component pkg:npm/lodash missing")
+	}
+	if len(lodash.Cryptography) != 1 || lodash.Cryptography[0].Algorithm != "aes" {
+		t.Errorf("expected the aes algorithm, got %v", lodash.Cryptography)
+	}
+	if len(lodash.Geoprovenance) != 1 || lodash.Geoprovenance[0].Name != "US" {
+		t.Errorf("expected the US origin, got %v", lodash.Geoprovenance)
+	}
+}
