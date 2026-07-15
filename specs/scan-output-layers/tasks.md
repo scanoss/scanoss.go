@@ -80,6 +80,7 @@ The SDD update (`specs/scan-output-layers/*`) is amended into the existing
 10. `refactor(scanpipeline): run scan and dependency resolution in parallel` — `pkg/scanpipeline/scanpipeline.go` (T6e).
 11. `refactor(sbom): rename component files to evidence` — `pkg/sbom/` (T6f).
 12. `refactor(cmd): unify progress on mpb, drop schollz` — `cmd/` (`progress.go`, `scan.go`, `wfp.go`, `purlcommon.go`, `dependencies.go`), `go.mod`, `go.sum` (T6g).
+13. `docs: document scan --include layers and the raw default` — `CLIENT_HELP.md`, `README.md` (partial T12; `convert`→`sbom` docs still with T7).
 
 ## Notes
 - FR-001 (refined): the fused `scan` gathers `--include` ∩ format capabilities (skipping the
