@@ -31,7 +31,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 
 	"github.com/scanoss/scanoss.go/pkg/dependencies"
@@ -211,15 +210,8 @@ func runLocalExtraction(targetPath, outputFile string) error {
 	fmt.Fprintf(os.Stderr, "\n")
 
 	// Create progress bar
-	bar := progressbar.NewOptions(len(depFiles),
-		progressbar.OptionSetDescription("Parsing dependencies"),
-		progressbar.OptionSetWriter(os.Stderr),
-		progressbar.OptionShowCount(),
-		progressbar.OptionSetWidth(40),
-		progressbar.OptionThrottle(100),
-		progressbar.OptionShowIts(),
-		progressbar.OptionSetItsString("files"),
-	)
+	prog := newProgress()
+	bar := addBar(prog, len(depFiles), "Parsing dependencies")
 
 	// Parse all dependency files
 	result := &parsers.LocalDependencies{
@@ -230,7 +222,7 @@ func runLocalExtraction(targetPath, outputFile string) error {
 		dep, err := parser.ParseFile(filePath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "\n⚠️  Warning: failed to parse %s: %v\n", filePath, err)
-			_ = bar.Add(1)
+			bar.Increment()
 			continue
 		}
 
@@ -239,11 +231,11 @@ func runLocalExtraction(targetPath, outputFile string) error {
 			result.Files = append(result.Files, *dep)
 		}
 
-		_ = bar.Add(1)
+		bar.Increment()
 	}
 
-	_ = bar.Finish()
-	fmt.Fprintf(os.Stderr, "\n")
+	bar.SetCurrent(int64(len(depFiles)))
+	prog.Wait()
 
 	// Count total dependencies
 	totalDeps := 0
@@ -289,15 +281,8 @@ func runScanMode(targetPath, outputFile, apiURL, apiKey string, transient bool, 
 	fmt.Fprintf(os.Stderr, "\n")
 
 	// Create progress bar
-	bar := progressbar.NewOptions(len(depFiles),
-		progressbar.OptionSetDescription("Parsing dependencies"),
-		progressbar.OptionSetWriter(os.Stderr),
-		progressbar.OptionShowCount(),
-		progressbar.OptionSetWidth(40),
-		progressbar.OptionThrottle(100),
-		progressbar.OptionShowIts(),
-		progressbar.OptionSetItsString("files"),
-	)
+	prog := newProgress()
+	bar := addBar(prog, len(depFiles), "Parsing dependencies")
 
 	// Parse all dependency files
 	localDeps := &parsers.LocalDependencies{
@@ -308,7 +293,7 @@ func runScanMode(targetPath, outputFile, apiURL, apiKey string, transient bool, 
 		dep, err := parser.ParseFile(filePath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "\n⚠️  Warning: failed to parse %s: %v\n", filePath, err)
-			_ = bar.Add(1)
+			bar.Increment()
 			continue
 		}
 
@@ -317,11 +302,11 @@ func runScanMode(targetPath, outputFile, apiURL, apiKey string, transient bool, 
 			localDeps.Files = append(localDeps.Files, *dep)
 		}
 
-		_ = bar.Add(1)
+		bar.Increment()
 	}
 
-	_ = bar.Finish()
-	fmt.Fprintf(os.Stderr, "\n")
+	bar.SetCurrent(int64(len(depFiles)))
+	prog.Wait()
 
 	// Count total dependencies
 	totalDeps := 0
