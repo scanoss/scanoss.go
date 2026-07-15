@@ -43,6 +43,10 @@ Atomic, one commit each; tree builds and `make check` stays green after every st
   render through one library (`vbauerster/mpb`) via shared `newProgress`/`addBar` helpers; `schollz`
   is dropped. `scan` renders all phases in one container (parallel phases side by side) and prints
   the `Scan id:` notice above the bars via `Progress.Write`. (UX)
+- [x] **T6h — Deduplicate components (fix).** Components sharing an identity (PURL + version) are
+  collapsed in `assemble` before enrichment — the same package from `package.json` + `package-lock.json`,
+  or detected ∩ declared, would otherwise repeat in `raw` and clash on SBOM ids (SPDX `SPDXID`,
+  CycloneDX `bom-ref`), making the documents invalid. Distinct versions are kept. (fix)
 - [ ] **T6b — Dependency graph (deferred).** Declared deps render as ordinary components; the
   CycloneDX `dependencies[]` graph and SPDX `DEPENDS_ON` edges are not built. (FR-006)
 - [ ] **T7 — Rename `convert` → `sbom` (deferred).** `cmd/convert.go` unchanged this pass. (FR-007)
@@ -81,6 +85,7 @@ The SDD update (`specs/scan-output-layers/*`) is amended into the existing
 11. `refactor(sbom): rename component files to evidence` — `pkg/sbom/` (T6f).
 12. `refactor(cmd): unify progress on mpb, drop schollz` — `cmd/` (`progress.go`, `scan.go`, `wfp.go`, `purlcommon.go`, `dependencies.go`), `go.mod`, `go.sum` (T6g).
 13. `docs: document scan --include layers and the raw default` — `CLIENT_HELP.md`, `README.md` (partial T12; `convert`→`sbom` docs still with T7).
+14. `fix(scanpipeline): deduplicate components to keep SBOM ids unique` — `pkg/scanpipeline/scanpipeline.go`, `CLIENT_HELP.md`, `CHANGELOG.md` (T6h).
 
 ## Notes
 - FR-001 (refined): the fused `scan` gathers `--include` ∩ format capabilities (skipping the
