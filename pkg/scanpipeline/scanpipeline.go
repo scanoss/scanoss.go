@@ -124,9 +124,14 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 	}
 
 	// Collect the files to scan: a directory is filtered, a single file is taken as-is. The
-	// scan root labels the WFP paths relative to it.
+	// scan root labels the WFP paths relative to it. Fingerprinting and dependency scanning need
+	// different filters: the fingerprint filter drops dependency manifests (package.json, go.mod,
+	// …) since they aren't useful for matching, so when the deps layer is requested we collect a
+	// second time with a dependency-scoped filter (same base rules, manifests preserved) and keep
+	// only the manifests. The pipeline applies this second filter implicitly.
 	var files []string
 	var skipped int
+	var manifestFiles []string
 	scanRoot := opts.SourcePath
 	if info.IsDir() {
 		cr, collectErr := scanner.CollectFilesWithOptions(opts.SourcePath, opts.Filter)
@@ -134,6 +139,16 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 			return Result{}, fmt.Errorf("collecting files: %w", collectErr)
 		}
 		files, skipped = cr.Files, cr.SkippedCount
+
+		if opts.Layers.Has(LayerDeps) {
+			depFilter := opts.Filter
+			depFilter.PreserveDependencyManifests = true
+			dcr, depErr := scanner.CollectFilesWithOptions(opts.SourcePath, depFilter)
+			if depErr != nil {
+				return Result{}, fmt.Errorf("collecting dependency manifests: %w", depErr)
+			}
+			manifestFiles = dependencies.NewDependencyParser().FilterFiles(dcr.Files)
+		}
 	} else {
 		abs, absErr := filepath.Abs(opts.SourcePath)
 		if absErr != nil {
@@ -141,6 +156,9 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 		}
 		files = []string{abs}
 		scanRoot = filepath.Dir(opts.SourcePath)
+		if opts.Layers.Has(LayerDeps) {
+			manifestFiles = dependencies.NewDependencyParser().FilterFiles(files)
+		}
 	}
 	if abs, absErr := filepath.Abs(scanRoot); absErr == nil {
 		scanRoot = abs
@@ -169,12 +187,10 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 		return Result{}, fmt.Errorf("scan completed without a result")
 	}
 
-	// Reuse the collected file set for dependency scanning — the manifests are among the files
-	// we already gathered, so there is no second walk.
+	// Source the declared dependencies from the manifests set aside for the deps layer.
 	var declared *parsers.LocalDependencies
-	if opts.Layers.Has(LayerDeps) {
-		parser := dependencies.NewDependencyParser()
-		declared, err = parser.ParseFiles(parser.FilterFiles(files))
+	if len(manifestFiles) > 0 {
+		declared, err = dependencies.NewDependencyParser().ParseFiles(manifestFiles)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: dependency scan failed: %v\n", err)
 			declared = nil

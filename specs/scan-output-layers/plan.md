@@ -30,6 +30,10 @@ The SOURCE → ENRICH orchestration lives in a reusable package, not in `cmd`:
   layer — parse manifests (`pkg/dependencies`) into `scope:"declared"` components appended to the
   single `Components` list; the purl-keyed layers are ENRICH.
 - `--include deps` needs a tree; a `scan wfp` (no tree) simply sources no dependencies.
+- Dependency scanning uses its **own file filter**, not the fingerprint set: the default filter
+  drops manifests (they aren't useful for matching), so `deps` re-collects with
+  `PreserveDependencyManifests` and parses only the manifests. The pipeline applies this second
+  filter implicitly when `deps` is requested.
 - `--format` default `raw`; cyclonedx/spdx via the render path.
 
 ## Component model — `pkg/sbom`
