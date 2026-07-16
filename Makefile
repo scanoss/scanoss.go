@@ -4,7 +4,7 @@ GO               ?= go
 GOLANGCI_LINT    ?= golangci-lint
 GOLANGCI_VERSION ?= v2.10.1
 PKGS          ?= ./...
-BIN           ?= scanoss
+BIN           ?= scanoss-cli
 GOFMT_FILES   := $(shell find . -name '*.go' -not -path './vendor/*')
 
 .DEFAULT_GOAL := help
