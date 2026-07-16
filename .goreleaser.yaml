@@ -7,7 +7,7 @@ project_name: scanoss
 builds:
   - id: scanoss
     main: ./cmd/scanoss
-    binary: scanoss
+    binary: scanoss-cli
     env:
       - CGO_ENABLED=0
     goos: [linux, darwin, windows]
@@ -24,10 +24,10 @@ builds:
       - -s -w -X github.com/scanoss/scanoss.go/internal/version.version={{ .Tag }}
 
   # HarmonyOS (OpenHarmony) runs the Linux arm64 binary; published under its own
-  # name so users find it. Same artifact as scanoss-linux-arm64.
+  # name so users find it. Same artifact as scanoss-cli-linux-arm64.
   - id: harmonyos
     main: ./cmd/scanoss
-    binary: scanoss
+    binary: scanoss-cli
     env:
       - CGO_ENABLED=0
     goos: [linux]
@@ -39,7 +39,7 @@ builds:
 archives:
   - id: cli
     ids: [scanoss]
-    name_template: "scanoss-{{ .Os }}-{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}"
+    name_template: "scanoss-cli-{{ .Os }}-{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}"
     formats: [tar.gz]
     format_overrides:
       - goos: windows
@@ -47,7 +47,7 @@ archives:
 
   - id: harmonyos
     ids: [harmonyos]
-    name_template: "scanoss-harmonyos-arm64"
+    name_template: "scanoss-cli-harmonyos-arm64"
     formats: [tar.gz]
 
 checksum:
@@ -91,11 +91,11 @@ release:
     ## Install
 
     **Prebuilt binary:** download the archive for your platform below, extract it,
-    and move `scanoss` onto your `PATH`. On Linux (amd64):
+    and move `scanoss-cli` onto your `PATH`. On Linux (amd64):
 
     ```bash
-    tar xzf scanoss-linux-amd64.tar.gz
-    sudo mv scanoss /usr/local/bin/
+    tar xzf scanoss-cli-linux-amd64.tar.gz
+    sudo mv scanoss-cli /usr/local/bin/
     ```
 
     Verify a download against `checksums.txt`:
