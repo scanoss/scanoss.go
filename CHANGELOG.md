@@ -5,88 +5,55 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.0] - 2026-07-16
+
+Initial release of the SCANOSS Go CLI and SDK (`scanoss`).
 
 ### Added
-- **`enrich` command** — `scanoss enrich <input> --include <layers>` decorates an existing
-  inventory or SBOM (a scanoss raw inventory, CycloneDX, or SPDX — detected from content) with the
-  purl-keyed layers `vulns`/`licenses`/`crypto`/`geo` through the SCANOSS API, with no source tree,
-  fingerprinting, or re-scan. It is re-runnable (e.g. weekly) to refresh the layers against the
-  same file. The output format defaults to the input's; `--format` converts in the same pass. A
-  layer the output format can't render is **skipped** up front (same rules as `scan`), and
-  `--include deps` is rejected — dependency analysis can't be derived from a components list.
-- **Scan output layers** — `scan --include <layers>` opts into extra output layers: `deps`,
-  `vulns`, `licenses`, `crypto`, `geo`. Gathering follows `--include`, narrowed to what the chosen
-  `--format` can render: a layer the format can't represent is **skipped** (not gathered) with an
-  up-front `Skipping <layer>` message — `spdx` skips vulns/crypto/geo, `cyclonedx` skips
-  crypto/geo. Declared dependencies (`--include deps`) are sourced from the project's manifests
-  and resolved; the purl-layers are gathered over all components (detected + declared) through the
-  SDK decoration pipeline. In the raw output, detected and declared components share one
-  `components` list, tagged by `scope`.
-- **`pkg/scanpipeline`** — the scan pipeline. `Run(Options)` executes the full flow (scan the
-  WFP → scan declared dependencies from the source tree → gather + enrich into an
-  `sbom.Inventory`); `Build` is the lower layer (scan result → enriched inventory) for callers
-  that already have a result. Rendering is left to `sbom.Generate` / the raw JSON encoding.
-- **Scan progress** — the scan renders every phase (fingerprint, upload, server, dependency
-  resolution, and each enrichment layer) as a live progress bar, with the scan and dependency
-  phases running side by side, and a `Results written to <path>` line confirms the destination
-  when `--output` is set.
 
-### Changed
-- **Declared dependencies** (`scan --include deps`) are now sourced directly from the parsed
-  manifests instead of the dependency-resolution API — the scan makes **no resolve calls**, which
-  is dramatically faster on large lockfiles (e.g. ~35s → ~15s on a project with a 466-package
-  lockfile). Each declared component records its manifest origin as an `evidence` entry
-  (`match_type: "declared"`) — the same shape as a detected component — replacing the former
-  `declared_in` field; a package declared in several manifests keeps one occurrence per manifest.
-- **Status output** across all commands now uses a consistent icon + color scheme — `⚠` warnings
-  (yellow), `ℹ` info (dim), `✓` success (green) — replacing the previous ad-hoc emoji
-  (`🔍`/`📦`/`✅`/…). `scan`/`enrich` also gain a blank line separating the resume hint from the
-  progress bars, and skipped layers collapse into one warning instead of one line each. Color is
-  automatic on an interactive terminal (Windows 10+ included) and disabled when output is
-  piped/redirected or `NO_COLOR` is set.
-- **Progress bars** across all commands (`scan`, `wfp`, `dependencies`, and the component
-  queries) now render through a single library with a consistent look.
-- **`raw` output format** (renamed from `plain`, still the default) is now the neutral inventory
-  in a versioned envelope (`schema_version` + `metadata` + `components` + `vulnerabilities`) —
-  detected and declared components in one `components` list tagged by `scope`, per-component
-  layers (`licenses`, `cryptography`, `geoprovenance`) inline, vulnerabilities a flat top-level
-  list — rather than the verbatim v3 scan result. A bare scan (no `--include`) renders the
-  components only and makes no decoration calls.
-
-## [0.1.0] - 2026-07-14
-
-Initial public release of the SCANOSS Go CLI and SDK (`scanoss`).
-
-### Added
-- **Scan** a file or folder against the SCANOSS API (`scanoss scan`) with a
-  streaming fingerprint → upload → poll pipeline; interrupted scans resume with
-  `scanoss results <scan-id>`.
-- **WFP fingerprinting** (`scanoss wfp`) using winnowing over a whole-file CRC64 hash.
-- **Decoration commands** over the SCANOSS Services API v3: `vulnerabilities`,
-  `licenses`, `cryptography`, `geoprovenance`, `copyright`, and `components`.
-- **Dependencies** parsing and lookup (`scanoss dependencies`) and **attribution**
-  generation (`scanoss attributions`).
-- **SBOM export** in SPDX 2.3 and CycloneDX 1.7 (`scan --format spdx|cyclonedx`).
-- **File filtering** via built-in defaults, `.gitignore`, and `scanoss.json`
-  rules; client-side `bom.remove`.
-- **Go SDK** (`pkg/scanoss`) and a **C shared library** (`libscanoss`) with
-  Node.js and Python bindings.
-- `-v, --verbose` enables structured debug logging (standard-library
-  `log/slog`) to stderr — the scan flow, each API request (method/URL/status/
-  duration), fingerprinting, and decoration. 
-- The `url_hash` is now
-  preserved as metadata: an `OTHER` external reference in SPDX and a `scanoss:url_hash`
-  property in CycloneDX.
-- **`sbom`** — offline SBOM production/conversion between the raw scanoss result, CycloneDX 1.7,
-    and SPDX 2.3 (`scanoss sbom <input> --format cyclonedx|spdx`). No scanning or API calls;
-    the input format is detected from the file content. Best-effort: SPDX cannot represent
-    vulnerabilities, so they are dropped (with a warning) when converting to spdx.
-- **SBOM vulnerability detail** — `sbom.Vulnerability` gains optional CVSS
-  (score/vector/method), CWE, and EPSS fields; CycloneDX renders them as `ratings`/`cwes`
-  (EPSS as a `scanoss:epss_score` property). Absent fields render exactly as before.
-- **SBOM document metadata options** — `sbom.WithTool`, `sbom.WithAuthor`, and
-  `sbom.WithTimestamp` let SDK embedders set the generating tool, author, and creation
-  timestamp of the document (defaults unchanged).
+- **`scan <path>`** — fingerprint a file or folder (WFP winnowing), upload to the SCANOSS v3 batch
+  API in parallel chunks, and poll to completion; an interrupted scan resumes with
+  `scanoss results <scan-id>`. `--format raw|spdx|cyclonedx` selects the output and
+  `--include deps,vulns,licenses,crypto,geo` opts into extra layers, narrowed to what the chosen
+  format can render (a layer it can't represent is skipped with an up-front notice).
+  `scan wfp <file>` scans a pre-generated WFP.
+- **`wfp <path>`** — generate WFP fingerprints only, without uploading.
+- **`results <scan-id>`** — resume or poll a previous scan by its id.
+- **`sbom <input>`** — offline: produce an SBOM from a scan result, or convert between CycloneDX
+  1.7 and SPDX 2.3 (input format detected from content). No API calls; best-effort (data a target
+  can't represent — e.g. SPDX vulnerabilities — is dropped with a warning).
+- **`enrich <input>`** — online: decorate an existing raw inventory, CycloneDX, or SPDX with the
+  purl-keyed layers `vulns`/`licenses`/`crypto`/`geo`, with no source tree or re-scan (re-runnable
+  to refresh). The output format defaults to the input's; `--format` converts in the same pass.
+- **`dependencies [path]`** — parse local manifests, or query direct/transitive dependencies for a
+  PURL.
+- **`attributions [sbom]`** — attribution text from an SBOM file or a PURL.
+- **Decoration commands** over the SCANOSS Services API v3: `vulnerabilities`, `licenses`,
+  `cryptography`, `geoprovenance`, `copyright`, and `components`.
+- **`raw` output** (default) — a neutral inventory in a versioned envelope (`schema_version` +
+  `metadata` + `components` + `vulnerabilities`): detected and declared components in one
+  `components` list tagged by `scope`, per-component layers (`licenses`, `cryptography`,
+  `geoprovenance`) inline, and vulnerabilities as a flat top-level list. Each component records
+  where it came from in `evidence` — scanned files that matched (`match_type` `file`/`snippet`) or
+  the manifest that declared it (`match_type` `declared`). A bare scan (no `--include`) makes no
+  decoration calls.
+- **SBOM export** — SPDX 2.3 and CycloneDX 1.7, with the SCANOSS `url_hash` preserved (an SPDX
+  `OTHER` external reference / a CycloneDX `scanoss:url_hash` property) and vulnerability detail
+  (CVSS score/vector/method, CWE, EPSS).
+- **Declared dependencies** (`--include deps`) are sourced directly from the project's manifests
+  (`package.json`, `go.mod`, …) and decorated alongside the scan matches — no dependency-resolution
+  round trip.
+- **File filtering** — built-in defaults, `.gitignore`, and `scanoss.json` rules; client-side
+  `bom.remove`.
+- **Progress & status output** — live progress bars for every phase (fingerprint, upload, server,
+  dependency parsing, each enrichment layer); status notices with icons and color (`⚠` warnings,
+  `ℹ` info, `✓` success) on an interactive terminal (Windows 10+ included), disabled when
+  piped/redirected or `NO_COLOR` is set; a `Results written to <path>` line for `--output`.
+- **`-v, --verbose`** — structured `log/slog` debug output on stderr (the scan flow, each API
+  request with method/URL/status/duration, fingerprinting, and decoration).
+- **Go SDK** (`pkg/scanoss`) — scan and decoration services with a parallel decoration pipeline;
+  `pkg/scanpipeline` assembles a neutral `sbom.Inventory`, and `pkg/sbom` reads and writes
+  CycloneDX and SPDX (with `WithTool`/`WithAuthor`/`WithTimestamp` document-metadata options).
+- **C shared library** (`libscanoss`) with Node.js and Python bindings.
 
 [0.1.0]: https://github.com/scanoss/scanoss.go/releases/tag/v0.1.0
