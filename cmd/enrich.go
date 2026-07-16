@@ -87,6 +87,11 @@ func runEnrich(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	// deps is not a valid enrich layer: dependency analysis needs a manifest/source tree and
+	// cannot be derived from a flat components list. Reject it up front rather than silently drop.
+	if layers.Has(scanpipeline.LayerDeps) {
+		return fmt.Errorf("--include deps is not supported by enrich: dependencies cannot be analysed over a components list (valid: vulns, licenses, crypto, geo)")
+	}
 
 	data, err := os.ReadFile(args[0])
 	if err != nil {
@@ -108,6 +113,11 @@ func runEnrich(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid output format %q: must be raw, spdx, or cyclonedx", outputFormat)
 	}
 	_ = cmd.Flags().Set("format", outputFormat) // let emitInventory read the resolved format
+
+	// Narrow to what the output format can render, reporting each skipped layer up front — the
+	// same capability logic the scan command uses, so enrich never gathers a layer it would drop.
+	reportSkippedLayers(outputFormat, layers)
+	layers = effectiveLayers(outputFormat, layers)
 
 	prog := &scanProgress{}
 	client := buildScanClient(cmd, prog)
