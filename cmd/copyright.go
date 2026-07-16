@@ -55,10 +55,10 @@ of workers.
 
 Examples:
   # Per-file copyright evidence (default)
-  scanoss copyright --purl 'pkg:github/scanoss/engine' --requirement '5.4.7'
+  scanoss-cli copyright --purl 'pkg:github/scanoss/engine' --requirement '5.4.7'
 
   # Distinct copyright holders
-  scanoss copyright holders --purl 'pkg:github/scanoss/engine' --requirement '5.4.7'`,
+  scanoss-cli copyright holders --purl 'pkg:github/scanoss/engine' --requirement '5.4.7'`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error { return runPurlServiceTyped(cmd, callCopyrightEvidence) },
 }

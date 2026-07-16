@@ -55,10 +55,10 @@ of workers.
 
 Examples:
   # Component origin (default)
-  scanoss geoprovenance --purl 'pkg:github/scanoss/engine' --requirement '5.4.7'
+  scanoss-cli geoprovenance --purl 'pkg:github/scanoss/engine' --requirement '5.4.7'
 
   # Contributor countries for several components
-  scanoss geoprovenance countries --purl 'pkg:github/scanoss/engine'`,
+  scanoss-cli geoprovenance countries --purl 'pkg:github/scanoss/engine'`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error { return runPurlServiceTyped(cmd, callGeoOrigin) },
 }

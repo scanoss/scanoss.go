@@ -59,7 +59,7 @@ type ScanAPI interface {
 	Status(ctx context.Context, scanID string) (scanossapi.ScanEnvelope, error)
 
 	// Wait resumes polling a known scan id until a terminal state. Used to recover
-	// an interrupted scan (e.g. `scanoss results <id>`). The poll cadence can be
+	// an interrupted scan (e.g. `scanoss-cli results <id>`). The poll cadence can be
 	// tuned with WithPollInterval.
 	Wait(ctx context.Context, scanID string, opts ...ScanOption) (scanossapi.ScanEnvelope, error)
 }

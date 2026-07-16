@@ -60,13 +60,13 @@ of workers.
 
 Examples:
   # Declared licenses (default)
-  scanoss licenses --purl 'pkg:github/scanoss/engine' --requirement '5.4.7'
+  scanoss-cli licenses --purl 'pkg:github/scanoss/engine' --requirement '5.4.7'
 
   # Attribution files
-  scanoss licenses attribution --purl 'pkg:github/scanoss/engine'
+  scanoss-cli licenses attribution --purl 'pkg:github/scanoss/engine'
 
   # Per-file license evidence
-  scanoss licenses evidence --purl 'pkg:github/scanoss/engine'`,
+  scanoss-cli licenses evidence --purl 'pkg:github/scanoss/engine'`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error { return runPurlServiceTyped(cmd, callLicenseDeclared) },
 }

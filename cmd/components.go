@@ -117,13 +117,13 @@ Operations are subcommands:
 
 Examples:
   # Search (default)
-  scanoss components --vendor scanoss --component engine --limit 20
+  scanoss-cli components --vendor scanoss --component engine --limit 20
 
   # Versions for a purl
-  scanoss components versions --purl 'pkg:github/scanoss/engine' --limit 50
+  scanoss-cli components versions --purl 'pkg:github/scanoss/engine' --limit 50
 
   # Lifecycle status for components
-  scanoss components status --purl 'pkg:github/scanoss/engine' --requirement '5.4.7'`,
+  scanoss-cli components status --purl 'pkg:github/scanoss/engine' --requirement '5.4.7'`,
 	Args: cobra.NoArgs,
 	RunE: runComponentsSearch,
 }
