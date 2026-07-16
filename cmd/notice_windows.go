@@ -1,3 +1,5 @@
+//go:build windows
+
 // SPDX-License-Identifier: MIT
 /*
  * Copyright (c) 2026, SCANOSS
@@ -24,27 +26,23 @@
 package cmd
 
 import (
-	"context"
-	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
+
+	"golang.org/x/sys/windows"
 )
 
-// createCancellableContext creates a context that can be cancelled with CTRL+C
-func createCancellableContext() (context.Context, context.CancelFunc) {
-	ctx, cancel := context.WithCancel(context.Background())
-
-	// Setup signal handling for graceful cancellation
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	go func() {
-		<-sigChan
-		fmt.Fprint(os.Stderr, "\n\n")
-		warnf("Received interrupt signal. Cancelling...")
-		cancel()
-	}()
-
-	return ctx, cancel
+// enableVirtualTerminal turns on ANSI escape processing for the stderr console so color codes
+// render on Windows 10+ (conhost/Windows Terminal). It returns false when the mode can't be set
+// (e.g. pre-VT Windows), so the caller falls back to icons-only, no color. Uses golang.org/x/sys
+// (already in the module graph) — no new dependency.
+func enableVirtualTerminal() bool {
+	handle := windows.Handle(os.Stderr.Fd())
+	var mode uint32
+	if err := windows.GetConsoleMode(handle, &mode); err != nil {
+		return false
+	}
+	if mode&windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING != 0 {
+		return true // already enabled (e.g. Windows Terminal)
+	}
+	return windows.SetConsoleMode(handle, mode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING) == nil
 }

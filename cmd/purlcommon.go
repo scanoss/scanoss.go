@@ -31,9 +31,10 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync"
 
-	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
+	"github.com/vbauerster/mpb/v8"
 
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
 )
@@ -191,23 +192,28 @@ func newClient(cmd *cobra.Command) *scanoss.Client {
 // newProgressClient builds an SDK client wired to a stderr progress bar, and a
 // finish func to flush the bar once the call returns.
 func newProgressClient(cmd *cobra.Command) (*scanoss.Client, func()) {
-	var bar *progressbar.ProgressBar
+	var (
+		mu    sync.Mutex
+		prog  *mpb.Progress
+		bar   *mpb.Bar
+		total int
+	)
 	opts := append(clientOptions(cmd), scanoss.WithProgress(func(p scanoss.Progress) {
+		mu.Lock()
+		defer mu.Unlock()
 		if bar == nil {
-			bar = progressbar.NewOptions(p.Total,
-				progressbar.OptionSetDescription("Querying "+p.Unit),
-				progressbar.OptionSetWriter(os.Stderr),
-				progressbar.OptionShowCount(),
-				progressbar.OptionSetWidth(40),
-				progressbar.OptionThrottle(65),
-			)
+			prog = newProgress()
+			bar = addBar(prog, p.Total, "Querying "+p.Unit)
+			total = p.Total
 		}
-		_ = bar.Set(p.Done)
+		bar.SetCurrent(int64(p.Done))
 	}))
 	return scanoss.New(opts...), func() {
+		mu.Lock()
+		defer mu.Unlock()
 		if bar != nil {
-			_ = bar.Finish()
-			fmt.Fprintf(os.Stderr, "\n")
+			bar.SetCurrent(int64(total)) // force 100% in case the final tick was below total
+			prog.Wait()
 		}
 	}
 }

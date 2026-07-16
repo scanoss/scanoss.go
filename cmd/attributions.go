@@ -270,6 +270,6 @@ func writeAttributionsOutput(content, outputFile string) error {
 		return fmt.Errorf("error writing to file: %w", err)
 	}
 
-	fmt.Fprintf(os.Stderr, "Attributions saved to: %s\n", outputFile)
+	okf("Attributions saved to %s", outputFile)
 	return nil
 }

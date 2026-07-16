@@ -31,7 +31,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 
 	"github.com/scanoss/scanoss.go/pkg/dependencies"
@@ -183,7 +182,7 @@ func runLocalExtraction(targetPath, outputFile string) error {
 	// Create dependency parser
 	parser := dependencies.NewDependencyParser()
 
-	fmt.Fprintf(os.Stderr, "🔍 Scanning for dependency files in: %s\n", targetPath)
+	infof("Scanning for dependency files in %s", targetPath)
 
 	// Collect all files recursively
 	allFiles, err := collectFilesRecursively(targetPath)
@@ -191,13 +190,13 @@ func runLocalExtraction(targetPath, outputFile string) error {
 		return fmt.Errorf("failed to collect files: %w", err)
 	}
 
-	fmt.Fprintf(os.Stderr, "📁 Total files found: %d\n", len(allFiles))
+	infof("Total files found: %d", len(allFiles))
 
 	// Filter only dependency files
 	depFiles := parser.FilterFiles(allFiles)
 
 	if len(depFiles) == 0 {
-		fmt.Fprintf(os.Stderr, "⚠️  No dependency files found\n")
+		warnf("No dependency files found")
 
 		// Return empty result
 		emptyResult := &parsers.LocalDependencies{
@@ -207,19 +206,12 @@ func runLocalExtraction(targetPath, outputFile string) error {
 		return outputJSON(emptyResult, outputFile)
 	}
 
-	fmt.Fprintf(os.Stderr, "📦 Dependency files found: %d\n", len(depFiles))
+	infof("Dependency files found: %d", len(depFiles))
 	fmt.Fprintf(os.Stderr, "\n")
 
 	// Create progress bar
-	bar := progressbar.NewOptions(len(depFiles),
-		progressbar.OptionSetDescription("Parsing dependencies"),
-		progressbar.OptionSetWriter(os.Stderr),
-		progressbar.OptionShowCount(),
-		progressbar.OptionSetWidth(40),
-		progressbar.OptionThrottle(100),
-		progressbar.OptionShowIts(),
-		progressbar.OptionSetItsString("files"),
-	)
+	prog := newProgress()
+	bar := addBar(prog, len(depFiles), "Parsing dependencies")
 
 	// Parse all dependency files
 	result := &parsers.LocalDependencies{
@@ -229,8 +221,8 @@ func runLocalExtraction(targetPath, outputFile string) error {
 	for _, filePath := range depFiles {
 		dep, err := parser.ParseFile(filePath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "\n⚠️  Warning: failed to parse %s: %v\n", filePath, err)
-			_ = bar.Add(1)
+			warnf("failed to parse %s: %v", filePath, err)
+			bar.Increment()
 			continue
 		}
 
@@ -239,11 +231,11 @@ func runLocalExtraction(targetPath, outputFile string) error {
 			result.Files = append(result.Files, *dep)
 		}
 
-		_ = bar.Add(1)
+		bar.Increment()
 	}
 
-	_ = bar.Finish()
-	fmt.Fprintf(os.Stderr, "\n")
+	bar.SetCurrent(int64(len(depFiles)))
+	prog.Wait()
 
 	// Count total dependencies
 	totalDeps := 0
@@ -251,8 +243,8 @@ func runLocalExtraction(targetPath, outputFile string) error {
 		totalDeps += len(file.Purls)
 	}
 
-	fmt.Fprintf(os.Stderr, "✅ Successfully parsed %d files\n", len(result.Files))
-	fmt.Fprintf(os.Stderr, "📊 Total dependencies found: %d\n", totalDeps)
+	okf("Successfully parsed %d files", len(result.Files))
+	infof("Total dependencies found: %d", totalDeps)
 	fmt.Fprintf(os.Stderr, "\n")
 
 	return outputJSON(result, outputFile)
@@ -268,7 +260,7 @@ func runScanMode(targetPath, outputFile, apiURL, apiKey string, transient bool, 
 	// Create dependency parser
 	parser := dependencies.NewDependencyParser()
 
-	fmt.Fprintf(os.Stderr, "🔍 Scanning for dependency files in: %s\n", targetPath)
+	infof("Scanning for dependency files in %s", targetPath)
 
 	// Collect all files recursively
 	allFiles, err := collectFilesRecursively(targetPath)
@@ -276,7 +268,7 @@ func runScanMode(targetPath, outputFile, apiURL, apiKey string, transient bool, 
 		return fmt.Errorf("failed to collect files: %w", err)
 	}
 
-	fmt.Fprintf(os.Stderr, "📁 Total files found: %d\n", len(allFiles))
+	infof("Total files found: %d", len(allFiles))
 
 	// Filter only dependency files
 	depFiles := parser.FilterFiles(allFiles)
@@ -285,19 +277,12 @@ func runScanMode(targetPath, outputFile, apiURL, apiKey string, transient bool, 
 		return fmt.Errorf("no dependency files found in %s", targetPath)
 	}
 
-	fmt.Fprintf(os.Stderr, "📦 Dependency files found: %d\n", len(depFiles))
+	infof("Dependency files found: %d", len(depFiles))
 	fmt.Fprintf(os.Stderr, "\n")
 
 	// Create progress bar
-	bar := progressbar.NewOptions(len(depFiles),
-		progressbar.OptionSetDescription("Parsing dependencies"),
-		progressbar.OptionSetWriter(os.Stderr),
-		progressbar.OptionShowCount(),
-		progressbar.OptionSetWidth(40),
-		progressbar.OptionThrottle(100),
-		progressbar.OptionShowIts(),
-		progressbar.OptionSetItsString("files"),
-	)
+	prog := newProgress()
+	bar := addBar(prog, len(depFiles), "Parsing dependencies")
 
 	// Parse all dependency files
 	localDeps := &parsers.LocalDependencies{
@@ -307,8 +292,8 @@ func runScanMode(targetPath, outputFile, apiURL, apiKey string, transient bool, 
 	for _, filePath := range depFiles {
 		dep, err := parser.ParseFile(filePath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "\n⚠️  Warning: failed to parse %s: %v\n", filePath, err)
-			_ = bar.Add(1)
+			warnf("failed to parse %s: %v", filePath, err)
+			bar.Increment()
 			continue
 		}
 
@@ -317,11 +302,11 @@ func runScanMode(targetPath, outputFile, apiURL, apiKey string, transient bool, 
 			localDeps.Files = append(localDeps.Files, *dep)
 		}
 
-		_ = bar.Add(1)
+		bar.Increment()
 	}
 
-	_ = bar.Finish()
-	fmt.Fprintf(os.Stderr, "\n")
+	bar.SetCurrent(int64(len(depFiles)))
+	prog.Wait()
 
 	// Count total dependencies
 	totalDeps := 0
@@ -329,8 +314,8 @@ func runScanMode(targetPath, outputFile, apiURL, apiKey string, transient bool, 
 		totalDeps += len(file.Purls)
 	}
 
-	fmt.Fprintf(os.Stderr, "✅ Successfully parsed %d files\n", len(localDeps.Files))
-	fmt.Fprintf(os.Stderr, "📊 Total dependencies found: %d\n", totalDeps)
+	okf("Successfully parsed %d files", len(localDeps.Files))
+	infof("Total dependencies found: %d", totalDeps)
 	fmt.Fprintf(os.Stderr, "\n")
 
 	if totalDeps == 0 {
@@ -338,7 +323,7 @@ func runScanMode(targetPath, outputFile, apiURL, apiKey string, transient bool, 
 	}
 
 	// Query SCANOSS API with extracted dependencies
-	fmt.Fprintf(os.Stderr, "🌐 Querying SCANOSS API...\n")
+	infof("Querying SCANOSS API...")
 
 	var response string
 	if transient {
@@ -351,7 +336,7 @@ func runScanMode(targetPath, outputFile, apiURL, apiKey string, transient bool, 
 		return fmt.Errorf("error querying SCANOSS API: %w", err)
 	}
 
-	fmt.Fprintf(os.Stderr, "✅ API query successful\n\n")
+	okf("API query successful")
 
 	return writeOutput(response, outputFile)
 }
@@ -408,7 +393,7 @@ func outputJSON(data interface{}, outputFile string) error {
 		if err != nil {
 			return fmt.Errorf("failed to write output file: %w", err)
 		}
-		fmt.Fprintf(os.Stderr, "💾 Results saved to: %s\n", outputFile)
+		okf("Results saved to %s", outputFile)
 	} else {
 		fmt.Println(string(jsonData))
 	}
