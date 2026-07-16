@@ -38,17 +38,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Input formats recognized by the convert command.
+// Input formats recognized by the sbom command.
 const (
 	inputRaw       = "raw"
 	inputCycloneDX = "cyclonedx"
 	inputSPDX      = "spdx"
 )
 
-var convertCmd = &cobra.Command{
-	Use:   "convert <input>",
-	Short: "Convert an SBOM/scan result between formats",
-	Long: `Convert an existing SBOM or scan result between formats.
+var sbomCmd = &cobra.Command{
+	Use:   "sbom <input>",
+	Short: "Produce an SBOM from a scan result or convert between SBOM formats",
+	Long: `Produce an SBOM from an existing scan result or convert one SBOM format to another,
+offline.
 
 The input format is detected from the file content (a scanoss raw result, a CycloneDX
 document, or an SPDX document); the target format is chosen with --format. Conversion is
@@ -57,25 +58,25 @@ no vulnerability model, so vulnerabilities are omitted when converting to spdx).
 
 Examples:
   # SPDX -> CycloneDX
-  scanoss convert bom.spdx.json --format cyclonedx --output bom.cdx.json
+  scanoss sbom bom.spdx.json --format cyclonedx --output bom.cdx.json
 
   # CycloneDX -> SPDX
-  scanoss convert bom.cdx.json --format spdx --output bom.spdx.json
+  scanoss sbom bom.cdx.json --format spdx --output bom.spdx.json
 
   # scanoss raw result -> CycloneDX or SPDX
-  scanoss convert result.json --format cyclonedx --output bom.cdx.json
-  scanoss convert result.json --format spdx --output bom.spdx.json`,
+  scanoss sbom result.json --format cyclonedx --output bom.cdx.json
+  scanoss sbom result.json --format spdx --output bom.spdx.json`,
 	Args: cobra.MaximumNArgs(1),
-	RunE: runConvert,
+	RunE: runSbom,
 }
 
 func init() {
-	rootCmd.AddCommand(convertCmd)
-	convertCmd.Flags().StringP("format", "f", "", "Target format: cyclonedx or spdx")
-	convertCmd.Flags().StringP("output", "o", "", "Output file (empty = stdout)")
+	rootCmd.AddCommand(sbomCmd)
+	sbomCmd.Flags().StringP("format", "f", "", "Target format: cyclonedx or spdx")
+	sbomCmd.Flags().StringP("output", "o", "", "Output file (empty = stdout)")
 }
 
-func runConvert(cmd *cobra.Command, args []string) error {
+func runSbom(cmd *cobra.Command, args []string) error {
 	// No input given: show usage instead of a terse arg error.
 	if len(args) == 0 {
 		return cmd.Help()

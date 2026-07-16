@@ -68,18 +68,18 @@ func TestIdentifyFormat(t *testing.T) {
 	}
 }
 
-// runConvertTest invokes the convert command's RunE with the given flags/args.
-func runConvertTest(t *testing.T, input, format, output string) error {
+// runSbomTest invokes the sbom command's RunE with the given flags/args.
+func runSbomTest(t *testing.T, input, format, output string) error {
 	t.Helper()
-	c := &cobra.Command{RunE: runConvert}
+	c := &cobra.Command{RunE: runSbom}
 	c.Flags().StringP("format", "f", "", "")
 	c.Flags().StringP("output", "o", "", "")
 	_ = c.Flags().Set("format", format)
 	_ = c.Flags().Set("output", output)
-	return runConvert(c, []string{input})
+	return runSbom(c, []string{input})
 }
 
-func TestConvert_CycloneDXToSPDX(t *testing.T) {
+func TestSbom_CycloneDXToSPDX(t *testing.T) {
 	dir := t.TempDir()
 	in := filepath.Join(dir, "in.cdx.json")
 	out := filepath.Join(dir, "out.spdx.json")
@@ -87,8 +87,8 @@ func TestConvert_CycloneDXToSPDX(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runConvertTest(t, in, "spdx", out); err != nil {
-		t.Fatalf("convert: %v", err)
+	if err := runSbomTest(t, in, "spdx", out); err != nil {
+		t.Fatalf("sbom: %v", err)
 	}
 	got, err := os.ReadFile(out)
 	if err != nil {
@@ -107,7 +107,7 @@ func TestConvert_CycloneDXToSPDX(t *testing.T) {
 	}
 }
 
-func TestConvert_SPDXToCycloneDX(t *testing.T) {
+func TestSbom_SPDXToCycloneDX(t *testing.T) {
 	dir := t.TempDir()
 	in := filepath.Join(dir, "in.spdx.json")
 	out := filepath.Join(dir, "out.cdx.json")
@@ -115,8 +115,8 @@ func TestConvert_SPDXToCycloneDX(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runConvertTest(t, in, "cyclonedx", out); err != nil {
-		t.Fatalf("convert: %v", err)
+	if err := runSbomTest(t, in, "cyclonedx", out); err != nil {
+		t.Fatalf("sbom: %v", err)
 	}
 	got, err := os.ReadFile(out)
 	if err != nil {
@@ -131,7 +131,7 @@ func TestConvert_SPDXToCycloneDX(t *testing.T) {
 	}
 }
 
-func TestConvert_RawToCycloneDX(t *testing.T) {
+func TestSbom_RawToCycloneDX(t *testing.T) {
 	dir := t.TempDir()
 	in := filepath.Join(dir, "result.json")
 	out := filepath.Join(dir, "out.cdx.json")
@@ -140,8 +140,8 @@ func TestConvert_RawToCycloneDX(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runConvertTest(t, in, "cyclonedx", out); err != nil {
-		t.Fatalf("convert: %v", err)
+	if err := runSbomTest(t, in, "cyclonedx", out); err != nil {
+		t.Fatalf("sbom: %v", err)
 	}
 	got, err := os.ReadFile(out)
 	if err != nil {
@@ -152,7 +152,7 @@ func TestConvert_RawToCycloneDX(t *testing.T) {
 	}
 }
 
-func TestConvert_Errors(t *testing.T) {
+func TestSbom_Errors(t *testing.T) {
 	dir := t.TempDir()
 	cdxPath := filepath.Join(dir, "in.cdx.json")
 	_ = os.WriteFile(cdxPath, []byte(cdxInput), 0o644)
@@ -160,19 +160,19 @@ func TestConvert_Errors(t *testing.T) {
 	_ = os.WriteFile(badPath, []byte(`{"hello":"world"}`), 0o644)
 	out := filepath.Join(dir, "out.json")
 
-	if err := runConvertTest(t, cdxPath, "", out); err == nil {
+	if err := runSbomTest(t, cdxPath, "", out); err == nil {
 		t.Error("expected an error when --format is missing")
 	}
-	if err := runConvertTest(t, cdxPath, "xml", out); err == nil {
+	if err := runSbomTest(t, cdxPath, "xml", out); err == nil {
 		t.Error("expected an error for an invalid target format")
 	}
-	if err := runConvertTest(t, cdxPath, "plain", out); err == nil {
+	if err := runSbomTest(t, cdxPath, "plain", out); err == nil {
 		t.Error("plain is not a valid conversion target")
 	}
-	if err := runConvertTest(t, badPath, "spdx", out); err == nil {
+	if err := runSbomTest(t, badPath, "spdx", out); err == nil {
 		t.Error("expected an error for unrecognized input")
 	}
-	if err := runConvertTest(t, filepath.Join(dir, "missing.json"), "spdx", out); err == nil {
+	if err := runSbomTest(t, filepath.Join(dir, "missing.json"), "spdx", out); err == nil {
 		t.Error("expected an error for a missing input file")
 	}
 }
