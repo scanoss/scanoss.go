@@ -31,9 +31,11 @@ import (
 	"time"
 
 	cdx "github.com/CycloneDX/cyclonedx-go"
-
-	"github.com/scanoss/scanoss.go/internal/config"
 )
+
+// scanossURLHashProp is the CycloneDX component property carrying the scanoss url_hash
+// (a CRC64), which has no standard CycloneDX hash algorithm.
+const scanossURLHashProp = "scanoss:url_hash"
 
 // buildCycloneDX renders the inventory as a CycloneDX 1.7 JSON document using the
 // official cyclonedx-go encoder, whose version-aware serialization keeps the output
@@ -41,8 +43,11 @@ import (
 func buildCycloneDX(inv Inventory, o options) (string, error) {
 	bom := cdx.NewBOM()
 	bom.Metadata = &cdx.Metadata{
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
-		Authors:   &[]cdx.OrganizationalContact{{Name: config.OrganizationName}},
+		Timestamp: o.resolvedTimestamp().Format(time.RFC3339),
+		Authors:   &[]cdx.OrganizationalContact{{Name: o.author}},
+		Tools: &cdx.ToolsChoice{
+			Components: &[]cdx.Component{{Type: cdx.ComponentTypeApplication, Name: o.toolName}},
+		},
 		Component: &cdx.Component{
 			Type:    cdx.ComponentTypeApplication,
 			Name:    o.projectName,
@@ -111,7 +116,7 @@ func cycloneDXComponent(comp Component) cdx.Component {
 	// A CycloneDX component carries a single purl. When a component has more than one,
 	// record every purl in evidence.identity (the spec's field for identifying a
 	// component by multiple identifiers), so the aliases aren't lost.
-	occ := cycloneDXOccurrences(comp.Files)
+	occ := cycloneDXOccurrences(comp.Evidence)
 	ids := purlIdentities(comp)
 	if len(occ) > 0 || len(ids) > 0 {
 		ev := &cdx.Evidence{}
@@ -122,6 +127,12 @@ func cycloneDXComponent(comp Component) cdx.Component {
 			ev.Identity = &cdx.EvidenceIdentityChoice{Identities: &ids}
 		}
 		c.Evidence = ev
+	}
+
+	// Preserve the scanoss url_hash (a CRC64) as a property — CycloneDX has no hash
+	// algorithm for it.
+	if comp.URLHash != "" {
+		c.Properties = &[]cdx.Property{{Name: scanossURLHashProp, Value: comp.URLHash}}
 	}
 
 	return c
@@ -238,8 +249,16 @@ func cycloneDXVulnerabilities(inv Inventory) []cdx.Vulnerability {
 		if v.Source != "" {
 			cv.Source = &cdx.Source{Name: v.Source}
 		}
-		if sev := mapSeverity(v.Severity); sev != "" {
-			cv.Ratings = &[]cdx.VulnerabilityRating{{Severity: sev}}
+		if rating := cycloneDXRating(v); rating != (cdx.VulnerabilityRating{}) {
+			cv.Ratings = &[]cdx.VulnerabilityRating{rating}
+		}
+		if len(v.CWEs) > 0 {
+			cwes := append([]int(nil), v.CWEs...)
+			cv.CWEs = &cwes
+		}
+		// EPSS has no native CycloneDX field; carry it as a namespaced property.
+		if v.EPSSScore != nil {
+			cv.Properties = &[]cdx.Property{{Name: scanossEPSSProp, Value: strconv.FormatFloat(*v.EPSSScore, 'f', -1, 64)}}
 		}
 		if v.URL != "" {
 			cv.Advisories = &[]cdx.Advisory{{URL: v.URL}}
@@ -258,6 +277,25 @@ func cycloneDXVulnerabilities(inv Inventory) []cdx.Vulnerability {
 		out = append(out, cv)
 	}
 	return out
+}
+
+// scanossEPSSProp is the CycloneDX vulnerability property carrying the EPSS score, which
+// has no native CycloneDX field.
+const scanossEPSSProp = "scanoss:epss_score"
+
+// cycloneDXRating builds a single rating from the qualitative severity and any CVSS data.
+// Returns the zero value when the vulnerability has neither, so no rating is emitted.
+func cycloneDXRating(v Vulnerability) cdx.VulnerabilityRating {
+	rating := cdx.VulnerabilityRating{Severity: mapSeverity(v.Severity)}
+	if v.CVSSScore != nil {
+		score := *v.CVSSScore
+		rating.Score = &score
+	}
+	rating.Vector = v.CVSSVector
+	if v.CVSSMethod != "" {
+		rating.Method = cdx.ScoringMethod(v.CVSSMethod)
+	}
+	return rating
 }
 
 // mapSeverity maps a SCANOSS severity string to a CycloneDX severity. An empty input
