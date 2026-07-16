@@ -66,12 +66,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
+          python-version-file: .python-version
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version-file: .nvmrc
 
       - name: Build libscanoss
         run: |
@@ -132,8 +132,7 @@ jobs:
         run: make fmt-check
 
       - name: Install golangci-lint
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.10.1
+        run: make lint-install
 
       - name: Run golangci-lint
         run: golangci-lint run --timeout=5m
