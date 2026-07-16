@@ -4,14 +4,14 @@
 
 Atomic, one commit each; tree builds and `make check` stays green after every step.
 
-- [ ] **T1 — Rename the command.** `git mv cmd/convert.go cmd/sbom.go` and
+- [x] **T1 — Rename the command.** `git mv cmd/convert.go cmd/sbom.go` and
   `git mv cmd/convert_test.go cmd/sbom_test.go`. Rename `convertCmd → sbomCmd`,
   `runConvert → runSbom`, `Use: "sbom <input>"`, and update the Short/Long help + examples.
   Rename the test helper/functions (`runConvertTest → runSbomTest`, `TestConvert_* → TestSbom_*`).
   No alias. Grep confirms no `scanoss convert`/`convertCmd`/`runConvert` remain. (FR-001, FR-002,
   FR-004)
 
-- [ ] **T2 — Docs + changelog.** Update the command name in `README.md` (Commands table),
+- [x] **T2 — Docs + changelog.** Update the command name in `README.md` (Commands table),
   `CLIENT_HELP.md` (TOC anchor + section heading + the `scanoss convert` examples), and
   `CHANGELOG.md` (rename the `convert` entry to `sbom`). Leave the prose verb "convert" where it
   describes the action. (FR-003)

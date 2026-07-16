@@ -131,7 +131,7 @@ Stdout stays reserved for results, so logs never corrupt `--output` or piped JSO
 | `scan wfp <wfp>` | Scan a pre-generated WFP file (no fingerprinting). |
 | `wfp <path>` | Generate WFP fingerprints only (no upload). |
 | `results <scan-id>` | Resume or poll a scan by its id. |
-| `convert <input>` | Convert an SBOM/result between formats offline (cyclonedx/spdx). |
+| `sbom <input>` | Produce an SBOM from a scan result, or convert between formats, offline (cyclonedx/spdx). |
 | `enrich <input>` | Add purl-keyed layers (vulns/licenses/crypto/geo) to a `raw` or SBOM file. |
 | `dependencies [path]` | Extract local dependencies, or query direct/transitive deps for a PURL. |
 | `attributions [sbom]` | Attribution text from an SBOM file or a PURL. |

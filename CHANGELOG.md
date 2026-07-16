@@ -72,8 +72,8 @@ Initial public release of the SCANOSS Go CLI and SDK (`scanoss`).
 - The `url_hash` is now
   preserved as metadata: an `OTHER` external reference in SPDX and a `scanoss:url_hash`
   property in CycloneDX.
-- **`convert`** — offline conversion between the raw scanoss result, CycloneDX 1.7, and
-    SPDX 2.3 (`scanoss convert <input> --format cyclonedx|spdx`). No scanning or API calls;
+- **`sbom`** — offline SBOM production/conversion between the raw scanoss result, CycloneDX 1.7,
+    and SPDX 2.3 (`scanoss sbom <input> --format cyclonedx|spdx`). No scanning or API calls;
     the input format is detected from the file content. Best-effort: SPDX cannot represent
     vulnerabilities, so they are dropped (with a warning) when converting to spdx.
 - **SBOM vulnerability detail** — `sbom.Vulnerability` gains optional CVSS

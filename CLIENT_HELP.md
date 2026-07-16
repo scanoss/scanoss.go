@@ -10,7 +10,7 @@ installation, see the [README](README.md).
 - [Fingerprinting (`wfp`)](#fingerprinting-wfp)
 - [Scanning (`scan`)](#scanning-scan)
 - [Resuming a scan (`results`)](#resuming-a-scan-results)
-- [Convert (`convert`)](#convert-convert)
+- [SBOM (`sbom`)](#sbom-sbom)
 - [Enrich (`enrich`)](#enrich-enrich)
 - [Dependencies (`dependencies`)](#dependencies-dependencies)
 - [Attributions (`attributions`)](#attributions-attributions)
@@ -234,20 +234,20 @@ scanoss results <scan-id> --api-key "$SCANOSS_API_KEY" --output results.json
 
 Polls `GET /v3/wfp/scan/<scan-id>` until complete.
 
-## Convert (`convert`)
+## SBOM (`sbom`)
 
-Convert an existing SBOM or scan result between formats. The input format is detected
-from the file content.
+Produce an SBOM from a scan result, or convert an existing SBOM between formats — offline.
+The input format is detected from the file content.
 
 ```bash
 # SPDX -> CycloneDX
-scanoss convert bom.spdx.json --format cyclonedx --output bom.cdx.json
+scanoss sbom bom.spdx.json --format cyclonedx --output bom.cdx.json
 
 # CycloneDX -> SPDX
-scanoss convert bom.cdx.json --format spdx --output bom.spdx.json
+scanoss sbom bom.cdx.json --format spdx --output bom.spdx.json
 
 # scanoss raw result -> CycloneDX or SPDX
-scanoss convert results.json --format cyclonedx --output bom.cdx.json
+scanoss sbom results.json --format cyclonedx --output bom.cdx.json
 ```
 
 Inputs: the raw scanoss v3 result, CycloneDX, or SPDX (JSON). Target (`-f, --format`):
