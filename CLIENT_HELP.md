@@ -11,6 +11,7 @@ installation, see the [README](README.md).
 - [Scanning (`scan`)](#scanning-scan)
 - [Resuming a scan (`results`)](#resuming-a-scan-results)
 - [Convert (`convert`)](#convert-convert)
+- [Enrich (`enrich`)](#enrich-enrich)
 - [Dependencies (`dependencies`)](#dependencies-dependencies)
 - [Attributions (`attributions`)](#attributions-attributions)
 - [Decoration commands](#decoration-commands)
@@ -255,6 +256,37 @@ dropped — e.g. SPDX 2.3 has no vulnerability model, so vulnerabilities are omi
 warning) when converting to spdx.
 
 Flags: `-f, --format` (`cyclonedx`/`spdx`), `-o, --output`.
+
+## Enrich (`enrich`)
+
+Decorate an existing inventory or SBOM with purl-keyed layers through the SCANOSS API — no
+source tree, no fingerprinting, no re-scan. Because it is keyed purely by PURL, it is
+**re-runnable** (e.g. weekly) to refresh the layers against the same file.
+
+```bash
+# Refresh vulns/licenses/crypto on a raw inventory (raw in, raw out)
+scanoss enrich inv.json --include vulns,licenses,crypto --api-key "$SCANOSS_API_KEY" > enriched.json
+
+# Enrich an SPDX document (spdx in, spdx out)
+scanoss enrich sbom.spdx.json --include licenses --api-key "$SCANOSS_API_KEY" > enriched.spdx.json
+
+# Enrich a CycloneDX document and convert to SPDX in one pass
+scanoss enrich sbom.cdx.json --include licenses --format spdx --api-key "$SCANOSS_API_KEY" > enriched.spdx.json
+```
+
+Inputs: a scanoss **raw inventory** (the `scan` raw output), CycloneDX, or SPDX (JSON) —
+detected from the file content. Layers (`--include`): the purl-keyed layers `vulns`,
+`licenses`, `crypto`, `geo`. `deps` is **not** an enrich layer — dependency analysis needs a
+manifest/source tree and can't be derived from a components list, so `--include deps` errors.
+
+The output format **defaults to the input's** (raw→raw, cyclonedx→cyclonedx, spdx→spdx); use
+`-f, --format` to convert in the same pass. A layer the output format can't represent is
+**skipped** up front with a notice (`spdx` skips vulns/crypto/geo, `cyclonedx` skips
+crypto/geo) — the same capability rules as `scan`. Enrichment is non-fatal: a failed service
+is logged and skipped, and a partial result is still written.
+
+Flags: `--include`, `-f, --format` (`raw`/`spdx`/`cyclonedx`), `-o, --output`, plus the auth
+flags (`--api-url`, `--api-key`, `--ignore-cert-errors`).
 
 ## Dependencies (`dependencies`)
 

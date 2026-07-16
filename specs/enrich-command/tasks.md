@@ -4,12 +4,12 @@
 
 Atomic, one commit each; tree builds and `make check` stays green after every step.
 
-- [ ] **T1 — Export the enrichment step.** `pkg/scanpipeline`: rename `enrich` →
+- [x] **T1 — Export the enrichment step.** `pkg/scanpipeline`: rename `enrich` →
   `Enrich(ctx, *scanoss.Client, *sbom.Inventory, Set)` (body verbatim), route `assemble` through
   it, update the doc comment to name it the shared purl-keyed enrichment step. No behavior change;
   existing tests stay green. Add a direct `Enrich` test over a hand-built inventory. (FR-003)
 
-- [ ] **T2 — `enrich` command.** `cmd/enrich.go`: online `enrich <input> --include <layers>
+- [x] **T2 — `enrich` command.** `cmd/enrich.go`: online `enrich <input> --include <layers>
   [--format <target>] [-o <file>]` with the scan auth flags + `checkAuth`. Local
   `identifyAndParse` (cyclonedx→`ParseCycloneDX`, spdx→`ParseSPDX`, else raw→`Unmarshal` into
   `sbom.Inventory`; a v3 scan result / garbage errors) → enrich via `scanpipeline.Enrich` →
@@ -17,17 +17,17 @@ Atomic, one commit each; tree builds and `make check` stays green after every st
   `raw|spdx|cyclonedx`. Reuse `buildScanClient`/`scanProgress`. (FR-001, FR-002, FR-004, FR-007,
   FR-008, FR-009)
 
-- [ ] **T3 — deps rejection + format-capability warnings.** In `runEnrich`: **error** on
+- [x] **T3 — deps rejection + format-capability warnings.** In `runEnrich`: **error** on
   `--include deps` (not a valid enrich layer — deps can't be derived from a components list);
   apply `reportSkippedLayers` + `effectiveLayers` for the output format — reusing the existing
   helpers, no duplication. (FR-005, FR-006)
 
-- [ ] **T4 — Command tests.** `cmd/enrich_test.go` (stub decoration client): `identifyAndParse`
+- [x] **T4 — Command tests.** `cmd/enrich_test.go` (stub decoration client): `identifyAndParse`
   table (cyclonedx/spdx/raw; v3 result + garbage error); raw→raw default; spdx→spdx with `vulns`
-  skipped (warning asserted); cyclonedx `--format spdx` (enrich+convert); `--include deps`
-  warns/ignored; unrecognized input errors; missing key fails `checkAuth`.
+  skipped (notice asserted); cyclonedx `--format spdx` (enrich+convert); `--include deps`
+  errors; a v3 scan result / unrecognized input errors; missing key fails `checkAuth`.
 
-- [ ] **T5 — Docs + changelog.** Document the command:
+- [x] **T5 — Docs + changelog.** Document the command:
   - `CLIENT_HELP.md` — new `Enrich (`enrich`)` section (usage, input formats + identification,
     purl-layers/`deps`-unsupported, default-format-follows-input, reused skip warning, online/auth
     note, weekly re-run) + a table-of-contents link.

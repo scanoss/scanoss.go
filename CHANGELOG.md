@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`enrich` command** — `scanoss enrich <input> --include <layers>` decorates an existing
+  inventory or SBOM (a scanoss raw inventory, CycloneDX, or SPDX — detected from content) with the
+  purl-keyed layers `vulns`/`licenses`/`crypto`/`geo` through the SCANOSS API, with no source tree,
+  fingerprinting, or re-scan. It is re-runnable (e.g. weekly) to refresh the layers against the
+  same file. The output format defaults to the input's; `--format` converts in the same pass. A
+  layer the output format can't render is **skipped** up front (same rules as `scan`), and
+  `--include deps` is rejected — dependency analysis can't be derived from a components list.
 - **Scan output layers** — `scan --include <layers>` opts into extra output layers: `deps`,
   `vulns`, `licenses`, `crypto`, `geo`. Gathering follows `--include`, narrowed to what the chosen
   `--format` can render: a layer the format can't represent is **skipped** (not gathered) with an
