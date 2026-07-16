@@ -41,7 +41,8 @@ func createCancellableContext() (context.Context, context.CancelFunc) {
 
 	go func() {
 		<-sigChan
-		fmt.Fprintf(os.Stderr, "\n\nReceived interrupt signal. Cancelling...\n")
+		fmt.Fprint(os.Stderr, "\n\n")
+		warnf("Received interrupt signal. Cancelling...")
 		cancel()
 	}()
 

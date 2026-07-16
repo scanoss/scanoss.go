@@ -26,7 +26,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/scanoss/scanoss.go/internal/config"
 	"github.com/scanoss/scanoss.go/pkg/output"
@@ -90,7 +89,7 @@ func runResults(cmd *cobra.Command, args []string) error {
 		scanoss.WithProgress(prog.fn),
 	)
 
-	fmt.Fprintf(os.Stderr, "Retrieving results for scan: %s\n", scanID)
+	infof("Retrieving results for scan %s", scanID)
 
 	ctx, cancel := createCancellableContext()
 	defer cancel()

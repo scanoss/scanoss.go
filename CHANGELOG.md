@@ -33,6 +33,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when `--output` is set.
 
 ### Changed
+- **Status output** across all commands now uses a consistent icon + color scheme — `⚠` warnings
+  (yellow), `ℹ` info (dim), `✓` success (green) — replacing the previous ad-hoc emoji
+  (`🔍`/`📦`/`✅`/…). `scan`/`enrich` also gain a blank line separating the resume hint from the
+  progress bars, and skipped layers collapse into one warning instead of one line each. Color is
+  automatic on an interactive terminal (Windows 10+ included) and disabled when output is
+  piped/redirected or `NO_COLOR` is set.
 - **Progress bars** across all commands (`scan`, `wfp`, `dependencies`, and the component
   queries) now render through a single library with a consistent look.
 - **`raw` output format** (renamed from `plain`, still the default) is now the neutral inventory

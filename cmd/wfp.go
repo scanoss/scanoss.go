@@ -95,7 +95,7 @@ func runWFP(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(files) == 0 {
-		fmt.Fprintf(os.Stderr, "No valid files found to process\n")
+		warnf("No valid files found to process")
 		return nil
 	}
 
@@ -122,7 +122,7 @@ func runWFP(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "Error writing: %v\n", err)
 	}
 	if len(errs) > 0 {
-		fmt.Fprintf(os.Stderr, "Completed with %d errors\n", len(errs))
+		warnf("Completed with %d errors", len(errs))
 	}
 
 	return nil
