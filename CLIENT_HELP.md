@@ -10,6 +10,8 @@ installation, see the [README](README.md).
 - [Fingerprinting (`wfp`)](#fingerprinting-wfp)
 - [Scanning (`scan`)](#scanning-scan)
 - [Resuming a scan (`results`)](#resuming-a-scan-results)
+- [SBOM (`sbom`)](#sbom-sbom)
+- [Enrich (`enrich`)](#enrich-enrich)
 - [Dependencies (`dependencies`)](#dependencies-dependencies)
 - [Attributions (`attributions`)](#attributions-attributions)
 - [Decoration commands](#decoration-commands)
@@ -124,7 +126,8 @@ scanoss scan wfp project.wfp --api-key "$SCANOSS_API_KEY"
 > (see [`results`](#resuming-a-scan-results)).
 
 Flags (persistent flags are shared with `scan wfp`): `--api-url`, `--api-key`,
-`-f, --format` (`plain`/`spdx`/`cyclonedx`), `-o, --output`, `--settings`,
+`-f, --format` (`raw`/`spdx`/`cyclonedx`), `--include` (extra output layers — see
+[Output layers](#output-layers---include)), `-o, --output`, `--settings`,
 `--chunk-size` (1 MiB), `--ignore-cert-errors`, `-t, --threads` (10),
 `--save-wfp`, `--max-size` (0 = unlimited),
 `--default-filters` (true), `--gitignore` (true).
@@ -181,20 +184,44 @@ scanoss scan ./my-project --api-key "$SCANOSS_API_KEY" --settings my-config.json
 > its PURLs from that removal). `bom.include` is **not yet honored server-side**,
 > and `identify`/`ignore`/`replace` are not applied.
 
+### Output layers (`--include`)
+
+By default a scan reports only the components it detected. `--include` opts into extra output
+layers, gathered over both detected and declared components:
+
+| Layer | What it adds |
+|-------|--------------|
+| `deps` | Declared dependencies parsed from the project's manifests (`package.json`, `go.mod`, …) and resolved. Needs a source tree, so it is ignored for `scan wfp`. |
+| `vulns` | Known vulnerabilities. |
+| `licenses` | Declared/concluded licenses per component. |
+| `crypto` | Cryptographic algorithms. |
+| `geo` | Contributor geographic provenance. |
+
+```bash
+scanoss scan ./my-project --api-key "$SCANOSS_API_KEY" --include deps,vulns,licenses
+```
+
+Gathering follows `--include`, narrowed to what the chosen `--format` can render: a layer the
+format can't represent is **skipped** (not gathered) with an up-front `Skipping <layer>` message.
+`raw` renders every layer; `cyclonedx` drops `crypto`/`geo`; `spdx` drops `vulns`/`crypto`/`geo`.
+
 ### SBOM output
 
 ```bash
 scanoss scan ./my-project --api-key "$SCANOSS_API_KEY" --format spdx      --output sbom-spdx.json
 scanoss scan ./my-project --api-key "$SCANOSS_API_KEY" --format cyclonedx --output sbom-cdx.json
-scanoss scan ./my-project --api-key "$SCANOSS_API_KEY" --format plain     --output results.json
+scanoss scan ./my-project --api-key "$SCANOSS_API_KEY" --format raw       --output results.json
 ```
 
-- `plain` — the scan result JSON (default).
+- `raw` — the neutral inventory (components tagged by `scope`, per-component layers inline, and a
+  flat vulnerabilities list) wrapped in a versioned envelope. **Default.**
 - `spdx` — SPDX 2.3.
 - `cyclonedx` — CycloneDX 1.7 (licenses, evidence, vulnerabilities).
 
-Components are deduplicated by base PURL (keeping the highest version); multiple
-licenses are combined with `AND`.
+Components that share the same identity (PURL + version) are collapsed into one — so the same
+package listed in both `package.json` and `package-lock.json`, or detected and also declared, is
+emitted once; different versions of the same PURL are kept. In SPDX, multiple licenses on a
+component are combined with `AND`.
 
 ## Resuming a scan (`results`)
 
@@ -206,6 +233,60 @@ scanoss results <scan-id> --api-key "$SCANOSS_API_KEY" --output results.json
 ```
 
 Polls `GET /v3/wfp/scan/<scan-id>` until complete.
+
+## SBOM (`sbom`)
+
+Produce an SBOM from a scanoss raw inventory, or convert an existing SBOM between formats —
+offline. The input format is detected from the file content.
+
+```bash
+# SPDX -> CycloneDX
+scanoss sbom bom.spdx.json --format cyclonedx --output bom.cdx.json
+
+# CycloneDX -> SPDX
+scanoss sbom bom.cdx.json --format spdx --output bom.spdx.json
+
+# scanoss raw result -> CycloneDX or SPDX
+scanoss sbom results.json --format cyclonedx --output bom.cdx.json
+```
+
+Inputs: a scanoss **raw inventory** (the `scan` raw output), CycloneDX, or SPDX (JSON) — detected
+from content. Target (`-f, --format`): `cyclonedx` or `spdx`. Conversion is **best-effort**: data
+the target can't represent is dropped — e.g. SPDX 2.3 has no vulnerability model, so
+vulnerabilities are omitted (with a warning) when converting to spdx.
+
+Flags: `-f, --format` (`cyclonedx`/`spdx`), `-o, --output`.
+
+## Enrich (`enrich`)
+
+Decorate an existing inventory or SBOM with purl-keyed layers through the SCANOSS API — no
+source tree, no fingerprinting, no re-scan. Because it is keyed purely by PURL, it is
+**re-runnable** (e.g. weekly) to refresh the layers against the same file.
+
+```bash
+# Refresh vulns/licenses/crypto on a raw inventory (raw in, raw out)
+scanoss enrich inv.json --include vulns,licenses,crypto --api-key "$SCANOSS_API_KEY" > enriched.json
+
+# Enrich an SPDX document (spdx in, spdx out)
+scanoss enrich sbom.spdx.json --include licenses --api-key "$SCANOSS_API_KEY" > enriched.spdx.json
+
+# Enrich a CycloneDX document and convert to SPDX in one pass
+scanoss enrich sbom.cdx.json --include licenses --format spdx --api-key "$SCANOSS_API_KEY" > enriched.spdx.json
+```
+
+Inputs: a scanoss **raw inventory** (the `scan` raw output), CycloneDX, or SPDX (JSON) —
+detected from the file content. Layers (`--include`): the purl-keyed layers `vulns`,
+`licenses`, `crypto`, `geo`. `deps` is **not** an enrich layer — dependency analysis needs a
+manifest/source tree and can't be derived from a components list, so `--include deps` errors.
+
+The output format **defaults to the input's** (raw→raw, cyclonedx→cyclonedx, spdx→spdx); use
+`-f, --format` to convert in the same pass. A layer the output format can't represent is
+**skipped** up front with a notice (`spdx` skips vulns/crypto/geo, `cyclonedx` skips
+crypto/geo) — the same capability rules as `scan`. Enrichment is non-fatal: a failed service
+is logged and skipped, and a partial result is still written.
+
+Flags: `--include`, `-f, --format` (`raw`/`spdx`/`cyclonedx`), `-o, --output`, plus the auth
+flags (`--api-url`, `--api-key`, `--ignore-cert-errors`).
 
 ## Dependencies (`dependencies`)
 
@@ -363,7 +444,7 @@ with `--settings`. It carries BOM context and file-skip rules.
 |---------|---------|-------|
 | `--api-url` | `https://api.scanoss.com` | Default endpoint requires `--api-key` |
 | `--threads` (scan/wfp) | `10` | Fingerprint workers |
-| `--format` | `plain` | `plain` / `spdx` / `cyclonedx` |
+| `--format` | `raw` | `raw` / `spdx` / `cyclonedx` |
 | `--chunk-size` (scan) | `1048576` | WFP upload block size (bytes) |
 | `--chunk-size` (decoration) | `10` | PURLs per request |
 | `--workers` (decoration) | `5` | Max concurrent requests |

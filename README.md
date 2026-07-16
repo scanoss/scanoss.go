@@ -114,6 +114,9 @@ scanoss scan ./my-project --api-key "$SCANOSS_API_KEY" --output results.json
 
 # Generate fingerprints only
 scanoss wfp ./my-project > project.wfp
+
+# Refresh vulnerabilities/licenses on an existing inventory (no re-scan)
+scanoss enrich results.json --include vulns,licenses --api-key "$SCANOSS_API_KEY" > enriched.json
 ```
 
 Add `-v` / `--verbose` to any command for structured debug logging on stderr — the
@@ -124,10 +127,12 @@ Stdout stays reserved for results, so logs never corrupt `--output` or piped JSO
 
 | Command | Purpose |
 |---------|---------|
-| `scan <path>` | Fingerprint a folder/file, upload to the SCANOSS v3 API, poll for results. |
+| `scan <path>` | Fingerprint a folder/file, scan against the SCANOSS v3 API, and output results (`--format raw`/`spdx`/`cyclonedx`; opt into dependency/vuln/license/crypto/geo layers with `--include`). |
 | `scan wfp <wfp>` | Scan a pre-generated WFP file (no fingerprinting). |
 | `wfp <path>` | Generate WFP fingerprints only (no upload). |
 | `results <scan-id>` | Resume or poll a scan by its id. |
+| `sbom <input>` | Produce an SBOM from a raw inventory, or convert between formats, offline (cyclonedx/spdx). |
+| `enrich <input>` | Add purl-keyed layers (vulns/licenses/crypto/geo) to a `raw` or SBOM file. |
 | `dependencies [path]` | Extract local dependencies, or query direct/transitive deps for a PURL. |
 | `attributions [sbom]` | Attribution text from an SBOM file or a PURL. |
 | `vulnerabilities` | Known vulnerabilities / CPEs for components. |
