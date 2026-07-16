@@ -60,6 +60,14 @@ func (s *scanProgress) fingerprint(done, total int) {
 	s.barLocked("fingerprint", "Fingerprinting", total).SetCurrent(int64(done))
 }
 
+// dependencies renders dependency-manifest parsing progress as a bar in the shared container,
+// alongside the scan phases. Parsing is local (no API), so it fills quickly.
+func (s *scanProgress) dependencies(done, total int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.barLocked("deps", "Parsing dependencies", total).SetCurrent(int64(done))
+}
+
 // fn renders the SDK's per-service progress in the shared container: the scan (upload chunks,
 // then server phase) and every purl-keyed service (declared-dependency resolution and each
 // enrichment layer, Unit "purls"), keyed by Service. Each bar fills independently, so the scan
@@ -397,7 +405,8 @@ func runScan(cmd *cobra.Command, args []string) error {
 				infof("Filtered %d files", skipped)
 			}
 		},
-		OnFingerprint: prog.fingerprint,
+		OnFingerprint:  prog.fingerprint,
+		OnDependencies: prog.dependencies,
 	})
 	prog.finish()
 	if err != nil {
