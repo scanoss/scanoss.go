@@ -40,13 +40,13 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Build scanoss
-        run: go build -v -o scanoss ./cmd/scanoss
+      - name: Build scanoss-cli
+        run: go build -v -o scanoss-cli ./cmd/scanoss
 
       - name: Test CLI
         run: |
-          ./scanoss --version
-          ./scanoss wfp cmd/scanoss/main.go
+          ./scanoss-cli --version
+          ./scanoss-cli wfp cmd/scanoss/main.go
 
   build-and-test-libscanoss:
     name: Build and Test libscanoss
