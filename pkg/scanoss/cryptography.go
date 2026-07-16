@@ -33,16 +33,16 @@ import (
 // version or a version range (plus algorithm versions in a range). Every variant
 // has a batch (POST, many components) and a single (GET, one component) endpoint.
 var (
-	ServiceCryptographyAlgorithms        = Service{name: "cryptography.algorithms", endpoint: "/v3/cryptography/algorithms"}
-	ServiceCryptographyAlgorithm         = Service{name: "cryptography.algorithm", endpoint: "/v3/cryptography/algorithms"}
-	ServiceCryptographyAlgorithmsInRange = Service{name: "cryptography.algorithms.range", endpoint: "/v3/cryptography/algorithms/range"}
-	ServiceCryptographyAlgorithmInRange  = Service{name: "cryptography.algorithm.range", endpoint: "/v3/cryptography/algorithms/range"}
-	ServiceCryptographyVersionsInRange   = Service{name: "cryptography.versions.range", endpoint: "/v3/cryptography/algorithms/versions/range"}
-	ServiceCryptographyVersionInRange    = Service{name: "cryptography.version.range", endpoint: "/v3/cryptography/algorithms/versions/range"}
-	ServiceCryptographyHints             = Service{name: "cryptography.hints", endpoint: "/v3/cryptography/hints"}
-	ServiceCryptographyHint              = Service{name: "cryptography.hint", endpoint: "/v3/cryptography/hints"}
-	ServiceCryptographyHintsInRange      = Service{name: "cryptography.hints.range", endpoint: "/v3/cryptography/hints/range"}
-	ServiceCryptographyHintInRange       = Service{name: "cryptography.hint.range", endpoint: "/v3/cryptography/hints/range"}
+	ServiceCryptographyAlgorithms        = Service{Name: "cryptography.algorithms", endpoint: "/v3/cryptography/algorithms"}
+	ServiceCryptographyAlgorithm         = Service{Name: "cryptography.algorithm", endpoint: "/v3/cryptography/algorithms"}
+	ServiceCryptographyAlgorithmsInRange = Service{Name: "cryptography.algorithms.range", endpoint: "/v3/cryptography/algorithms/range"}
+	ServiceCryptographyAlgorithmInRange  = Service{Name: "cryptography.algorithm.range", endpoint: "/v3/cryptography/algorithms/range"}
+	ServiceCryptographyVersionsInRange   = Service{Name: "cryptography.versions.range", endpoint: "/v3/cryptography/algorithms/versions/range"}
+	ServiceCryptographyVersionInRange    = Service{Name: "cryptography.version.range", endpoint: "/v3/cryptography/algorithms/versions/range"}
+	ServiceCryptographyHints             = Service{Name: "cryptography.hints", endpoint: "/v3/cryptography/hints"}
+	ServiceCryptographyHint              = Service{Name: "cryptography.hint", endpoint: "/v3/cryptography/hints"}
+	ServiceCryptographyHintsInRange      = Service{Name: "cryptography.hints.range", endpoint: "/v3/cryptography/hints/range"}
+	ServiceCryptographyHintInRange       = Service{Name: "cryptography.hint.range", endpoint: "/v3/cryptography/hints/range"}
 )
 
 // CryptographyAPI is the cryptography service surface: algorithms and library

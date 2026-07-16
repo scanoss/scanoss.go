@@ -29,6 +29,6 @@ package scanoss
 // value is declared in its own service file (e.g. ServiceVulnerabilities). Callers
 // use the per-service methods on Client; the engine is internal.
 type Service struct {
-	name     string // stable id, used for logging/progress tagging
+	Name     string // stable id, used for logging/progress tagging
 	endpoint string // REST path, relative to the API base URL
 }

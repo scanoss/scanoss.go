@@ -37,9 +37,9 @@ import (
 // batch (POST, many components) and a single (GET, one component), plus a
 // transitive walk bounded by depth and limit (POST).
 var (
-	ServiceDependencies = Service{name: "dependencies", endpoint: "/v3/dependencies/dependencies"}
-	ServiceDependency   = Service{name: "dependency", endpoint: "/v3/dependencies/dependencies"}
-	ServiceTransitive   = Service{name: "dependencies.transitive", endpoint: "/v3/dependencies/transitive"}
+	ServiceDependencies = Service{Name: "dependencies", endpoint: "/v3/dependencies/dependencies"}
+	ServiceDependency   = Service{Name: "dependency", endpoint: "/v3/dependencies/dependencies"}
+	ServiceTransitive   = Service{Name: "dependencies.transitive", endpoint: "/v3/dependencies/transitive"}
 )
 
 // DependencyAPI is the dependencies service surface. Responses are typed from the

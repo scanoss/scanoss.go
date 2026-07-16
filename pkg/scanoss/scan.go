@@ -196,7 +196,7 @@ func (s scanService) fingerprint(files []string, o scanOptions) ([]byte, error) 
 	}
 	wfp, _ := scanner.GenerateWFP(files, s.c.workers, o.root, func(done, total int) {
 		if s.c.onProgress != nil {
-			s.c.onProgress(Progress{Service: ServiceScan.name, Done: done, Total: total, Unit: "files"})
+			s.c.onProgress(Progress{Service: ServiceScan.Name, Done: done, Total: total, Unit: "files"})
 		}
 	})
 	s.c.log.Debug("fingerprinted files", "files", len(files), "wfpBytes", len(wfp))
@@ -306,7 +306,7 @@ func (p *chunkProgress) inc() {
 	atomic.AddInt64(&p.done, 1)
 	if p.c.onProgress != nil {
 		p.c.onProgress(Progress{
-			Service: ServiceScan.name,
+			Service: ServiceScan.Name,
 			Done:    int(atomic.LoadInt64(&p.done)),
 			Total:   p.total,
 			Unit:    "chunks",
@@ -368,7 +368,7 @@ func (s scanService) wait(ctx context.Context, scanID string, interval time.Dura
 		}
 		if s.c.onProgress != nil && e.PhaseTotal > 0 {
 			s.c.onProgress(Progress{
-				Service: ServiceScan.name,
+				Service: ServiceScan.Name,
 				Done:    e.PhaseDone,
 				Total:   e.PhaseTotal,
 				Unit:    "phase",

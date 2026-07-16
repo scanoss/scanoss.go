@@ -24,95 +24,217 @@
 package cmd
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
-
-	scanossapi "github.com/scanoss/scanoss.api-sdk"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/scanoss/scanoss.go/internal/config"
 	"github.com/scanoss/scanoss.go/pkg/filter"
 	"github.com/scanoss/scanoss.go/pkg/output"
 	"github.com/scanoss/scanoss.go/pkg/sbom"
-	"github.com/scanoss/scanoss.go/pkg/sbom/scansource"
-	"github.com/scanoss/scanoss.go/pkg/scanner"
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
+	"github.com/scanoss/scanoss.go/pkg/scanpipeline"
 	"github.com/scanoss/scanoss.go/pkg/settings"
-	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
+	"github.com/vbauerster/mpb/v8"
 )
 
-// scanProgress adapts scanoss.Progress updates to terminal progress bars. The
-// SDK may call it concurrently (parallel uploads), so it is mutex-guarded.
+// scanProgress adapts scanoss.Progress updates to terminal progress bars. Every phase — the scan
+// (fingerprint, upload, server) and each purl-keyed service (declared-dependency resolution and
+// the enrichment layers) — is a bar in one shared mpb container, so phases that run concurrently
+// render side by side. The SDK may call it from several goroutines, so it is mutex-guarded.
 type scanProgress struct {
-	mu       sync.Mutex
-	upload   *progressbar.ProgressBar
-	server   *progressbar.ProgressBar
-	uploaded bool
+	mu   sync.Mutex
+	p    *mpb.Progress       // shared multi-bar container (lazily created on first update)
+	bars map[string]*mpb.Bar // one live bar per phase/service, keyed by phase key or Service name
 }
 
+// fingerprint renders fingerprinting progress. The pipeline calls it as fingerprinting proceeds;
+// it is one bar among the phases, and can render alongside the dependency phase running in parallel.
+func (s *scanProgress) fingerprint(done, total int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.barLocked("fingerprint", "Fingerprinting", total).SetCurrent(int64(done))
+}
+
+// dependencies renders dependency-manifest parsing progress as a bar in the shared container,
+// alongside the scan phases. Parsing is local (no API), so it fills quickly.
+func (s *scanProgress) dependencies(done, total int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.barLocked("deps", "Parsing dependencies", total).SetCurrent(int64(done))
+}
+
+// fn renders the SDK's per-service progress in the shared container: the scan (upload chunks,
+// then server phase) and every purl-keyed service (declared-dependency resolution and each
+// enrichment layer, Unit "purls"), keyed by Service. Each bar fills independently, so the scan
+// and dependency phases render side by side while they run in parallel.
 func (s *scanProgress) fn(p scanoss.Progress) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	switch p.Unit {
 	case "chunks":
-		if s.upload == nil {
-			s.upload = newPhaseBar(p.Total, "Uploading WFP")
-		}
-		_ = s.upload.Set(p.Done)
+		s.barLocked("upload", "Uploading WFP", p.Total).SetCurrent(int64(p.Done))
 	case "phase":
-		s.finishUploadLocked()
-		if s.server == nil {
-			s.server = newPhaseBar(p.Total, "Server processing")
+		s.barLocked("server", "Scanning", p.Total).SetCurrent(int64(p.Done))
+	case "purls":
+		if p.Service == "" {
+			return
 		}
-		_ = s.server.Set(p.Done)
+		// The enrichment layers start after the scan phase (dependency resolution is part of that
+		// phase); separate the two groups with a blank line the first time a layer appears.
+		if p.Service != scanoss.ServiceDependencies.Name {
+			s.spacerLocked()
+		}
+		s.barLocked(p.Service, layerLabel(p.Service), p.Total).SetCurrent(int64(p.Done))
 	}
 }
 
-// finishUpload finalizes the upload bar exactly once so later output starts on a
-// clean line. Called from the scan-id notify (which fires after the upload) and as
-// a fallback when the server phase begins.
-func (s *scanProgress) finishUpload() {
+// initLocked creates the shared container on first use. Caller holds s.mu.
+func (s *scanProgress) initLocked() {
+	if s.p == nil {
+		s.p = newProgress()
+		s.bars = make(map[string]*mpb.Bar)
+	}
+}
+
+// spacerLocked adds a blank line once, separating the scan-phase bars (fingerprint, upload,
+// scan, dependency resolution) from the enrichment layer bars below. It is a completed no-op bar,
+// so it just occupies an empty line and never blocks Wait. Caller holds s.mu.
+func (s *scanProgress) spacerLocked() {
+	s.initLocked()
+	if _, ok := s.bars["_spacer"]; ok {
+		return
+	}
+	bar := s.p.New(1, mpb.NopStyle())
+	bar.SetCurrent(1)
+	s.bars["_spacer"] = bar
+}
+
+// barLocked returns the bar for key, creating it in the shared container on first use. Caller
+// holds s.mu.
+func (s *scanProgress) barLocked(key, label string, total int) *mpb.Bar {
+	s.initLocked()
+	bar, ok := s.bars[key]
+	if !ok {
+		bar = addBar(s.p, total, label)
+		s.bars[key] = bar
+	}
+	return bar
+}
+
+// writeLine prints a line above the running bars (e.g. the scan-id notice) without corrupting the
+// bar area — mpb's *Progress is an io.Writer that interleaves the line at the next refresh.
+func (s *scanProgress) writeLine(msg string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.finishUploadLocked()
+	s.initLocked()
+	_, _ = fmt.Fprintln(s.p, msg)
 }
 
-func (s *scanProgress) finishUploadLocked() {
-	if s.upload != nil && !s.uploaded {
-		_ = s.upload.Finish()
-		fmt.Fprintln(os.Stderr)
-		s.uploaded = true
+// finish finalizes all progress once the pipeline returns: any bar that never reached its total
+// (e.g. a service that errored) is aborted so the container's render goroutine can flush and stop.
+func (s *scanProgress) finish() {
+	s.mu.Lock()
+	p, bars := s.p, s.bars
+	s.mu.Unlock()
+
+	if p == nil {
+		return
 	}
-}
-
-func newPhaseBar(total int, desc string) *progressbar.ProgressBar {
-	return progressbar.NewOptions(total,
-		progressbar.OptionSetDescription(desc),
-		progressbar.OptionSetWriter(os.Stderr),
-		progressbar.OptionShowCount(),
-		progressbar.OptionSetWidth(40),
-		progressbar.OptionSetRenderBlankState(true),
-	)
-}
-
-// generateWFP fingerprints every file (standard WFP, via the shared
-// scanner.GenerateWFP) and returns the combined WFP plus the number of files that
-// failed to process.
-func generateWFP(files []string, threads int, root string, bar *progressbar.ProgressBar) ([]byte, int) {
-	wfp, errs := scanner.GenerateWFP(files, threads, root, func(done, total int) {
-		if bar != nil {
-			_ = bar.Set(done)
+	for _, b := range bars {
+		if !b.Completed() {
+			b.Abort(false)
 		}
-	})
-	for _, err := range errs {
-		slog.Warn("file fingerprint failed", "err", err)
 	}
-	return wfp, len(errs)
+	p.Wait()
+}
+
+// layerLabel maps a decoration service name to a human phrase for the "Gathered …" progress line.
+func layerLabel(service string) string {
+	switch service {
+	case "licenses":
+		return "Licenses"
+	case "vulnerabilities":
+		return "Vulnerabilities"
+	case "cryptography.algorithms":
+		return "Cryptography"
+	case "geoprovenance.origin":
+		return "Geoprovenance"
+	case "dependencies":
+		return "Resolving dependencies"
+	default:
+		return service
+	}
+}
+
+// formatLayers lists which --include layers each output format can render. deps and licenses are
+// representable everywhere (as components / package licenses); vulnerabilities in raw + cyclonedx;
+// cryptography and geoprovenance only in raw.
+var formatLayers = map[string]map[scanpipeline.Layer]bool{
+	config.FormatRaw:       {scanpipeline.LayerDeps: true, scanpipeline.LayerLicenses: true, scanpipeline.LayerVulns: true, scanpipeline.LayerCrypto: true, scanpipeline.LayerGeo: true},
+	config.FormatCycloneDX: {scanpipeline.LayerDeps: true, scanpipeline.LayerLicenses: true, scanpipeline.LayerVulns: true},
+	config.FormatSPDX:      {scanpipeline.LayerDeps: true, scanpipeline.LayerLicenses: true},
+}
+
+// layerName is the readable name of a layer, for warnings.
+func layerName(l scanpipeline.Layer) string {
+	switch l {
+	case scanpipeline.LayerVulns:
+		return "vulnerabilities"
+	case scanpipeline.LayerCrypto:
+		return "cryptography"
+	case scanpipeline.LayerGeo:
+		return "geoprovenance"
+	case scanpipeline.LayerDeps:
+		return "dependencies"
+	default:
+		return string(l) // licenses
+	}
+}
+
+// unsupportedLayers returns the requested layers the format cannot render, in a stable order.
+func unsupportedLayers(format string, layers scanpipeline.Set) []scanpipeline.Layer {
+	caps := formatLayers[format]
+	var out []scanpipeline.Layer
+	for _, l := range []scanpipeline.Layer{scanpipeline.LayerDeps, scanpipeline.LayerLicenses, scanpipeline.LayerVulns, scanpipeline.LayerCrypto, scanpipeline.LayerGeo} {
+		if layers.Has(l) && !caps[l] {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// effectiveLayers returns the requested layers the format can actually render
+// (requested ∩ capabilities) — the set the fused scan command gathers, so it never fetches a
+// layer this format would drop.
+func effectiveLayers(format string, layers scanpipeline.Set) scanpipeline.Set {
+	caps := formatLayers[format]
+	eff := make(scanpipeline.Set, len(layers))
+	for l := range layers {
+		if caps[l] {
+			eff[l] = true
+		}
+	}
+	return eff
+}
+
+// reportSkippedLayers tells the user, up front, which requested layers the chosen format cannot
+// represent and so will not be gathered — grouped into a single warning rather than one line per
+// layer.
+func reportSkippedLayers(format string, layers scanpipeline.Set) {
+	skipped := unsupportedLayers(format, layers)
+	if len(skipped) == 0 {
+		return
+	}
+	names := make([]string, len(skipped))
+	for i, l := range skipped {
+		names[i] = layerName(l)
+	}
+	warnf("%s can't render %s — skipped", format, strings.Join(names, ", "))
 }
 
 // buildResultsCommand constructs the resume command printed for recovery.
@@ -130,7 +252,7 @@ func buildResultsCommand(scanID, apiURL, apiKey string) string {
 // printErrorSummary prints a summary if any files failed to fingerprint.
 func printErrorSummary(processErrors int) {
 	if processErrors > 0 {
-		fmt.Fprintf(os.Stderr, "Completed with %d processing errors\n", processErrors)
+		warnf("Completed with %d processing errors", processErrors)
 	}
 }
 
@@ -139,10 +261,10 @@ func printErrorSummary(processErrors int) {
 func validateOutputFormat(cmd *cobra.Command) error {
 	format, _ := cmd.Flags().GetString("format")
 	switch format {
-	case config.FormatPlain, config.FormatSPDX, config.FormatCycloneDX:
+	case config.FormatRaw, config.FormatSPDX, config.FormatCycloneDX:
 		return nil
 	default:
-		return fmt.Errorf("invalid output format %q: must be plain, spdx, or cyclonedx", format)
+		return fmt.Errorf("invalid output format %q: must be raw, spdx, or cyclonedx", format)
 	}
 }
 
@@ -201,11 +323,12 @@ func init() {
 	scanCmd.PersistentFlags().String("api-url", config.DefaultAPIURL, "SCANOSS API URL")
 	scanCmd.PersistentFlags().String("api-key", "", "API authentication token")
 	scanCmd.PersistentFlags().StringP("output", "o", "", "Output file (empty = stdout)")
-	scanCmd.PersistentFlags().StringP("format", "f", config.DefaultFormat, "Result output format: plain, spdx, cyclonedx")
+	scanCmd.PersistentFlags().StringP("format", "f", config.DefaultFormat, "Result output format: raw, spdx, cyclonedx")
 	scanCmd.PersistentFlags().String("settings", "", "Path to settings file (scanoss.json/settings.json)")
 	scanCmd.PersistentFlags().Int("chunk-size", scanoss.DefaultScanChunkBytes, "WFP upload chunk size in bytes")
 	scanCmd.PersistentFlags().Duration("poll-interval", scanoss.DefaultScanPollInterval, "How often to poll for scan status")
 	scanCmd.PersistentFlags().Bool("ignore-cert-errors", false, "Ignore TLS certificate errors (insecure)")
+	scanCmd.PersistentFlags().StringSlice("include", nil, "Output layers to gather (comma-separated): deps, vulns, licenses, crypto, geo")
 
 	// Fingerprinting flags (apply to `scan <path>` only).
 	scanCmd.Flags().IntP("threads", "t", config.DefaultThreads, "Number of parallel fingerprint workers")
@@ -215,9 +338,9 @@ func init() {
 	scanCmd.Flags().Bool("gitignore", true, "Honor .gitignore files when collecting files")
 }
 
-// runScan fingerprints a file or folder and scans the resulting WFP. A single
-// file is scanned directly; a directory is collected (applying the filters) and
-// every matching file is fingerprinted.
+// runScan fingerprints a file or folder and scans it. Collection, fingerprinting, the scan, and
+// enrichment all happen inside scanpipeline.Run; this command only gathers flags, renders
+// progress, and writes the result.
 func runScan(cmd *cobra.Command, args []string) error {
 	// No path given: show usage instead of a terse arg error or the auth banner.
 	if len(args) == 0 {
@@ -229,102 +352,83 @@ func runScan(cmd *cobra.Command, args []string) error {
 	if err := validateOutputFormat(cmd); err != nil {
 		return err
 	}
+	layers, err := scanLayers(cmd)
+	if err != nil {
+		return err
+	}
+	outputFormat, _ := cmd.Flags().GetString("format")
+	reportSkippedLayers(outputFormat, layers)
+	layers = effectiveLayers(outputFormat, layers) // don't gather what this format can't render
 
 	targetPath := args[0]
-	info, err := os.Stat(targetPath)
-	if err != nil {
+	if _, err := os.Stat(targetPath); err != nil {
 		return fmt.Errorf("error accessing path: %w", err)
 	}
 
 	threads, _ := cmd.Flags().GetInt("threads")
+	if threads < 1 {
+		threads = config.DefaultThreads
+	}
 	saveWFPFile, _ := cmd.Flags().GetString("save-wfp")
 	settingsFlag, _ := cmd.Flags().GetString("settings")
 	maxSize, _ := cmd.Flags().GetInt64("max-size")
 	applyDefaultFilters, _ := cmd.Flags().GetBool("default-filters")
 	applyGitignore, _ := cmd.Flags().GetBool("gitignore")
 
-	if threads < 1 {
-		threads = config.DefaultThreads
-	}
-
-	// Settings drive file filtering. Of the BOM rules, only bom.remove is applied:
-	// client-side, post-scan, via scanoss.WithBOM below (bom.include only protects
-	// its purls from that removal). bom.include is not yet honored server-side, and
-	// identify/ignore/replace are not applied.
+	// Settings drive file filtering. Of the BOM rules, only bom.remove is applied (SDK-side,
+	// post-scan, via WithBOM); identify/ignore/replace are not applied.
 	scanSettings, err := settings.Resolve(settingsFlag, targetPath)
 	if err != nil {
 		return fmt.Errorf("error loading settings: %w", err)
 	}
 
-	// Resolve the files to fingerprint: a directory is collected (and filtered),
-	// a single file is scanned as-is.
-	var files []string
-	if info.IsDir() {
-		collectResult, err := scanner.CollectFilesWithOptions(targetPath, filter.Options{
+	prog := &scanProgress{}
+	client := buildScanClient(cmd, prog)
+
+	ctx, cancel := createCancellableContext()
+	defer cancel()
+
+	result, err := scanpipeline.Run(ctx, scanpipeline.Options{
+		Client:     client,
+		Layers:     layers,
+		SourcePath: targetPath,
+		Threads:    threads,
+		Filter: filter.Options{
 			MaxSize:   maxSize,
 			Defaults:  applyDefaultFilters,
 			GitIgnore: applyGitignore,
 			Settings:  scanSettings.ScanFilter(),
-		})
-		if err != nil {
-			return fmt.Errorf("error collecting files: %w", err)
-		}
-		files = collectResult.Files
-		if collectResult.SkippedCount > 0 {
-			fmt.Fprintf(os.Stderr, "Filtered %d files\n", collectResult.SkippedCount)
-		}
-	} else {
-		abs, absErr := filepath.Abs(targetPath)
-		if absErr != nil {
-			abs = targetPath
-		}
-		files = []string{abs}
+		},
+		ScanOptions: scanTuning(cmd, scanSettings),
+		OnCollect: func(skipped int) {
+			if skipped > 0 {
+				infof("Filtered %d files", skipped)
+			}
+		},
+		OnFingerprint:  prog.fingerprint,
+		OnDependencies: prog.dependencies,
+	})
+	prog.finish()
+	if err != nil {
+		return renderAPIError(fmt.Errorf("scan failed: %w", err))
 	}
-	if len(files) == 0 {
-		fmt.Fprintf(os.Stderr, "No valid files found to process\n")
-		return nil
-	}
-
-	// Report result paths relative to the scanned root (the folder, or the file's
-	// directory for a single-file scan), so the WFP carries relative labels.
-	scanRoot := targetPath
-	if !info.IsDir() {
-		scanRoot = filepath.Dir(targetPath)
-	}
-	if abs, absErr := filepath.Abs(scanRoot); absErr == nil {
-		scanRoot = abs
-	}
-
-	// Fingerprint all files and assemble the WFP.
-	fpBar := progressbar.NewOptions(len(files),
-		progressbar.OptionSetDescription("Fingerprinting"),
-		progressbar.OptionSetWriter(os.Stderr),
-		progressbar.OptionShowCount(),
-		progressbar.OptionSetWidth(40),
-		progressbar.OptionOnCompletion(func() { fmt.Fprintln(os.Stderr) }),
-	)
-	wfp, procErrors := generateWFP(files, threads, scanRoot, fpBar)
-	_ = fpBar.Finish()
-
-	if len(wfp) == 0 {
-		fmt.Fprintln(os.Stderr, "No fingerprints generated")
-		printErrorSummary(procErrors)
-		return nil
-	}
-
-	if saveWFPFile != "" {
-		if err := os.WriteFile(saveWFPFile, wfp, 0o644); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to write WFP file: %v\n", err)
+	if saveWFPFile != "" && len(result.WFP) > 0 {
+		if err := os.WriteFile(saveWFPFile, result.WFP, 0o644); err != nil {
+			warnf("failed to write WFP file: %v", err)
 		} else {
-			fmt.Fprintf(os.Stderr, "WFP fingerprints saved to: %s\n", saveWFPFile)
+			okf("WFP fingerprints saved to %s", saveWFPFile)
 		}
 	}
 
-	return uploadAndWrite(cmd, wfp, scanSettings, procErrors, targetPath)
+	if err := emitInventory(cmd, result.Inventory, targetPath); err != nil {
+		return err
+	}
+	printErrorSummary(result.ProcessErrors)
+	return nil
 }
 
-// runScanWFP uploads a pre-generated WFP file and scans it directly (no
-// fingerprinting).
+// runScanWFP scans a pre-generated WFP file directly (no fingerprinting). A bare WFP has no
+// source tree, so the deps layer cannot be sourced; it uses the lower-level scanpipeline.Build.
 func runScanWFP(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
 		return cmd.Help()
@@ -335,6 +439,16 @@ func runScanWFP(cmd *cobra.Command, args []string) error {
 	if err := validateOutputFormat(cmd); err != nil {
 		return err
 	}
+	layers, err := scanLayers(cmd)
+	if err != nil {
+		return err
+	}
+	if layers.Has(scanpipeline.LayerDeps) {
+		warnf("the deps layer needs a source tree; ignored when scanning a WFP file")
+	}
+	outputFormat, _ := cmd.Flags().GetString("format")
+	reportSkippedLayers(outputFormat, layers)
+	layers = effectiveLayers(outputFormat, layers) // don't gather what this format can't render
 
 	wfpPath := args[0]
 	info, err := os.Stat(wfpPath)
@@ -344,7 +458,6 @@ func runScanWFP(cmd *cobra.Command, args []string) error {
 	if info.IsDir() {
 		return fmt.Errorf("%q is a directory; expected a WFP file", wfpPath)
 	}
-
 	wfp, err := os.ReadFile(wfpPath)
 	if err != nil {
 		return fmt.Errorf("error reading WFP file: %w", err)
@@ -359,61 +472,13 @@ func runScanWFP(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error loading settings: %w", err)
 	}
 
-	return uploadAndWrite(cmd, wfp, scanSettings, 0, wfpPath)
-}
-
-// uploadAndWrite builds the SDK client, uploads the assembled WFP to the v3 batch
-// scan API, applies any bom.remove rules from settings, and writes the result in the
-// requested format (raw JSON, CycloneDX, or SPDX Lite). procErrors is the count of
-// files that failed to fingerprint (0 for a WFP file). scanPath is the scan input path,
-// used to name the SBOM project.
-func uploadAndWrite(cmd *cobra.Command, wfp []byte, scanSettings *settings.Settings, procErrors int, scanPath string) error {
-	apiURL, _ := cmd.Flags().GetString("api-url")
-	apiKey, _ := cmd.Flags().GetString("api-key")
-	outputFile, _ := cmd.Flags().GetString("output")
-	chunkSize, _ := cmd.Flags().GetInt("chunk-size")
-	pollInterval, _ := cmd.Flags().GetDuration("poll-interval")
-	ignoreCertErrors, _ := cmd.Flags().GetBool("ignore-cert-errors")
-	outputFormat, _ := cmd.Flags().GetString("format")
-
-	if chunkSize < 1024 {
-		chunkSize = scanoss.DefaultScanChunkBytes
-	}
-
-	writer, err := output.NewWriter(outputFile)
-	if err != nil {
-		return fmt.Errorf("error creating output writer: %w", err)
-	}
-	defer func() { _ = writer.Close() }()
-
-	// Build the SDK client. The scan-id notify hook prints the recovery command.
 	prog := &scanProgress{}
-	opts := []scanoss.Option{
-		scanoss.WithAPIURL(apiURL),
-		scanoss.WithAPIKey(apiKey),
-		scanoss.WithProgress(prog.fn),
-		scanoss.WithScanIDNotify(func(id string) {
-			prog.finishUpload()
-			fmt.Fprintf(os.Stderr, "\nScan id: %s\n", id)
-			fmt.Fprintf(os.Stderr, "If interrupted, resume with:\n%s\n\n", buildResultsCommand(id, apiURL, apiKey))
-		}),
-	}
-	if ignoreCertErrors {
-		slog.Warn("ignoring TLS certificate errors (insecure)")
-		opts = append(opts, scanoss.WithInsecureTLS(true))
-	}
-	client := scanoss.New(opts...)
+	client := buildScanClient(cmd, prog)
 
 	ctx, cancel := createCancellableContext()
 	defer cancel()
 
-	// The scan applies bom.remove itself when a BOM is configured (SDK-side).
-	scanOpts := []scanoss.ScanOption{scanoss.WithChunkBytes(chunkSize), scanoss.WithPollInterval(pollInterval)}
-	if scanSettings != nil && scanSettings.HasBOM() {
-		scanOpts = append(scanOpts, scanoss.WithBOM(&scanSettings.BOM))
-	}
-
-	res, err := client.Scan.WFP(ctx, wfp, scanOpts...)
+	res, err := client.Scan.WFP(ctx, wfp, scanTuning(cmd, scanSettings)...)
 	if err != nil {
 		return renderAPIError(fmt.Errorf("scan failed: %w", err))
 	}
@@ -421,102 +486,106 @@ func uploadAndWrite(cmd *cobra.Command, wfp []byte, scanSettings *settings.Setti
 		return fmt.Errorf("scan completed without a result")
 	}
 
-	out, err := renderResult(ctx, client, res.Result, outputFormat, scanPath)
+	inv, err := scanpipeline.Build(ctx, client, res.Result, layers, nil)
+	prog.finish()
+	if err != nil {
+		return err
+	}
+	return emitInventory(cmd, inv, wfpPath)
+}
+
+// buildScanClient constructs the SDK client from the shared scan flags, wiring the progress
+// renderer (scan + per-layer, keyed by Service) and the scan-id notify hook.
+func buildScanClient(cmd *cobra.Command, prog *scanProgress) *scanoss.Client {
+	apiURL, _ := cmd.Flags().GetString("api-url")
+	apiKey, _ := cmd.Flags().GetString("api-key")
+	ignoreCertErrors, _ := cmd.Flags().GetBool("ignore-cert-errors")
+
+	opts := []scanoss.Option{
+		scanoss.WithAPIURL(apiURL),
+		scanoss.WithAPIKey(apiKey),
+		scanoss.WithProgress(prog.fn),
+		scanoss.WithScanIDNotify(func(id string) {
+			prog.writeLine("") // separate the scan-id block from the filter/skip notices above
+			prog.writeLine(infoLine("Scan id: %s", id))
+			prog.writeLine("  If interrupted, resume with:\n  " + buildResultsCommand(id, apiURL, apiKey))
+			prog.writeLine("") // separate the resume hint from the progress bars below
+		}),
+	}
+	if ignoreCertErrors {
+		slog.Warn("ignoring TLS certificate errors (insecure)")
+		opts = append(opts, scanoss.WithInsecureTLS(true))
+	}
+	return scanoss.New(opts...)
+}
+
+// scanTuning builds the per-scan options (chunk size, poll interval, and bom.remove) from the
+// flags and settings.
+func scanTuning(cmd *cobra.Command, scanSettings *settings.Settings) []scanoss.ScanOption {
+	chunkSize, _ := cmd.Flags().GetInt("chunk-size")
+	pollInterval, _ := cmd.Flags().GetDuration("poll-interval")
+	if chunkSize < 1024 {
+		chunkSize = scanoss.DefaultScanChunkBytes
+	}
+	scanOpts := []scanoss.ScanOption{scanoss.WithChunkBytes(chunkSize), scanoss.WithPollInterval(pollInterval)}
+	if scanSettings != nil && scanSettings.HasBOM() {
+		scanOpts = append(scanOpts, scanoss.WithBOM(&scanSettings.BOM))
+	}
+	return scanOpts
+}
+
+// emitInventory renders inv in the --format and writes it to the --output target. scanPath names
+// the SBOM project.
+func emitInventory(cmd *cobra.Command, inv sbom.Inventory, scanPath string) error {
+	outputFile, _ := cmd.Flags().GetString("output")
+	outputFormat, _ := cmd.Flags().GetString("format")
+
+	writer, err := output.NewWriter(outputFile)
+	if err != nil {
+		return fmt.Errorf("error creating output writer: %w", err)
+	}
+	defer func() { _ = writer.Close() }()
+
+	projectName := filepath.Base(scanPath)
+	if projectName == "." || projectName == "/" {
+		projectName = "" // let the sbom module apply its default
+	}
+	out, err := renderInventory(inv, outputFormat, projectName)
 	if err != nil {
 		return err
 	}
 	if err := writer.Write(out); err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing: %v\n", err)
+	} else if outputFile != "" {
+		okf("Results written to %s", outputFile)
 	}
-	printErrorSummary(procErrors)
 	return nil
 }
 
-// renderResult turns a scan result into the requested output. "plain" is the raw v3
-// result JSON; cyclonedx/spdx are built via the sbom module, with licenses (and, for
-// cyclonedx, vulnerabilities) fetched from the decoration services (non-fatal on
-// failure).
-func renderResult(ctx context.Context, client *scanoss.Client, result *scanossapi.ScanResult, format, scanPath string) (string, error) {
-	switch format {
-	case config.FormatPlain:
-		raw, err := json.MarshalIndent(result, "", "  ")
+// scanLayers reads and validates the --include flag into a scanpipeline layer set. Gathering
+// is driven by this set — never by the output format (FR-001).
+func scanLayers(cmd *cobra.Command) (scanpipeline.Set, error) {
+	values, _ := cmd.Flags().GetStringSlice("include")
+	return scanpipeline.ParseLayers(values)
+}
+
+// renderInventory renders a gathered inventory in the requested format. raw wraps the inventory
+// in the versioned envelope (sbom.RawDocument) as JSON; cyclonedx/spdx project it to an SBOM,
+// dropping what they cannot represent.
+func renderInventory(inv sbom.Inventory, format, projectName string) (string, error) {
+	if format == config.FormatRaw {
+		doc := sbom.NewRawDocument(inv, sbom.RawMetadata{
+			Tool: config.AppName, ToolVersion: config.AppVersion, Project: projectName,
+		})
+		raw, err := doc.Marshal()
 		if err != nil {
 			return "", fmt.Errorf("error encoding results: %w", err)
 		}
-		return string(raw), nil
-	case config.FormatSPDX, config.FormatCycloneDX:
-		// build the SBOM below
-	default:
-		return "", fmt.Errorf("unsupported output format: %q", format)
-	}
-
-	inv := scansource.FromScanResult(result)
-
-	// Attach declared licenses from the decoration service, matched to each component
-	// by PURL + version (the queried version, echoed back as the response requirement).
-	if byKey := fetchLicenses(ctx, client, inv); len(byKey) > 0 {
-		for i := range inv.Components {
-			c := &inv.Components[i]
-			c.Licenses = byKey[scansource.LicenseKey(c.Purl, c.Version)]
-		}
-	}
-
-	if format == config.FormatCycloneDX {
-		inv.Vulnerabilities = fetchVulnerabilities(ctx, client, inv)
-	}
-
-	projectName := filepath.Base(scanPath)
-	if projectName == "." || projectName == "/" {
-		projectName = "" // let the sbom module apply its default
+		return raw, nil
 	}
 	out, err := sbom.Generate(inv, sbom.Format(format), sbom.WithProjectName(projectName))
 	if err != nil {
 		return "", fmt.Errorf("error generating %s output: %w", format, err)
 	}
 	return out, nil
-}
-
-// componentPurls returns the PURLs of the inventory's components.
-func componentPurls(inv sbom.Inventory) []string {
-	purls := make([]string, 0, len(inv.Components))
-	for _, c := range inv.Components {
-		purls = append(purls, c.Purl)
-	}
-	return purls
-}
-
-// fetchLicenses fetches declared licenses from the decoration service, keyed by PURL.
-// Each component is queried at its matched version (as the requirement) so the service
-// resolves the license for that version. Failure is non-fatal: it warns and returns nil
-// so the SBOM is still produced.
-func fetchLicenses(ctx context.Context, client *scanoss.Client, inv sbom.Inventory) map[string][]sbom.License {
-	if len(inv.Components) == 0 {
-		return nil
-	}
-	comps := make([]scanoss.Component, 0, len(inv.Components))
-	for _, c := range inv.Components {
-		comps = append(comps, scanoss.Component{Purl: c.Purl, Requirement: c.Version})
-	}
-	resp, err := client.Licenses.Components(ctx, comps)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: could not fetch licenses: %v\n", err)
-		return nil
-	}
-	return scansource.LicensesFrom(resp)
-}
-
-// fetchVulnerabilities decorates the inventory's components with known vulnerabilities
-// via the decoration service. Failure is non-fatal: it warns and returns nil so the
-// SBOM is still produced.
-func fetchVulnerabilities(ctx context.Context, client *scanoss.Client, inv sbom.Inventory) []sbom.Vulnerability {
-	purls := componentPurls(inv)
-	if len(purls) == 0 {
-		return nil
-	}
-	resp, err := client.Vulnerabilities.Components(ctx, scanoss.Components(purls...))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: could not fetch vulnerabilities: %v\n", err)
-		return nil
-	}
-	return scansource.VulnerabilitiesFrom(resp)
 }
