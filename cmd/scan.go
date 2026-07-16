@@ -24,7 +24,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -551,40 +550,19 @@ func scanLayers(cmd *cobra.Command) (scanpipeline.Set, error) {
 	return scanpipeline.ParseLayers(values)
 }
 
-// rawSchemaVersion is the version of the raw inventory document. Bump on a breaking shape change.
-const rawSchemaVersion = "1.0"
-
-// rawDoc is the raw output document: the inventory wrapped in a versioned envelope. The
-// embedded Inventory promotes its `components` / `vulnerabilities` keys to the top level, so the
-// document is `{schema_version, metadata, components, vulnerabilities}` — the interchange
-// contract for a future scan → enrich → sbom pipe.
-type rawDoc struct {
-	SchemaVersion string      `json:"schema_version"`
-	Metadata      rawMetadata `json:"metadata"`
-	sbom.Inventory
-}
-
-type rawMetadata struct {
-	Tool        string `json:"tool"`
-	ToolVersion string `json:"tool_version"`
-	Project     string `json:"project,omitempty"`
-}
-
 // renderInventory renders a gathered inventory in the requested format. raw wraps the inventory
-// in the versioned envelope as JSON; cyclonedx/spdx project it to an SBOM, dropping what they
-// cannot represent.
+// in the versioned envelope (sbom.RawDocument) as JSON; cyclonedx/spdx project it to an SBOM,
+// dropping what they cannot represent.
 func renderInventory(inv sbom.Inventory, format, projectName string) (string, error) {
 	if format == config.FormatRaw {
-		doc := rawDoc{
-			SchemaVersion: rawSchemaVersion,
-			Metadata:      rawMetadata{Tool: config.AppName, ToolVersion: config.AppVersion, Project: projectName},
-			Inventory:     inv,
-		}
-		raw, err := json.MarshalIndent(doc, "", "  ")
+		doc := sbom.NewRawDocument(inv, sbom.RawMetadata{
+			Tool: config.AppName, ToolVersion: config.AppVersion, Project: projectName,
+		})
+		raw, err := doc.Marshal()
 		if err != nil {
 			return "", fmt.Errorf("error encoding results: %w", err)
 		}
-		return string(raw), nil
+		return raw, nil
 	}
 	out, err := sbom.Generate(inv, sbom.Format(format), sbom.WithProjectName(projectName))
 	if err != nil {

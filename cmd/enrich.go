@@ -153,8 +153,8 @@ func identifyAndParse(data []byte) (sbom.Inventory, string, error) {
 		inv, err := sbom.ParseSPDX(data)
 		return inv, config.FormatSPDX, err
 	default:
-		var inv sbom.Inventory
-		if err := json.Unmarshal(data, &inv); err != nil {
+		inv, err := sbom.ParseRaw(data)
+		if err != nil {
 			return sbom.Inventory{}, "", fmt.Errorf("unrecognized input: not a scanoss raw inventory, CycloneDX, or SPDX document: %w", err)
 		}
 		return inv, config.FormatRaw, nil
