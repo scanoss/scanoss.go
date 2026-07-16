@@ -17,9 +17,10 @@ Atomic, one commit each; tree builds and `make check` stays green after every st
   `raw|spdx|cyclonedx`. Reuse `buildScanClient`/`scanProgress`. (FR-001, FR-002, FR-004, FR-007,
   FR-008, FR-009)
 
-- [ ] **T3 — deps rejection + format-capability warnings.** In `runEnrich`: warn and drop
-  `--include deps` (no source tree); apply `reportSkippedLayers` + `effectiveLayers` for the
-  output format — reusing the existing helpers, no duplication. (FR-005, FR-006)
+- [ ] **T3 — deps rejection + format-capability warnings.** In `runEnrich`: **error** on
+  `--include deps` (not a valid enrich layer — deps can't be derived from a components list);
+  apply `reportSkippedLayers` + `effectiveLayers` for the output format — reusing the existing
+  helpers, no duplication. (FR-005, FR-006)
 
 - [ ] **T4 — Command tests.** `cmd/enrich_test.go` (stub decoration client): `identifyAndParse`
   table (cyclonedx/spdx/raw; v3 result + garbage error); raw→raw default; spdx→spdx with `vulns`

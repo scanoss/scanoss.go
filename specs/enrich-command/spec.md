@@ -109,8 +109,9 @@ keeps everything. This uses the **same** `formatLayers` / `unsupportedLayers` /
 3. **Given** a CycloneDX document, **when** `enrich sbom.cdx.json --include vulns,licenses
    --format spdx`, **then** an SPDX document is written; `vulns` is skipped with a warning; enrich
    and convert-to-spdx happen in one pass.
-4. **Given** `--include deps`, **then** a warning notes deps needs a source tree and is ignored;
-   any other requested layers still run.
+4. **Given** `--include deps`, **then** the command errors up front — deps is not a valid enrich
+   layer (dependency analysis needs a manifest/source tree, not a components list) — and no output
+   is written.
 5. **Given** a decoration service that errors, **then** a warning is logged and a **partial**
    enriched inventory is still written (non-fatal, as in the scan pipeline).
 6. **Given** an unrecognized/malformed input, **then** the command errors clearly without writing
@@ -139,8 +140,9 @@ keeps everything. This uses the **same** `formatLayers` / `unsupportedLayers` /
 - **FR-004 (purl-layers only)** `enrich` gathers only the purl-keyed layers `vulns`, `licenses`,
   `crypto`, `geo`. Requested layers refresh (replace) their data; unrequested layers are left
   untouched (re-runnable).
-- **FR-005 (deps rejected)** `--include deps` is not supported (no source tree); warn and ignore
-  it, mirroring the `scan wfp` deps warning. Other requested layers still run.
+- **FR-005 (deps rejected)** `deps` is not a valid enrich layer: dependency analysis needs a
+  manifest/source tree and cannot be derived from a components list. `--include deps` errors up
+  front (no output). Only the purl-keyed layers `vulns`/`licenses`/`crypto`/`geo` are accepted.
 - **FR-006 (format-capability warnings, reused)** Narrow the requested layers to what the output
   format can render and report each skipped layer up front, using the **existing**
   `formatLayers`/`unsupportedLayers`/`effectiveLayers`/`reportSkippedLayers` — no second copy.

@@ -40,8 +40,8 @@ mapping stays in `pkg/scanpipeline`, exactly where it is today.
 - Flow in `runEnrich`:
   1. `checkAuth(cmd)`.
   2. Read the file; `identifyAndParse` → `(inv, inputFormat)`.
-  3. `layers := scanLayers(cmd)` (reuse). If `layers.Has(LayerDeps)`: warn "deps needs a source
-     tree; ignored", drop it (mirror `runScanWFP`).
+  3. `layers := scanLayers(cmd)` (reuse). If `layers.Has(LayerDeps)`: **error** — deps is not a
+     valid enrich layer (can't be derived from a components list); no output.
   4. `outputFormat` = `--format` if set, else `inputFormat`; `validateOutputFormat`-style check
      to `raw|spdx|cyclonedx`.
   5. `reportSkippedLayers(outputFormat, layers)` + `layers = effectiveLayers(outputFormat,
