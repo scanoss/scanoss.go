@@ -37,12 +37,12 @@ import (
 //     component (single GET / batch POST), plus SPDX-registry details and OSADL
 //     obligations keyed by license id.
 var (
-	ServiceLicenseAttribution  = Service{name: "license.attribution", endpoint: "/v3/license/attribution"}
-	ServiceLicenseEvidence     = Service{name: "license.evidence", endpoint: "/v3/license/evidence"}
-	ServiceLicenses            = Service{name: "licenses", endpoint: "/v3/licenses"}
-	ServiceLicense             = Service{name: "license", endpoint: "/v3/licenses"}
-	ServiceLicensesDetails     = Service{name: "licenses.details", endpoint: "/v3/licenses/details"}
-	ServiceLicensesObligations = Service{name: "licenses.obligations", endpoint: "/v3/licenses/obligations"}
+	ServiceLicenseAttribution  = Service{Name: "license.attribution", endpoint: "/v3/license/attribution"}
+	ServiceLicenseEvidence     = Service{Name: "license.evidence", endpoint: "/v3/license/evidence"}
+	ServiceLicenses            = Service{Name: "licenses", endpoint: "/v3/licenses"}
+	ServiceLicense             = Service{Name: "license", endpoint: "/v3/licenses"}
+	ServiceLicensesDetails     = Service{Name: "licenses.details", endpoint: "/v3/licenses/details"}
+	ServiceLicensesObligations = Service{Name: "licenses.obligations", endpoint: "/v3/licenses/obligations"}
 )
 
 // LicenseAPI is the licenses service surface. Responses are typed from the

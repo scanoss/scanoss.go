@@ -41,12 +41,12 @@ const (
 	MinFileSize = 100
 
 	// Output format constants
-	FormatPlain     = "plain"
+	FormatRaw       = "raw"
 	FormatSPDX      = "spdx"
 	FormatCycloneDX = "cyclonedx"
 
 	// DefaultFormat is the default output format
-	DefaultFormat = FormatPlain
+	DefaultFormat = FormatRaw
 
 	// AppName is the application name used in SBOM metadata
 	AppName = "scanoss"

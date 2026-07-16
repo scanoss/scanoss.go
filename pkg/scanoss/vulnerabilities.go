@@ -32,10 +32,10 @@ import (
 // Vulnerability service endpoints: known vulnerabilities and CPEs, each as a
 // batch (POST, many components) and a single (GET, one component) endpoint.
 var (
-	ServiceVulnerabilities   = Service{name: "vulnerabilities", endpoint: "/v3/vulnerabilities/vulnerabilities"}
-	ServiceVulnerability     = Service{name: "vulnerability", endpoint: "/v3/vulnerabilities/vulnerabilities"}
-	ServiceVulnerabilityCpes = Service{name: "vulnerabilities.cpes", endpoint: "/v3/vulnerabilities/cpes"}
-	ServiceVulnerabilityCpe  = Service{name: "vulnerability.cpes", endpoint: "/v3/vulnerabilities/cpes"}
+	ServiceVulnerabilities   = Service{Name: "vulnerabilities", endpoint: "/v3/vulnerabilities/vulnerabilities"}
+	ServiceVulnerability     = Service{Name: "vulnerability", endpoint: "/v3/vulnerabilities/vulnerabilities"}
+	ServiceVulnerabilityCpes = Service{Name: "vulnerabilities.cpes", endpoint: "/v3/vulnerabilities/cpes"}
+	ServiceVulnerabilityCpe  = Service{Name: "vulnerability.cpes", endpoint: "/v3/vulnerabilities/cpes"}
 )
 
 // VulnerabilityAPI is the vulnerabilities service surface. Responses are typed
