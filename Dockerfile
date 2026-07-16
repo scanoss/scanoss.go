@@ -4,5 +4,5 @@
 FROM gcr.io/distroless/static:nonroot
 ARG TARGETOS
 ARG TARGETARCH
-COPY ${TARGETOS}/${TARGETARCH}/scanoss /usr/local/bin/scanoss
-ENTRYPOINT ["/usr/local/bin/scanoss"]
+COPY ${TARGETOS}/${TARGETARCH}/scanoss-cli /usr/local/bin/scanoss-cli
+ENTRYPOINT ["/usr/local/bin/scanoss-cli"]
