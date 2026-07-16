@@ -11,45 +11,14 @@ version.
 
 ## Architecture
 
-```
-scanoss/
-├── cmd/                    # CLI commands (Cobra)
-│   ├── root.go            # Root command
-│   ├── scan.go            # scan (+ scan wfp subcommand)
-│   ├── wfp.go             # wfp (fingerprint only)
-│   ├── results.go         # results (resume/poll a scan by id)
-│   ├── dependencies.go    # dependencies
-│   ├── attributions.go    # attributions
-│   ├── vulnerabilities.go / cryptography.go / licenses.go
-│   ├── geoprovenance.go / copyright.go / components.go
-│   ├── auth.go, purlcommon.go, helpers.go, httpclient.go
-│   └── scanoss/           # main package — CLI entrypoint (go install target)
-│
-├── internal/
-│   ├── config/            # Defaults
-│   ├── models/            # Data models
-│   └── version/           # Build/tag version (single source)
-│
-├── pkg/                    # Reusable packages
-│   ├── scanoss/           # Go SDK (scan + decoration services, pipeline)
-│   ├── scanner/           # Worker pool + file collection
-│   ├── fingerprint/       # WFP fingerprinting
-│   ├── filter/            # File filtering (defaults + scanoss.json + .gitignore)
-│   ├── batch/             # Fingerprint batching
-│   ├── dependencies/      # Local manifest dependency parsing
-│   ├── sbom/              # SBOM generation (SPDX, CycloneDX)
-│   ├── postprocess/       # BOM post-processing helpers
-│   ├── output/            # Result writing
-│   ├── settings/          # scanoss.json parsing (BOM + skip)
-│   └── api/               # Low-level HTTP client
-│
-├── libscanoss/            # C-shared library + Python/Node wrappers
-└── go.mod
-```
+- `cmd/` — the CLI (Cobra); `cmd/scanoss` is the `go install` entrypoint.
+- `pkg/` — the reusable Go SDK: scan and decoration services, fingerprinting,
+  file filtering, SBOM read/write, and the low-level API client.
+- `internal/` — private helpers (config, version).
+- `libscanoss/` — C shared library with Python and Node.js wrappers.
 
-OpenAPI types come from the published SDK
-`github.com/scanoss/scanoss.api-sdk` (imported as `scanossapi`); there is no
-local codegen step.
+OpenAPI types come from the published SDK `github.com/scanoss/scanoss.api-sdk`
+(imported as `scanossapi`); there is no local codegen step.
 
 ## Installation
 
