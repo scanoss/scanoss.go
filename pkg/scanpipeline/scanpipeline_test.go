@@ -132,6 +132,31 @@ func TestBuildEnrichesDetected(t *testing.T) {
 	}
 }
 
+// TestEnrichHandBuiltInventory proves the exported Enrich decorates an inventory that never came
+// from a scan — the enrich command's entry point (parse an SBOM into an Inventory, then Enrich it
+// with no fingerprinting or scan). Layers attach by PURL just as on the scan path.
+func TestEnrichHandBuiltInventory(t *testing.T) {
+	srv := decorationServer()
+	defer srv.Close()
+	client := scanoss.New(scanoss.WithAPIURL(srv.URL), scanoss.WithAPIKey("x"))
+
+	inv := sbom.Inventory{Components: []sbom.Component{
+		{Purl: "pkg:npm/lodash", Version: "4.17.20"},
+	}}
+	Enrich(context.Background(), client, &inv, Set{LayerLicenses: true, LayerVulns: true})
+
+	lodash := findComponent(inv, "pkg:npm/lodash")
+	if lodash == nil {
+		t.Fatal("component pkg:npm/lodash missing")
+	}
+	if len(lodash.Licenses) != 1 || lodash.Licenses[0].ID != "MIT" {
+		t.Errorf("expected MIT license on lodash, got %v", lodash.Licenses)
+	}
+	if !hasVuln(inv, "CVE-2021-23337") {
+		t.Errorf("expected CVE-2021-23337, got %v", inv.Vulnerabilities)
+	}
+}
+
 // TestBuildLayersAreOptIn proves no purl-layer is gathered unless requested: a bare Build
 // enriches nothing, so a plain scan does no decoration work.
 func TestBuildLayersAreOptIn(t *testing.T) {

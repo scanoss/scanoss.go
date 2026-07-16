@@ -260,7 +260,7 @@ func assemble(ctx context.Context, client *scanoss.Client, result *scanossapi.Sc
 	inv.Components = append(inv.Components, declaredComps...)
 	inv.Components = dedupeComponents(inv.Components)
 	if len(inv.Components) > 0 {
-		enrich(ctx, client, &inv, layers)
+		Enrich(ctx, client, &inv, layers)
 	}
 	return inv
 }
@@ -301,11 +301,14 @@ func mergeComponent(dst *sbom.Component, src sbom.Component) {
 	}
 }
 
-// enrich runs the decoration pipeline over the inventory's components and attaches the requested
+// Enrich runs the decoration pipeline over the inventory's components and attaches the requested
 // purl-layers in place — licenses/cryptography/geoprovenance inline on each component,
-// vulnerabilities as the flat top-level list. Each layer is opt-in (driven by the requested set,
-// never the output format); with no purl-layer requested it makes no API call.
-func enrich(ctx context.Context, client *scanoss.Client, inv *sbom.Inventory, layers Set) {
+// vulnerabilities as the flat top-level list. It is the pipeline's format-blind enrichment stage,
+// keyed purely by PURL (+ version): the scan path reaches it through Build/Run, and the enrich
+// command calls it directly on an inventory parsed from an existing SBOM — no scan required. Each
+// layer is opt-in (driven by the requested set, never the output format); with no purl-layer
+// requested it makes no API call. Enrichment is non-fatal: a failed service is logged and skipped.
+func Enrich(ctx context.Context, client *scanoss.Client, inv *sbom.Inventory, layers Set) {
 	var services []scanoss.Service
 	if layers.Has(LayerLicenses) {
 		services = append(services, scanoss.ServiceLicenses)
