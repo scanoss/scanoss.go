@@ -29,26 +29,64 @@ package sbom
 
 import "strings"
 
-// Inventory is the neutral, format-agnostic bill of materials: the components to emit
-// and the vulnerabilities affecting them. Build it directly, or via the scansource
-// adapters from a scan result.
+// Inventory is the neutral, format-agnostic bill of materials and the core of the CLI's raw
+// output. Detected components (scan matches) and declared dependency components live in ONE
+// Components list, tagged by Component.Scope, so enrichment decorates the union origin-agnostic.
+// Per-component layers (licenses, cryptography, geoprovenance) attach inline on each component;
+// vulnerabilities are a flat top-level list joined to components by base PURL. Build it directly,
+// or via the scansource adapters from a scan result.
 type Inventory struct {
-	Components      []Component
-	Vulnerabilities []Vulnerability
+	Components      []Component     `json:"components"`
+	Vulnerabilities []Vulnerability `json:"vulnerabilities,omitempty"`
 }
 
-// Component is one detected component to emit in the SBOM.
+// Component is one component in the inventory: identity, scope, scan evidence, and the
+// per-component enrichment layers attached inline. Vulnerabilities are not stored here — they
+// are the Inventory's flat top-level list, joined back by PURL.
 type Component struct {
-	Purl             string         // canonical PURL (identity), e.g. "pkg:github/scanoss/engine"
-	AliasPurls       []string       // additional PURLs identifying the same component (beyond Purl)
-	Vendor           string         // supplier / namespace
-	Name             string         // component name
-	Version          string         // resolved version; "" renders as "NOASSERTION"
-	URL              string         // homepage / source URL ("" => no externalReference)
-	URLHash          string         // SCANOSS url_hash (SPDX package checksum)
-	Licenses         []License      // declared and/or concluded licenses
-	DownloadLocation string         // download location (defaults to URL)
-	Files            []FileEvidence // scanned files that matched this component
+	Purl             string            `json:"purl"`                        // canonical PURL (identity), e.g. "pkg:github/scanoss/engine"
+	Scope            ComponentScope    `json:"scope,omitempty"`             // detected (from the scan) | declared (from a manifest); "" == detected
+	AliasPurls       []string          `json:"alias_purls,omitempty"`       // additional PURLs identifying the same component (beyond Purl)
+	Vendor           string            `json:"vendor,omitempty"`            // supplier / namespace
+	Name             string            `json:"name,omitempty"`              // component name
+	Version          string            `json:"version,omitempty"`           // resolved version; "" renders as "NOASSERTION"
+	URL              string            `json:"url,omitempty"`               // homepage / source URL ("" => no externalReference)
+	URLHash          string            `json:"url_hash,omitempty"`          // SCANOSS url_hash (SPDX package checksum)
+	Licenses         []License         `json:"licenses,omitempty"`          // declared and/or concluded licenses (licenses layer)
+	Cryptography     []CryptoAlgorithm `json:"cryptography,omitempty"`      // cryptographic algorithms detected (crypto layer)
+	Geoprovenance    []GeoLocation     `json:"geoprovenance,omitempty"`     // contributor geographic origin (geo layer)
+	DownloadLocation string            `json:"download_location,omitempty"` // download location (defaults to URL)
+	Evidence         []FileEvidence    `json:"evidence,omitempty"`          // where the component came from: scanned files that matched, or the manifest that declared it
+}
+
+// CryptoAlgorithm is a cryptographic algorithm detected in a component (crypto layer).
+type CryptoAlgorithm struct {
+	Algorithm string `json:"algorithm"`
+	Strength  string `json:"strength,omitempty"`
+}
+
+// GeoLocation is one geographic origin of a component's contributors (geo layer), with the
+// share of contribution when known.
+type GeoLocation struct {
+	Name       string  `json:"name"`
+	Percentage float64 `json:"percentage,omitempty"`
+}
+
+// ComponentScope records how a component entered the inventory.
+type ComponentScope string
+
+const (
+	// ScopeDetected marks a component found by the scan (an OSS match). The zero value is
+	// treated as detected.
+	ScopeDetected ComponentScope = "detected"
+	// ScopeDeclared marks a component declared in a dependency manifest.
+	ScopeDeclared ComponentScope = "declared"
+)
+
+// IsDeclared reports whether the component is a declared dependency rather than a
+// scan-detected match. The zero-value scope counts as detected.
+func (c Component) IsDeclared() bool {
+	return c.Scope == ScopeDeclared
 }
 
 // AllPurls returns the canonical Purl followed by any AliasPurls.
@@ -72,28 +110,42 @@ const (
 // License is a single license on a component, with its acknowledgement. The same id may
 // appear more than once (e.g. both declared and concluded).
 type License struct {
-	ID              string                 // SPDX id or "LicenseRef-*", e.g. "GPL-2.0-only"
-	Acknowledgement LicenseAcknowledgement // declared (default) | concluded
+	ID              string                 `json:"id"`                        // SPDX id or "LicenseRef-*", e.g. "GPL-2.0-only"
+	Acknowledgement LicenseAcknowledgement `json:"acknowledgement,omitempty"` // declared (default) | concluded
 }
 
-// FileEvidence is one scanned file that matched a component (a CycloneDX
-// evidence.occurrence). For snippet matches it also carries the matched line ranges.
+// FileEvidence is one occurrence of a component in the scanned project (a CycloneDX
+// evidence.occurrence): a scanned file that matched (match_type "file"/"snippet", with — for
+// snippets — where and how strongly it matched inside the OSS component), or the manifest that
+// declared it (match_type "declared", with only the path set).
 type FileEvidence struct {
-	Path            string   // scanned file path (the occurrence "location")
-	MatchType       string   // "file" (whole file) | "snippet"
-	InputLineRanges []string // matched line ranges in the scanned file (snippet only)
-	OssLineRanges   []string // matched line ranges in the OSS component (snippet only)
+	Path            string   `json:"path"`                        // occurrence location: scanned file path, or the manifest path for a declared dependency
+	SourceHash      string   `json:"source_hash,omitempty"`       // hash of the scanned input file (from the WFP)
+	FileHash        string   `json:"file_hash,omitempty"`         // hash of the matched file (== source_hash for a file match; the OSS file's for a snippet)
+	MatchType       string   `json:"match_type,omitempty"`        // "file" (whole file) | "snippet" | "declared" (from a manifest)
+	MatchPercentage int      `json:"match_percentage,omitempty"`  // match confidence (snippet only)
+	OssFilePath     string   `json:"oss_file_path,omitempty"`     // matched file path inside the OSS component
+	InputLineRanges []string `json:"input_line_ranges,omitempty"` // matched line ranges in the scanned file (snippet only)
+	OssLineRanges   []string `json:"oss_line_ranges,omitempty"`   // matched line ranges in the OSS component (snippet only)
 }
 
 // Vulnerability is one known vulnerability affecting one or more components, in a
 // format independent of any decoration API wire type.
 type Vulnerability struct {
-	ID       string   // advisory/CVE id, e.g. "CVE-2021-1234"
-	Severity string   // critical|high|medium|low|none|"" (case-insensitive)
-	Source   string   // advisory source name, e.g. "NVD"
-	URL      string   // advisory URL (optional)
-	Summary  string   // short description (optional)
-	Purls    []string // base PURLs of affected components (join key to Component.Purl)
+	ID       string   `json:"id"`                 // advisory/CVE id, e.g. "CVE-2021-1234"
+	Severity string   `json:"severity,omitempty"` // critical|high|medium|low|none|"" (case-insensitive)
+	Source   string   `json:"source,omitempty"`   // advisory source name, e.g. "NVD"
+	URL      string   `json:"url,omitempty"`      // advisory URL (optional)
+	Summary  string   `json:"summary,omitempty"`  // short description (optional)
+	Purls    []string `json:"purls,omitempty"`    // base PURLs of affected components (join key to Component.Purl)
+
+	// Optional quantitative scoring. All fields are optional: when unset they are not
+	// rendered, and the output is identical to a severity-only vulnerability.
+	CVSSScore  *float64 `json:"cvss_score,omitempty"`  // CVSS base score 0.0–10.0
+	CVSSVector string   `json:"cvss_vector,omitempty"` // CVSS vector string, e.g. "CVSS:3.1/AV:N/..."
+	CVSSMethod string   `json:"cvss_method,omitempty"` // CVSS scoring method, e.g. "CVSSv31"
+	CWEs       []int    `json:"cwes,omitempty"`        // CWE ids, e.g. [77]
+	EPSSScore  *float64 `json:"epss_score,omitempty"`  // EPSS probability 0.0–1.0 (no native CycloneDX field; emitted as a property)
 }
 
 // Format is a supported SBOM output format.

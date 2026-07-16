@@ -63,44 +63,29 @@ func FromScanResult(result *scanossapi.ScanResult) sbom.Inventory {
 			continue
 		}
 		components = append(components, sbom.Component{
-			Purl:             comp.Purls[0],
-			AliasPurls:       comp.Purls[1:],
-			Vendor:           comp.Vendor,
-			Name:             comp.Component,
-			Version:          comp.Version,
-			URL:              comp.Url,
-			URLHash:          hash,
-			DownloadLocation: comp.Url,
-			Files:            filesByHash[hash],
+			Purl:       comp.Purls[0],
+			Scope:      sbom.ScopeDetected,
+			AliasPurls: comp.Purls[1:],
+			Vendor:     comp.Vendor,
+			Name:       comp.Component,
+			Version:    comp.Version,
+			URL:        comp.Url,
+			URLHash:    hash,
+			Evidence:   filesByHash[hash],
 		})
 	}
 	return sbom.Inventory{Components: components}
 }
 
-// LicenseKey is the join key matching a licenses-decoration response entry to a
-// component: its PURL plus the queried version. The decoration echoes the queried
-// version back as the response's `requirement` (verbatim), whereas its `version` is the
-// *resolved* version and may differ — so the requirement is what joins back to the
-// component, not the version.
+// LicenseKey is the join key matching a decoration response entry to a component: its PURL plus
+// the queried version (the decoration echoes the queried version back as `requirement`).
 func LicenseKey(purl, version string) string {
 	return purl + "\x00" + version
 }
 
 // LicensesFrom maps a licenses decoration response into declared licenses keyed by
-// LicenseKey(purl, requirement) — the requirement being the version we queried, echoed
-// back. Each LicenseInfo.Id becomes a declared sbom.License; duplicates per key are
-// dropped. (The decoration service has no declared/concluded distinction — its licenses
-// are declared.)
-//
-// Example: a response with
-//
-//	{"components": [{"purl": "pkg:npm/lodash", "requirement": "4.17.21",
-//	                 "licenses": [{"id": "MIT"}, {"id": "ISC"}]}]}
-//
-// yields
-//
-//	{LicenseKey("pkg:npm/lodash", "4.17.21"): [{ID: "MIT", Acknowledgement: AckDeclared},
-//	                                           {ID: "ISC", Acknowledgement: AckDeclared}]}
+// LicenseKey(purl, requirement). Duplicate ids per key are dropped. (The decoration service has
+// no declared/concluded distinction — its licenses are declared.)
 func LicensesFrom(resp *scanossapi.ComponentsLicenseResponse) map[string][]sbom.License {
 	if resp == nil || resp.Components == nil {
 		return nil
@@ -126,6 +111,55 @@ func LicensesFrom(resp *scanossapi.ComponentsLicenseResponse) map[string][]sbom.
 		}
 	}
 	return byKey
+}
+
+// CryptographyFrom maps a cryptography-algorithms decoration response into algorithms keyed by
+// LicenseKey(purl, requirement).
+func CryptographyFrom(resp *scanossapi.CryptoAlgorithmsResponse) map[string][]sbom.CryptoAlgorithm {
+	if resp == nil {
+		return nil
+	}
+	byKey := make(map[string][]sbom.CryptoAlgorithm)
+	for _, ci := range resp.Components {
+		if ci.Purl == nil || ci.Algorithms == nil {
+			continue
+		}
+		key := LicenseKey(*ci.Purl, strVal(ci.Requirement))
+		for _, a := range *ci.Algorithms {
+			name := strVal(a.Algorithm)
+			if name == "" {
+				continue
+			}
+			byKey[key] = append(byKey[key], sbom.CryptoAlgorithm{Algorithm: name, Strength: strVal(a.Strength)})
+		}
+	}
+	return byKey
+}
+
+// GeoprovenanceFrom maps a geoprovenance-origin decoration response into contributor locations
+// keyed by PURL (the response carries no requirement to join on).
+func GeoprovenanceFrom(resp *scanossapi.GeoOriginResponse) map[string][]sbom.GeoLocation {
+	if resp == nil {
+		return nil
+	}
+	byPurl := make(map[string][]sbom.GeoLocation)
+	for _, cl := range resp.ComponentsLocations {
+		if cl.Purl == nil || cl.Locations == nil {
+			continue
+		}
+		for _, loc := range *cl.Locations {
+			name := strVal(loc.Name)
+			if name == "" {
+				continue
+			}
+			g := sbom.GeoLocation{Name: name}
+			if loc.Percentage != nil {
+				g.Percentage = float64(*loc.Percentage)
+			}
+			byPurl[*cl.Purl] = append(byPurl[*cl.Purl], g)
+		}
+	}
+	return byPurl
 }
 
 // VulnerabilitiesFrom maps a vulnerabilities decoration response into neutral
@@ -193,7 +227,11 @@ func filesByURLHash(files []scanossapi.FileResult) map[string][]sbom.FileEvidenc
 		for _, m := range f.Matches {
 			ev := sbom.FileEvidence{
 				Path:            f.Path,
+				SourceHash:      f.SourceHash,
+				FileHash:        f.FileHash,
 				MatchType:       string(f.MatchType),
+				MatchPercentage: m.MatchPercentage,
+				OssFilePath:     m.OssFilePath,
 				InputLineRanges: formatRanges(m.InputLineRanges),
 				OssLineRanges:   formatRanges(m.OssLineRanges),
 			}

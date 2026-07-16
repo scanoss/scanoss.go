@@ -30,17 +30,18 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"time"
 
 	spdxjson "github.com/spdx/tools-golang/json"
 	"github.com/spdx/tools-golang/spdx/v2/common"
 	"github.com/spdx/tools-golang/spdx/v2/v2_3"
-
-	"github.com/scanoss/scanoss.go/internal/config"
 )
 
 // spdxTimeFormat is the SPDX creation-timestamp layout (UTC, second precision).
 const spdxTimeFormat = "2006-01-02T15:04:05Z"
+
+// scanossURLHashRef is the SPDX OTHER external-reference type carrying the scanoss url_hash
+// (a CRC64), which has no standard SPDX checksum algorithm.
+const scanossURLHashRef = "scanoss-url-hash"
 
 // buildSPDXLite renders the inventory as an SPDX 2.3 JSON document (restricted to the
 // SPDX Lite field subset) via the official tools-golang library. Vulnerabilities and
@@ -54,10 +55,10 @@ func buildSPDXLite(inv Inventory, o options) (string, error) {
 		DocumentNamespace: spdxNamespace(o.projectName, inv.Components),
 		CreationInfo: &v2_3.CreationInfo{
 			Creators: []common.Creator{
-				{CreatorType: "Tool", Creator: fmt.Sprintf("%s-%s", config.AppName, config.AppVersion)},
-				{CreatorType: "Organization", Creator: config.OrganizationName},
+				{CreatorType: "Tool", Creator: o.toolName},
+				{CreatorType: "Organization", Creator: o.author},
 			},
-			Created: time.Now().UTC().Format(spdxTimeFormat),
+			Created: o.resolvedTimestamp().Format(spdxTimeFormat),
 		},
 	}
 
@@ -115,8 +116,15 @@ func spdxPackage(comp Component) *v2_3.Package {
 		PackageExternalReferences: purlExternalRefs(comp),
 	}
 
+	// The scanoss url_hash is a CRC64, which SPDX 2.3 has no checksum algorithm for, so it
+	// is preserved as an OTHER external reference rather than emitted as an (invalid) MD5
+	// checksum.
 	if comp.URLHash != "" {
-		pkg.PackageChecksums = []common.Checksum{{Algorithm: common.MD5, Value: comp.URLHash}}
+		pkg.PackageExternalReferences = append(pkg.PackageExternalReferences, &v2_3.PackageExternalReference{
+			Category: "OTHER",
+			RefType:  scanossURLHashRef,
+			Locator:  comp.URLHash,
+		})
 	}
 
 	return pkg

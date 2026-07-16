@@ -92,7 +92,7 @@ func TestFromScanResult_Extraction(t *testing.T) {
 
 func TestFromScanResult_FileEvidence(t *testing.T) {
 	inv := FromScanResult(sampleResult())
-	files := inv.Components[0].Files
+	files := inv.Components[0].Evidence
 	if len(files) != 2 {
 		t.Fatalf("want 2 file evidences (none-match excluded), got %d", len(files))
 	}
@@ -143,15 +143,15 @@ func TestFromScanResult_MultiMatchFile(t *testing.T) {
 		t.Errorf("AliasPurls = %v, want [pkg:npm/scanner]", got)
 	}
 	for _, c := range inv.Components {
-		if len(c.Files) != 1 || c.Files[0].Path != "src/multi.js" {
-			t.Errorf("component %s should carry the multi-match file as evidence: %+v", c.Purl, c.Files)
+		if len(c.Evidence) != 1 || c.Evidence[0].Path != "src/multi.js" {
+			t.Errorf("component %s should carry the multi-match file as evidence: %+v", c.Purl, c.Evidence)
 		}
 	}
 	// h1 sorts before h2; each gets its own match's ranges.
-	if got := inv.Components[0].Files[0].InputLineRanges; len(got) != 1 || got[0] != "12-48" {
+	if got := inv.Components[0].Evidence[0].InputLineRanges; len(got) != 1 || got[0] != "12-48" {
 		t.Errorf("h1 evidence ranges = %v, want [12-48]", got)
 	}
-	if got := inv.Components[1].Files[0].InputLineRanges; len(got) != 1 || got[0] != "12-40" {
+	if got := inv.Components[1].Evidence[0].InputLineRanges; len(got) != 1 || got[0] != "12-40" {
 		t.Errorf("h2 evidence ranges = %v, want [12-40]", got)
 	}
 	// The minimal catalog entry (no url/release_date/file/rank) still maps cleanly.
