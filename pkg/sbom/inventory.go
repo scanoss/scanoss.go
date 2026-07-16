@@ -52,12 +52,11 @@ type Component struct {
 	Version          string            `json:"version,omitempty"`           // resolved version; "" renders as "NOASSERTION"
 	URL              string            `json:"url,omitempty"`               // homepage / source URL ("" => no externalReference)
 	URLHash          string            `json:"url_hash,omitempty"`          // SCANOSS url_hash (SPDX package checksum)
-	DeclaredIn       string            `json:"declared_in,omitempty"`       // manifest path for a declared dependency (declared scope only)
 	Licenses         []License         `json:"licenses,omitempty"`          // declared and/or concluded licenses (licenses layer)
 	Cryptography     []CryptoAlgorithm `json:"cryptography,omitempty"`      // cryptographic algorithms detected (crypto layer)
 	Geoprovenance    []GeoLocation     `json:"geoprovenance,omitempty"`     // contributor geographic origin (geo layer)
 	DownloadLocation string            `json:"download_location,omitempty"` // download location (defaults to URL)
-	Evidence         []FileEvidence    `json:"evidence,omitempty"`          // scanned files that matched this component
+	Evidence         []FileEvidence    `json:"evidence,omitempty"`          // where the component came from: scanned files that matched, or the manifest that declared it
 }
 
 // CryptoAlgorithm is a cryptographic algorithm detected in a component (crypto layer).
@@ -115,14 +114,15 @@ type License struct {
 	Acknowledgement LicenseAcknowledgement `json:"acknowledgement,omitempty"` // declared (default) | concluded
 }
 
-// FileEvidence is one scanned file that matched a component (a CycloneDX
-// evidence.occurrence): the scanned path, and — for snippet matches — where and how strongly it
-// matched inside the OSS component.
+// FileEvidence is one occurrence of a component in the scanned project (a CycloneDX
+// evidence.occurrence): a scanned file that matched (match_type "file"/"snippet", with — for
+// snippets — where and how strongly it matched inside the OSS component), or the manifest that
+// declared it (match_type "declared", with only the path set).
 type FileEvidence struct {
-	Path            string   `json:"path"`                        // scanned file path (the occurrence "location")
+	Path            string   `json:"path"`                        // occurrence location: scanned file path, or the manifest path for a declared dependency
 	SourceHash      string   `json:"source_hash,omitempty"`       // hash of the scanned input file (from the WFP)
 	FileHash        string   `json:"file_hash,omitempty"`         // hash of the matched file (== source_hash for a file match; the OSS file's for a snippet)
-	MatchType       string   `json:"match_type,omitempty"`        // "file" (whole file) | "snippet"
+	MatchType       string   `json:"match_type,omitempty"`        // "file" (whole file) | "snippet" | "declared" (from a manifest)
 	MatchPercentage int      `json:"match_percentage,omitempty"`  // match confidence (snippet only)
 	OssFilePath     string   `json:"oss_file_path,omitempty"`     // matched file path inside the OSS component
 	InputLineRanges []string `json:"input_line_ranges,omitempty"` // matched line ranges in the scanned file (snippet only)

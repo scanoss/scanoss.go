@@ -113,32 +113,6 @@ func LicensesFrom(resp *scanossapi.ComponentsLicenseResponse) map[string][]sbom.
 	return byKey
 }
 
-// DeclaredFrom maps a dependencies resolve response into declared dependency components:
-// identity, resolved version, and scope. Their licenses are gathered by the licenses layer like
-// any other component's, not carried here. The manifest origin (Component.DeclaredIn) is not in
-// the response — the caller joins it by PURL.
-func DeclaredFrom(resp *scanossapi.DependenciesResolveResponse) []sbom.Component {
-	if resp == nil {
-		return nil
-	}
-
-	out := make([]sbom.Component, 0, len(resp.Components))
-	for _, dep := range resp.Components {
-		purl := strVal(dep.Purl)
-		if purl == "" {
-			continue
-		}
-		out = append(out, sbom.Component{
-			Purl:    purl,
-			Name:    strVal(dep.Component),
-			Version: strVal(dep.Version),
-			URL:     strVal(dep.Url),
-			Scope:   sbom.ScopeDeclared,
-		})
-	}
-	return out
-}
-
 // CryptographyFrom maps a cryptography-algorithms decoration response into algorithms keyed by
 // LicenseKey(purl, requirement).
 func CryptographyFrom(resp *scanossapi.CryptoAlgorithmsResponse) map[string][]sbom.CryptoAlgorithm {

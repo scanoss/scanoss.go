@@ -33,6 +33,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when `--output` is set.
 
 ### Changed
+- **Declared dependencies** (`scan --include deps`) are now sourced directly from the parsed
+  manifests instead of the dependency-resolution API — the scan makes **no resolve calls**, which
+  is dramatically faster on large lockfiles (e.g. ~35s → ~15s on a project with a 466-package
+  lockfile). Each declared component records its manifest origin as an `evidence` entry
+  (`match_type: "declared"`) — the same shape as a detected component — replacing the former
+  `declared_in` field; a package declared in several manifests keeps one occurrence per manifest.
 - **Status output** across all commands now uses a consistent icon + color scheme — `⚠` warnings
   (yellow), `ℹ` info (dim), `✓` success (green) — replacing the previous ad-hoc emoji
   (`🔍`/`📦`/`✅`/…). `scan`/`enrich` also gain a blank line separating the resume hint from the

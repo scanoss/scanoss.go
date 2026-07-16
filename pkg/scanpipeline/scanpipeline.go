@@ -94,16 +94,18 @@ func ParseLayers(values []string) (Set, error) {
 
 // Options configures Run, the full scan pipeline over a source path. Progress for the scan and
 // each enrichment layer is reported through the client's own scanoss.WithProgress callback
-// (keyed by Service); only fingerprinting — which happens before the API — needs OnFingerprint.
+// (keyed by Service); the two steps that happen locally before the API — fingerprinting and
+// dependency-manifest parsing — report through OnFingerprint and OnDependencies.
 type Options struct {
-	Client        *scanoss.Client       // required
-	Layers        Set                   // requested output layers
-	SourcePath    string                // file or directory to scan (required)
-	Threads       int                   // fingerprint workers (<1 => 1)
-	Filter        filter.Options        // file-collection filters (directory scans)
-	ScanOptions   []scanoss.ScanOption  // per-scan tuning (chunk size, poll interval, BOM, ...)
-	OnCollect     func(skipped int)     // optional: called once after collection with the filtered count
-	OnFingerprint func(done, total int) // optional fingerprinting progress
+	Client         *scanoss.Client       // required
+	Layers         Set                   // requested output layers
+	SourcePath     string                // file or directory to scan (required)
+	Threads        int                   // fingerprint workers (<1 => 1)
+	Filter         filter.Options        // file-collection filters (directory scans)
+	ScanOptions    []scanoss.ScanOption  // per-scan tuning (chunk size, poll interval, BOM, ...)
+	OnCollect      func(skipped int)     // optional: called once after collection with the filtered count
+	OnFingerprint  func(done, total int) // optional fingerprinting progress
+	OnDependencies func(done, total int) // optional dependency-manifest parsing progress
 }
 
 // Result is the outcome of Run: the gathered inventory, the generated WFP (for --save-wfp), and
@@ -211,12 +213,19 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			total := len(manifestFiles)
+			if opts.OnDependencies != nil {
+				opts.OnDependencies(0, total) // show the phase up front, alongside fingerprinting
+			}
 			parsed, err := dependencies.NewDependencyParser().ParseFiles(manifestFiles)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: dependency scan failed: %v\n", err)
 				return
 			}
-			declaredComps = resolveDeclared(ctx, opts.Client, parsed)
+			declaredComps = sourceDeclared(parsed, scanRoot)
+			if opts.OnDependencies != nil {
+				opts.OnDependencies(total, total)
+			}
 		}()
 	}
 
@@ -241,12 +250,12 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 // decide what is gathered. Enrichment is non-fatal: a failed service is logged and skipped so a
 // partial inventory is still returned.
 func Build(ctx context.Context, client *scanoss.Client, result *scanossapi.ScanResult, layers Set, declared *parsers.LocalDependencies) (sbom.Inventory, error) {
-	// SOURCE the declared dependency components (opt-in via the deps layer). Resolving them is a
-	// separate call because they start from a different input set (manifest-declared PURLs) than
-	// the scan matches; once resolved they are ordinary components.
+	// SOURCE the declared dependency components (opt-in via the deps layer) straight from the parsed
+	// manifests — no dependency-service round trip, since the lockfile already carries resolved
+	// PURLs. Once sourced they are ordinary components, enriched alongside the scan matches.
 	var declaredComps []sbom.Component
 	if layers.Has(LayerDeps) && declared != nil && len(declared.Files) > 0 {
-		declaredComps = resolveDeclared(ctx, client, declared)
+		declaredComps = sourceDeclared(declared, "")
 	}
 	return assemble(ctx, client, result, declaredComps, layers), nil
 }
@@ -286,19 +295,14 @@ func dedupeComponents(comps []sbom.Component) []sbom.Component {
 	return out
 }
 
-// mergeComponent folds src into dst (same identity): a detected scope wins over declared (it
-// carries the file evidence), and the manifest origin and evidence are filled in from whichever
-// copy has them.
+// mergeComponent folds src into dst (same identity): a detected scope wins over declared, and the
+// evidence lists are combined — so a component that is both scan-detected and manifest-declared
+// keeps its file matches and its manifest occurrence together.
 func mergeComponent(dst *sbom.Component, src sbom.Component) {
 	if dst.Scope == sbom.ScopeDeclared && src.Scope == sbom.ScopeDetected {
 		dst.Scope = sbom.ScopeDetected
 	}
-	if dst.DeclaredIn == "" {
-		dst.DeclaredIn = src.DeclaredIn
-	}
-	if len(dst.Evidence) == 0 {
-		dst.Evidence = src.Evidence
-	}
+	dst.Evidence = addEvidence(dst.Evidence, src.Evidence...)
 }
 
 // Enrich runs the decoration pipeline over the inventory's components and attaches the requested
@@ -377,30 +381,98 @@ func Enrich(ctx context.Context, client *scanoss.Client, inv *sbom.Inventory, la
 	}
 }
 
-// resolveDeclared resolves the declared dependencies parsed from manifests into ScopeDeclared
-// components, joining each back to its manifest origin by PURL. They then enrich alongside the
-// scan matches. Resolution is non-fatal: a failure is logged and yields no declared components.
-func resolveDeclared(ctx context.Context, client *scanoss.Client, declared *parsers.LocalDependencies) []sbom.Component {
-	var comps []scanoss.Component
-	declaredIn := make(map[string]string)
-	for _, file := range declared.Files {
-		for _, p := range file.Purls {
-			comps = append(comps, scanoss.Component{Purl: p.Purl, Requirement: p.Requirement})
-			if _, ok := declaredIn[p.Purl]; !ok {
-				declaredIn[p.Purl] = file.File
-			}
-		}
-	}
-
-	resp, err := client.Dependencies.Dependencies(ctx, comps)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: could not resolve declared dependencies: %v\n", err)
+// sourceDeclared builds ScopeDeclared components directly from the manifests parsed from the
+// project — no dependency-service round trip. The parser already yields resolved PURLs (pinned in
+// the lockfile), so we only split each `pkg:...@version` into its base PURL and version, tag it
+// declared, and record its manifest origin. The decoration pipeline then adds the requested
+// purl-layers (licenses, vulns, …) over these alongside the scan matches. Duplicates are removed
+// (see dedupeDeclared).
+func sourceDeclared(declared *parsers.LocalDependencies, scanRoot string) []sbom.Component {
+	if declared == nil {
 		return nil
 	}
-
-	deps := scansource.DeclaredFrom(resp)
-	for i := range deps {
-		deps[i].DeclaredIn = declaredIn[deps[i].Purl]
+	var comps []sbom.Component
+	for _, file := range declared.Files {
+		manifest := relativeTo(file.File, scanRoot) // same project-relative form as scan-match evidence
+		for _, p := range file.Purls {
+			purl, version := splitPurlVersion(p.Purl)
+			if version == "" {
+				version = p.Requirement
+			}
+			if purl == "" {
+				continue
+			}
+			comps = append(comps, sbom.Component{
+				Purl:     purl,
+				Version:  version,
+				Scope:    sbom.ScopeDeclared,
+				Evidence: []sbom.FileEvidence{{Path: manifest, MatchType: "declared"}},
+			})
+		}
 	}
-	return deps
+	return dedupeDeclared(comps)
+}
+
+// relativeTo returns path relative to root when path is under it, so a declared dependency's
+// manifest evidence uses the same project-relative path as scan-match evidence. Falls back to the
+// path unchanged (root empty, or path outside root).
+func relativeTo(path, root string) string {
+	if root == "" {
+		return path
+	}
+	if rel, err := filepath.Rel(root, path); err == nil && !strings.HasPrefix(rel, "..") {
+		return rel
+	}
+	return path
+}
+
+// splitPurlVersion splits a PURL into its base identity and version, e.g.
+// "pkg:npm/@scope/name@1.2.3" -> ("pkg:npm/@scope/name", "1.2.3"). The version separator is the
+// last "@" after the final "/", so a scoped-npm "@scope" prefix (which has no preceding "/") is
+// never mistaken for a version.
+func splitPurlVersion(purl string) (base, version string) {
+	slash := strings.LastIndex(purl, "/")
+	if at := strings.LastIndex(purl, "@"); at > slash {
+		return purl[:at], purl[at+1:]
+	}
+	return purl, ""
+}
+
+// dedupeDeclared collapses exact duplicate declared components — the same package at the same
+// version listed more than once (across manifest sections, or in both package.json and its
+// lockfile). Their manifest evidence is merged, so a package declared in several manifests keeps
+// one occurrence per manifest. Distinct versions of a package are kept, including a declared range
+// (package.json "^1.5.5") alongside its resolved pin (package-lock.json "1.14.3") — those are
+// different, meaningful entries, not duplicates.
+func dedupeDeclared(comps []sbom.Component) []sbom.Component {
+	index := make(map[string]int, len(comps))
+	out := make([]sbom.Component, 0, len(comps))
+	for _, c := range comps {
+		key := c.Purl + "@" + c.Version
+		if i, ok := index[key]; ok {
+			out[i].Evidence = addEvidence(out[i].Evidence, c.Evidence...)
+			continue
+		}
+		index[key] = len(out)
+		out = append(out, c)
+	}
+	return out
+}
+
+// addEvidence appends the evidence entries not already present (by path + match type), so merging
+// duplicate or overlapping components keeps one occurrence per distinct origin.
+func addEvidence(dst []sbom.FileEvidence, add ...sbom.FileEvidence) []sbom.FileEvidence {
+	for _, e := range add {
+		dup := false
+		for _, existing := range dst {
+			if existing.Path == e.Path && existing.MatchType == e.MatchType {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			dst = append(dst, e)
+		}
+	}
+	return dst
 }

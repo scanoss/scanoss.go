@@ -196,7 +196,8 @@ func TestBuildDepsDrivenByLayer(t *testing.T) {
 		t.Error("declared dependency must not appear without --include deps")
 	}
 
-	// deps requested: the declared dependency is resolved into inv.Dependencies.
+	// deps requested: the declared dependency is sourced straight from the manifest (no service
+	// call), so a package.json-only entry keeps its version range rather than a resolved version.
 	inv, err = Build(context.Background(), client, detectedResult(), Set{LayerDeps: true}, declaredLeftPad())
 	if err != nil {
 		t.Fatalf("Build: %v", err)
@@ -208,11 +209,11 @@ func TestBuildDepsDrivenByLayer(t *testing.T) {
 	if !leftPad.IsDeclared() {
 		t.Errorf("left-pad should have declared scope, got %q", leftPad.Scope)
 	}
-	if leftPad.Version != "1.3.0" {
-		t.Errorf("expected resolved version 1.3.0, got %q", leftPad.Version)
+	if leftPad.Version != "^1.3.0" {
+		t.Errorf("expected the manifest requirement ^1.3.0 (no service resolution), got %q", leftPad.Version)
 	}
-	if leftPad.DeclaredIn != "package.json" {
-		t.Errorf("expected DeclaredIn package.json, got %q", leftPad.DeclaredIn)
+	if len(leftPad.Evidence) != 1 || leftPad.Evidence[0].Path != "package.json" || leftPad.Evidence[0].MatchType != "declared" {
+		t.Errorf("expected declared evidence from package.json, got %+v", leftPad.Evidence)
 	}
 }
 
@@ -266,6 +267,63 @@ func TestBuildDepsWithoutDetectedMatches(t *testing.T) {
 	}
 }
 
+// TestSourceDeclared proves declared components are sourced from the parsed manifests without a
+// service call: each PURL is split into base + version, scoped npm PURLs split correctly, and only
+// EXACT duplicates (same PURL + version) are collapsed. A declared range (package.json "^1.3.0")
+// is kept alongside its resolved pin (package-lock.json "1.3.0") — those are not duplicates.
+func TestSourceDeclared(t *testing.T) {
+	declared := &parsers.LocalDependencies{
+		Files: []parsers.LocalDependency{
+			{File: "package.json", Purls: []parsers.LocalPurl{
+				{Purl: "pkg:npm/left-pad", Requirement: "^1.3.0"}, // range (manifest)
+				{Purl: "pkg:npm/dup@1.0.0", Requirement: "1.0.0"}, // exact dup (repeated below)
+			}},
+			{File: "package-lock.json", Purls: []parsers.LocalPurl{
+				{Purl: "pkg:npm/left-pad@1.3.0", Requirement: "1.3.0"},   // pinned — kept ALONGSIDE the range
+				{Purl: "pkg:npm/@scope/pkg@2.1.0", Requirement: "2.1.0"}, // scoped, pinned
+				{Purl: "pkg:npm/dup@1.0.0", Requirement: "1.0.0"},        // exact duplicate → collapsed
+				{Purl: "pkg:npm/multi@1.0.0", Requirement: "1.0.0"},      // two concrete versions...
+				{Purl: "pkg:npm/multi@2.0.0", Requirement: "2.0.0"},      // ...both kept
+			}},
+		},
+	}
+
+	got := sourceDeclared(declared, "")
+	byKey := make(map[string]sbom.Component, len(got))
+	for _, c := range got {
+		if _, dup := byKey[c.Purl+"@"+c.Version]; dup {
+			t.Errorf("duplicate entry for %s@%s", c.Purl, c.Version)
+		}
+		byKey[c.Purl+"@"+c.Version] = c
+		if !c.IsDeclared() {
+			t.Errorf("%s should have declared scope", c.Purl)
+		}
+	}
+
+	for _, w := range []string{
+		"pkg:npm/left-pad@^1.3.0",  // range KEPT (not dropped)
+		"pkg:npm/left-pad@1.3.0",   // pinned KEPT alongside the range
+		"pkg:npm/@scope/pkg@2.1.0", // scoped split correctly
+		"pkg:npm/multi@1.0.0",      // both concrete versions survive
+		"pkg:npm/multi@2.0.0",
+		"pkg:npm/dup@1.0.0", // exact duplicate collapsed to one
+	} {
+		c, ok := byKey[w]
+		if !ok {
+			t.Errorf("missing %q in %v", w, byKey)
+			continue
+		}
+		if len(c.Evidence) == 0 || c.Evidence[0].MatchType != "declared" {
+			t.Errorf("%s should carry declared evidence, got %+v", w, c.Evidence)
+		}
+	}
+
+	// dup@1.0.0 was declared in two manifests → the collapse keeps one occurrence per manifest.
+	if dup := byKey["pkg:npm/dup@1.0.0"]; len(dup.Evidence) != 2 {
+		t.Errorf("dup@1.0.0 should keep both manifest occurrences, got %+v", dup.Evidence)
+	}
+}
+
 // TestBuildEnrichesAllPurlLayers proves the crypto and geo layers are gathered and attached
 // inline on the component when requested.
 func TestBuildEnrichesAllPurlLayers(t *testing.T) {
@@ -291,13 +349,14 @@ func TestBuildEnrichesAllPurlLayers(t *testing.T) {
 
 // TestDedupeComponents proves duplicate identities (PURL+version) collapse to one — so SBOM ids
 // stay unique — while distinct versions of the same PURL are kept, and a detected/declared
-// overlap merges into a single detected component that keeps the manifest origin.
+// overlap merges into a single detected component that combines the file-match and manifest
+// evidence.
 func TestDedupeComponents(t *testing.T) {
 	in := []sbom.Component{
-		{Purl: "pkg:npm/lodash", Version: "4.17.21", Scope: sbom.ScopeDetected, Evidence: []sbom.FileEvidence{{Path: "a.js"}}},
-		{Purl: "pkg:npm/lodash", Version: "4.17.21", Scope: sbom.ScopeDeclared, DeclaredIn: "package.json"}, // dup of the above
-		{Purl: "pkg:npm/abort-controller", Version: "3.0.0", Scope: sbom.ScopeDeclared, DeclaredIn: "package.json"},
-		{Purl: "pkg:npm/abort-controller", Version: "3.0.0", Scope: sbom.ScopeDeclared, DeclaredIn: "package-lock.json"}, // exact dup
+		{Purl: "pkg:npm/lodash", Version: "4.17.21", Scope: sbom.ScopeDetected, Evidence: []sbom.FileEvidence{{Path: "a.js", MatchType: "file"}}},
+		{Purl: "pkg:npm/lodash", Version: "4.17.21", Scope: sbom.ScopeDeclared, Evidence: []sbom.FileEvidence{{Path: "package.json", MatchType: "declared"}}}, // dup of the above
+		{Purl: "pkg:npm/abort-controller", Version: "3.0.0", Scope: sbom.ScopeDeclared, Evidence: []sbom.FileEvidence{{Path: "package.json", MatchType: "declared"}}},
+		{Purl: "pkg:npm/abort-controller", Version: "3.0.0", Scope: sbom.ScopeDeclared, Evidence: []sbom.FileEvidence{{Path: "package-lock.json", MatchType: "declared"}}}, // exact dup — evidence merged
 		{Purl: "pkg:npm/tar", Version: "6.2.0", Scope: sbom.ScopeDeclared},
 		{Purl: "pkg:npm/tar", Version: "7.5.7", Scope: sbom.ScopeDeclared}, // same purl, different version — kept
 	}
@@ -307,10 +366,10 @@ func TestDedupeComponents(t *testing.T) {
 		t.Fatalf("got %d components, want 4: %+v", len(out), out)
 	}
 
-	// lodash: detected wins, manifest origin preserved, evidence kept.
+	// lodash: detected wins, and the file-match + manifest evidence are combined.
 	lodash := out[0]
-	if lodash.Scope != sbom.ScopeDetected || lodash.DeclaredIn != "package.json" || len(lodash.Evidence) != 1 {
-		t.Errorf("lodash merge wrong: %+v", lodash)
+	if lodash.Scope != sbom.ScopeDetected || len(lodash.Evidence) != 2 {
+		t.Errorf("lodash merge wrong (want detected with 2 evidences): %+v", lodash)
 	}
 
 	// tar keeps both versions.
