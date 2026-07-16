@@ -194,7 +194,7 @@ func TestEnrich_SkipsUnsupportedLayer(t *testing.T) {
 			t.Fatalf("enrich: %v", err)
 		}
 	})
-	if !strings.Contains(stderr, "Skipping vulnerabilities") {
+	if !strings.Contains(stderr, "vulnerabilities") || !strings.Contains(stderr, "skipped") {
 		t.Errorf("expected an up-front skip notice for vulnerabilities, got stderr:\n%s", stderr)
 	}
 }

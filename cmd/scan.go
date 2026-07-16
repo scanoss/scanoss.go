@@ -28,6 +28,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/scanoss/scanoss.go/internal/config"
@@ -214,11 +215,18 @@ func effectiveLayers(format string, layers scanpipeline.Set) scanpipeline.Set {
 }
 
 // reportSkippedLayers tells the user, up front, which requested layers the chosen format cannot
-// represent and so will not be gathered.
+// represent and so will not be gathered — grouped into a single warning rather than one line per
+// layer.
 func reportSkippedLayers(format string, layers scanpipeline.Set) {
-	for _, l := range unsupportedLayers(format, layers) {
-		fmt.Fprintf(os.Stderr, "Skipping %s: not supported by the %s format\n", layerName(l), format)
+	skipped := unsupportedLayers(format, layers)
+	if len(skipped) == 0 {
+		return
 	}
+	names := make([]string, len(skipped))
+	for i, l := range skipped {
+		names[i] = layerName(l)
+	}
+	warnf("%s can't render %s — skipped", format, strings.Join(names, ", "))
 }
 
 // buildResultsCommand constructs the resume command printed for recovery.
@@ -236,7 +244,7 @@ func buildResultsCommand(scanID, apiURL, apiKey string) string {
 // printErrorSummary prints a summary if any files failed to fingerprint.
 func printErrorSummary(processErrors int) {
 	if processErrors > 0 {
-		fmt.Fprintf(os.Stderr, "Completed with %d processing errors\n", processErrors)
+		warnf("Completed with %d processing errors", processErrors)
 	}
 }
 
@@ -386,7 +394,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 		ScanOptions: scanTuning(cmd, scanSettings),
 		OnCollect: func(skipped int) {
 			if skipped > 0 {
-				fmt.Fprintf(os.Stderr, "Filtered %d files\n", skipped)
+				infof("Filtered %d files", skipped)
 			}
 		},
 		OnFingerprint: prog.fingerprint,
@@ -397,9 +405,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 	if saveWFPFile != "" && len(result.WFP) > 0 {
 		if err := os.WriteFile(saveWFPFile, result.WFP, 0o644); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to write WFP file: %v\n", err)
+			warnf("failed to write WFP file: %v", err)
 		} else {
-			fmt.Fprintf(os.Stderr, "WFP fingerprints saved to: %s\n", saveWFPFile)
+			okf("WFP fingerprints saved to %s", saveWFPFile)
 		}
 	}
 
@@ -427,7 +435,7 @@ func runScanWFP(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if layers.Has(scanpipeline.LayerDeps) {
-		fmt.Fprintln(os.Stderr, "Warning: the deps layer needs a source tree; ignored when scanning a WFP file")
+		warnf("the deps layer needs a source tree; ignored when scanning a WFP file")
 	}
 	outputFormat, _ := cmd.Flags().GetString("format")
 	reportSkippedLayers(outputFormat, layers)
@@ -489,8 +497,10 @@ func buildScanClient(cmd *cobra.Command, prog *scanProgress) *scanoss.Client {
 		scanoss.WithAPIKey(apiKey),
 		scanoss.WithProgress(prog.fn),
 		scanoss.WithScanIDNotify(func(id string) {
-			prog.writeLine(fmt.Sprintf("Scan id: %s", id))
-			prog.writeLine("If interrupted, resume with:\n" + buildResultsCommand(id, apiURL, apiKey))
+			prog.writeLine("") // separate the scan-id block from the filter/skip notices above
+			prog.writeLine(infoLine("Scan id: %s", id))
+			prog.writeLine("  If interrupted, resume with:\n  " + buildResultsCommand(id, apiURL, apiKey))
+			prog.writeLine("") // separate the resume hint from the progress bars below
 		}),
 	}
 	if ignoreCertErrors {
@@ -538,7 +548,7 @@ func emitInventory(cmd *cobra.Command, inv sbom.Inventory, scanPath string) erro
 	if err := writer.Write(out); err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing: %v\n", err)
 	} else if outputFile != "" {
-		fmt.Fprintf(os.Stderr, "Results written to %s\n", outputFile)
+		okf("Results written to %s", outputFile)
 	}
 	return nil
 }
