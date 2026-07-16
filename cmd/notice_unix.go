@@ -1,3 +1,5 @@
+//go:build !windows
+
 // SPDX-License-Identifier: MIT
 /*
  * Copyright (c) 2026, SCANOSS
@@ -23,28 +25,6 @@
 
 package cmd
 
-import (
-	"context"
-	"fmt"
-	"os"
-	"os/signal"
-	"syscall"
-)
-
-// createCancellableContext creates a context that can be cancelled with CTRL+C
-func createCancellableContext() (context.Context, context.CancelFunc) {
-	ctx, cancel := context.WithCancel(context.Background())
-
-	// Setup signal handling for graceful cancellation
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	go func() {
-		<-sigChan
-		fmt.Fprint(os.Stderr, "\n\n")
-		warnf("Received interrupt signal. Cancelling...")
-		cancel()
-	}()
-
-	return ctx, cancel
-}
+// enableVirtualTerminal is a no-op on non-Windows platforms: macOS and Linux terminals interpret
+// ANSI escape sequences natively, so color needs no setup.
+func enableVirtualTerminal() bool { return true }

@@ -27,12 +27,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/scanoss/scanoss.go/internal/config"
 	"github.com/scanoss/scanoss.go/pkg/output"
 	"github.com/scanoss/scanoss.go/pkg/scanner"
-	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 )
 
@@ -97,7 +95,7 @@ func runWFP(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(files) == 0 {
-		fmt.Fprintf(os.Stderr, "No valid files found to process\n")
+		warnf("No valid files found to process")
 		return nil
 	}
 
@@ -109,30 +107,22 @@ func runWFP(cmd *cobra.Command, args []string) error {
 	defer func() { _ = writer.Close() }()
 
 	// Create progress bar
-	bar := progressbar.NewOptions(len(files),
-		progressbar.OptionSetDescription("Processing files"),
-		progressbar.OptionSetWriter(os.Stderr),
-		progressbar.OptionShowCount(),
-		progressbar.OptionShowIts(),
-		progressbar.OptionSetWidth(40),
-		progressbar.OptionThrottle(65*time.Millisecond),
-		progressbar.OptionOnCompletion(func() {
-			fmt.Fprintf(os.Stderr, "\n")
-		}),
-	)
+	p := newProgress()
+	bar := addBar(p, len(files), "Processing files")
 
 	// Generate the WFP through the shared path (same as `scan`), with paths
 	// relative to the scan root.
 	wfp, errs := scanner.GenerateWFP(files, threads, scanRoot, func(done, total int) {
-		_ = bar.Set(done)
+		bar.SetCurrent(int64(done))
 	})
-	_ = bar.Finish()
+	bar.SetCurrent(int64(len(files)))
+	p.Wait()
 
 	if err := writer.Write(string(wfp)); err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing: %v\n", err)
 	}
 	if len(errs) > 0 {
-		fmt.Fprintf(os.Stderr, "Completed with %d errors\n", len(errs))
+		warnf("Completed with %d errors", len(errs))
 	}
 
 	return nil

@@ -24,27 +24,31 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
+
+	"github.com/vbauerster/mpb/v8"
+	"github.com/vbauerster/mpb/v8/decor"
 )
 
-// createCancellableContext creates a context that can be cancelled with CTRL+C
-func createCancellableContext() (context.Context, context.CancelFunc) {
-	ctx, cancel := context.WithCancel(context.Background())
+// progressWidth is the bar width shared by every command's progress output.
+const progressWidth = 40
 
-	// Setup signal handling for graceful cancellation
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+// newProgress creates an mpb progress container writing to stderr. It is the single progress
+// library used across all commands (scan, wfp, dependencies, purl queries).
+func newProgress() *mpb.Progress {
+	return mpb.New(mpb.WithOutput(os.Stderr), mpb.WithWidth(progressWidth))
+}
 
-	go func() {
-		<-sigChan
-		fmt.Fprint(os.Stderr, "\n\n")
-		warnf("Received interrupt signal. Cancelling...")
-		cancel()
-	}()
-
-	return ctx, cancel
+// addBar adds a styled bar to p — a left-aligned label, a percentage, and a block-filled bar. This
+// is the one bar look shared by every command, so scan phases, WFP fingerprinting, purl queries,
+// and dependency parsing all render identically.
+func addBar(p *mpb.Progress, total int, label string) *mpb.Bar {
+	return p.New(int64(total),
+		mpb.BarStyle().Lbound(" |").Filler("█").Tip("█").Padding(" ").Rbound("|"),
+		mpb.PrependDecorators(
+			decor.Name(fmt.Sprintf("  %-24s ", label)),
+			decor.NewPercentage("%d"), // percentageType already appends "%"
+		),
+	)
 }
