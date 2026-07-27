@@ -35,7 +35,7 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "scanoss",
+	Use:   "scanoss-cli",
 	Short: "SCANOSS CLI - Code scanning tool",
 	Long: `SCANOSS CLI is a command-line tool for scanning source code projects
 and detecting open source components.
@@ -68,7 +68,7 @@ func Execute() {
 }
 
 func init() {
-	// `scanoss --version` → "scanoss v0.9.1"
-	rootCmd.SetVersionTemplate("scanoss {{.Version}}\n")
+	// `scanoss-cli --version` → "scanoss-cli v0.9.1"
+	rootCmd.SetVersionTemplate("scanoss-cli {{.Version}}\n")
 	rootCmd.PersistentFlags().BoolP("verbose", "v", false, "Enable verbose output")
 }

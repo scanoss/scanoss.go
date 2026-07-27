@@ -48,14 +48,14 @@ no vulnerability model, so vulnerabilities are omitted when converting to spdx).
 
 Examples:
   # SPDX -> CycloneDX
-  scanoss sbom bom.spdx.json --format cyclonedx --output bom.cdx.json
+  scanoss-cli sbom bom.spdx.json --format cyclonedx --output bom.cdx.json
 
   # CycloneDX -> SPDX
-  scanoss sbom bom.cdx.json --format spdx --output bom.spdx.json
+  scanoss-cli sbom bom.cdx.json --format spdx --output bom.spdx.json
 
   # scanoss raw result -> CycloneDX or SPDX
-  scanoss sbom result.json --format cyclonedx --output bom.cdx.json
-  scanoss sbom result.json --format spdx --output bom.spdx.json`,
+  scanoss-cli sbom result.json --format cyclonedx --output bom.cdx.json
+  scanoss-cli sbom result.json --format spdx --output bom.spdx.json`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runSbom,
 }

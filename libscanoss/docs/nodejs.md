@@ -332,7 +332,7 @@ console.log(`Throughput: ${files.length / (time1/1000)} files/sec`);
 const { execSync } = require('child_process');
 const start2 = performance.now();
 files.forEach(f => {
-    execSync(`./scanoss wfp ${f}`, { stdio: 'pipe' });
+    execSync(`./scanoss-cli wfp ${f}`, { stdio: 'pipe' });
 });
 const time2 = performance.now() - start2;
 

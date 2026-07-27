@@ -41,13 +41,13 @@ polls the API until the results are ready.
 
 Examples:
   # Get results from a previous scan
-  scanoss results 05b7ede7702c3a7c6ccec7f23252ce47
+  scanoss-cli results 05b7ede7702c3a7c6ccec7f23252ce47
 
   # Get results and save to file
-  scanoss results 05b7ede7702c3a7c6ccec7f23252ce47 --output results.json
+  scanoss-cli results 05b7ede7702c3a7c6ccec7f23252ce47 --output results.json
 
   # Get results with custom API URL
-  scanoss results 05b7ede7702c3a7c6ccec7f23252ce47 --api-url https://api.scanoss.com`,
+  scanoss-cli results 05b7ede7702c3a7c6ccec7f23252ce47 --api-url https://api.scanoss.com`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runResults,
 }

@@ -55,13 +55,13 @@ PURLs, split into chunks and sent concurrently by a pool of workers.
 
 Examples:
   # Vulnerabilities (default)
-  scanoss vulnerabilities --purl 'pkg:github/scanoss/engine' --requirement '5.4.7'
+  scanoss-cli vulnerabilities --purl 'pkg:github/scanoss/engine' --requirement '5.4.7'
 
   # CPEs
-  scanoss vulnerabilities cpes --purl 'pkg:github/scanoss/engine'
+  scanoss-cli vulnerabilities cpes --purl 'pkg:github/scanoss/engine'
 
   # From a file, in chunks of 20 with up to 10 workers
-  scanoss vulnerabilities --input purls.txt --chunk-size 20 --workers 10`,
+  scanoss-cli vulnerabilities --input purls.txt --chunk-size 20 --workers 10`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error { return runPurlServiceTyped(cmd, callVulnComponents) },
 }

@@ -47,13 +47,13 @@ same pass. A layer the output format cannot represent is skipped with an up-fron
 
 Examples:
   # Refresh vulns/licenses/crypto on a raw inventory (raw in, raw out)
-  scanoss enrich inv.json --include vulns,licenses,crypto > enriched.json
+  scanoss-cli enrich inv.json --include vulns,licenses,crypto > enriched.json
 
   # Enrich an SPDX document (spdx in, spdx out)
-  scanoss enrich sbom.spdx.json --include licenses > enriched.spdx.json
+  scanoss-cli enrich sbom.spdx.json --include licenses > enriched.spdx.json
 
   # Enrich a CycloneDX document and convert to SPDX in one pass
-  scanoss enrich sbom.cdx.json --include licenses --format spdx > enriched.spdx.json`,
+  scanoss-cli enrich sbom.cdx.json --include licenses --format spdx > enriched.spdx.json`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runEnrich,
 }

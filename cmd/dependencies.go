@@ -65,25 +65,25 @@ var dependenciesCmd = &cobra.Command{
 
 Examples:
   # Extract local dependencies and display on console
-  scanoss dependencies ./my-project --extract-local
+  scanoss-cli dependencies ./my-project --extract-local
 
   # Extract local dependencies and save to file
-  scanoss dependencies ./my-project --extract-local --output deps.json
+  scanoss-cli dependencies ./my-project --extract-local --output deps.json
 
   # Scan project dependencies and query API for direct dependencies
-  scanoss dependencies ./my-project
+  scanoss-cli dependencies ./my-project
 
   # Scan project dependencies and query API for transitive dependencies
-  scanoss dependencies ./my-project --transient
+  scanoss-cli dependencies ./my-project --transient
 
   # Query direct dependencies from API for specific component
-  scanoss dependencies --purl 'pkg:github/scanoss/engine' --requirement '5.4.7'
+  scanoss-cli dependencies --purl 'pkg:github/scanoss/engine' --requirement '5.4.7'
 
   # Query transitive dependencies from API for specific component
-  scanoss dependencies --purl 'pkg:github/scanoss/engine' --requirement '5.4.7' --transient
+  scanoss-cli dependencies --purl 'pkg:github/scanoss/engine' --requirement '5.4.7' --transient
 
   # With custom depth and limit for transitive
-  scanoss dependencies --purl 'pkg:github/scanoss/engine' --requirement '5.4.7' --transient --depth 5 --limit 20`,
+  scanoss-cli dependencies --purl 'pkg:github/scanoss/engine' --requirement '5.4.7' --transient --depth 5 --limit 20`,
 	RunE: runDependencies,
 }
 

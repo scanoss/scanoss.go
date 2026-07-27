@@ -189,7 +189,7 @@ def main():
     print()
 
     # Example 1: Generate fingerprint for a single file
-    test_file = "../../cmd/scanoss/main.go"  # Adjust path as needed
+    test_file = "../../cmd/scanoss-cli/main.go"  # Adjust path as needed
     print(f"Example 1: Generate WFP for {test_file}")
     fingerprint = lib.generate_wfp(test_file)
     if fingerprint:
