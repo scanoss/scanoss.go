@@ -239,7 +239,7 @@ func reportSkippedLayers(format string, layers scanpipeline.Set) {
 
 // buildResultsCommand constructs the resume command printed for recovery.
 func buildResultsCommand(scanID, apiURL, apiKey string) string {
-	cmd := fmt.Sprintf("  scanoss results %s", scanID)
+	cmd := fmt.Sprintf("  scanoss-cli results %s", scanID)
 	if apiURL != config.DefaultAPIURL {
 		cmd += fmt.Sprintf(" --api-url %s", apiURL)
 	}
@@ -277,23 +277,23 @@ chunks, and polls until the scan completes. To scan a pre-generated WFP file
 instead, use the "wfp" subcommand.
 
 The scan id is printed; if the scan is interrupted you can resume
-it later with "scanoss results <scan-id>".
+it later with "scanoss-cli results <scan-id>".
 
 Examples:
   # Scan a folder
-  scanoss scan ./my-project
+  scanoss-cli scan ./my-project
 
   # Scan a single file
-  scanoss scan ./src/main.c
+  scanoss-cli scan ./src/main.c
 
   # Scan with custom API URL and key
-  scanoss scan ./my-project --api-url https://api.scanoss.com --api-key TOKEN
+  scanoss-cli scan ./my-project --api-url https://api.scanoss.com --api-key TOKEN
 
   # Scan a pre-generated WFP file
-  scanoss scan wfp fingerprints.wfp
+  scanoss-cli scan wfp fingerprints.wfp
 
   # Save WFP fingerprints before sending to the API
-  scanoss scan ./my-project --save-wfp fingerprints.wfp`,
+  scanoss-cli scan ./my-project --save-wfp fingerprints.wfp`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runScan,
 }
@@ -307,10 +307,10 @@ is performed; the file is sent as-is.
 
 Examples:
   # Scan a WFP file produced earlier (e.g. with --save-wfp or the wfp command)
-  scanoss scan wfp fingerprints.wfp
+  scanoss-cli scan wfp fingerprints.wfp
 
   # Scan a WFP file against a premium endpoint
-  scanoss scan wfp fingerprints.wfp --api-key TOKEN`,
+  scanoss-cli scan wfp fingerprints.wfp --api-key TOKEN`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runScanWFP,
 }

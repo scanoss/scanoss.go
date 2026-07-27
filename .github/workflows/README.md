@@ -10,7 +10,7 @@ Automated workflows for building, testing, and releasing the scanoss project.
 
 **Jobs**:
 - **test** — Go unit tests + `go vet`.
-- **build-cli** — builds the `scanoss` CLI (`go build -o scanoss ./cmd/scanoss`).
+- **build-cli** — builds the `scanoss-cli` CLI (`go build -o scanoss-cli ./cmd/scanoss-cli`).
 - **build-and-test-libscanoss** — builds the shared library on Linux and macOS and exercises the Python and Node.js wrappers.
 - **lint** — `gofmt` check + `golangci-lint`.
 
@@ -33,14 +33,14 @@ Releases are produced by **[GoReleaser](https://goreleaser.com)**, configured in
 **Release assets** (CLI):
 
 ```
-scanoss-linux-amd64.tar.gz
-scanoss-linux-arm64.tar.gz
-scanoss-linux-armv7.tar.gz
-scanoss-harmonyos-arm64.tar.gz   # same binary as linux/arm64
-scanoss-darwin-amd64.tar.gz
-scanoss-darwin-arm64.tar.gz
-scanoss-windows-amd64.zip
-scanoss-windows-arm64.zip
+scanoss-cli-linux-amd64.tar.gz
+scanoss-cli-linux-arm64.tar.gz
+scanoss-cli-linux-armv7.tar.gz
+scanoss-cli-harmonyos-arm64.tar.gz   # same binary as linux/arm64
+scanoss-cli-darwin-amd64.tar.gz
+scanoss-cli-darwin-arm64.tar.gz
+scanoss-cli-windows-amd64.zip
+scanoss-cli-windows-arm64.zip
 checksums.txt
 ```
 
@@ -58,7 +58,7 @@ Reusable workflow that cross-compiles the shared library:
 
 - **Linux** (`gcc-aarch64-linux-gnu` for arm64) → `libscanoss-linux-{arch}.so`
 - **macOS** (native Intel/ARM) → `libscanoss-darwin-{arch}.dylib`
-- **Windows** (MinGW) → `libscanoss-windows-amd64.dll`
+- **Windows** (MinGW) → `libscanoss-cli-windows-amd64.dll`
 
 It also loads each library through the Python wrapper as a smoke test.
 
@@ -80,13 +80,13 @@ a version (e.g. `v0.0.0-dev`).
 
 ```bash
 # Linux amd64 — adjust the archive for your OS/arch
-wget https://github.com/scanoss/scanoss.go/releases/download/<tag>/scanoss-linux-amd64.tar.gz
-tar xzf scanoss-linux-amd64.tar.gz
-sudo mv scanoss /usr/local/bin/
-scanoss --version
+wget https://github.com/scanoss/scanoss.go/releases/download/<tag>/scanoss-cli-linux-amd64.tar.gz
+tar xzf scanoss-cli-linux-amd64.tar.gz
+sudo mv scanoss-cli /usr/local/bin/
+scanoss-cli --version
 ```
 
-On Windows, unzip `scanoss-windows-amd64.zip` and add the folder to `PATH`. See the
+On Windows, unzip `scanoss-cli-windows-amd64.zip` and add the folder to `PATH`. See the
 [README](../../README.md) and [CLIENT_HELP.md](../../CLIENT_HELP.md) for `go install`,
 Docker, and full usage.
 

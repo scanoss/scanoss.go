@@ -4,7 +4,7 @@ GO               ?= go
 GOLANGCI_LINT    ?= golangci-lint
 GOLANGCI_VERSION ?= v2.10.1
 PKGS          ?= ./...
-BIN           ?= scanoss
+BIN           ?= scanoss-cli
 GOFMT_FILES   := $(shell find . -name '*.go' -not -path './vendor/*')
 
 .DEFAULT_GOAL := help
@@ -58,7 +58,7 @@ lint: ## Run golangci-lint
 
 .PHONY: build
 build: ## Build the CLI binary
-	$(GO) build -o $(BIN) ./cmd/scanoss
+	$(GO) build -o $(BIN) ./cmd/scanoss-cli
 
 .PHONY: tidy
 tidy: ## Tidy go.mod / go.sum

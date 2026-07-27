@@ -490,7 +490,7 @@ print(f"Throughput: {len(files)/shared_lib_time:.2f} files/sec")
 import subprocess
 start = time.time()
 for file in files:
-    subprocess.run(['./scanoss', 'wfp', file],
+    subprocess.run(['./scanoss-cli', 'wfp', file],
                    capture_output=True)
 cli_time = time.time() - start
 

@@ -70,10 +70,10 @@ The version (or range expression) is provided via --requirement (or per-purl in
 
 Examples:
   # Algorithms at a version (default)
-  scanoss cryptography --purl 'pkg:github/scanoss/engine' --requirement '5.0.1'
+  scanoss-cli cryptography --purl 'pkg:github/scanoss/engine' --requirement '5.0.1'
 
   # Crypto library hints across a range
-  scanoss cryptography hints-range --purl 'pkg:github/scanoss/engine' --requirement '>5.0.0'`,
+  scanoss-cli cryptography hints-range --purl 'pkg:github/scanoss/engine' --requirement '>5.0.0'`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error { return runPurlServiceTyped(cmd, callCryptoAlgorithms) },
 }

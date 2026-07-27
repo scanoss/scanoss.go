@@ -50,28 +50,28 @@ generate attributions for a specific package.
 
 Examples:
   # Generate attributions from SBOM file to console
-  scanoss attributions sbom.json
+  scanoss-cli attributions sbom.json
 
   # Generate attributions and save to file
-  scanoss attributions sbom.json --output attributions.txt
+  scanoss-cli attributions sbom.json --output attributions.txt
 
   # Generate attributions from a PURL
-  scanoss attributions --purl "pkg:github/scanoss/engine@v5.4.19"
+  scanoss-cli attributions --purl "pkg:github/scanoss/engine@v5.4.19"
 
   # Generate attributions from PURL and save to file
-  scanoss attributions --purl "pkg:github/scanoss/engine@v5.4.19" --output attributions.txt
+  scanoss-cli attributions --purl "pkg:github/scanoss/engine@v5.4.19" --output attributions.txt
 
   # Use custom API URL
-  scanoss attributions sbom.json --api-url https://api.scanoss.com
+  scanoss-cli attributions sbom.json --api-url https://api.scanoss.com
 
   # With API key authentication
-  scanoss attributions --purl "pkg:github/scanoss/engine@v5.4.19" --api-key YOUR_API_KEY
+  scanoss-cli attributions --purl "pkg:github/scanoss/engine@v5.4.19" --api-key YOUR_API_KEY
 
   # Complete example with file
-  scanoss attributions MySBOM.json --api-url https://api.scanoss.com --api-key 123456 --output myRequestedAttributions.txt
+  scanoss-cli attributions MySBOM.json --api-url https://api.scanoss.com --api-key 123456 --output myRequestedAttributions.txt
 
   # Complete example with PURL
-  scanoss attributions --purl "pkg:github/scanoss/engine@v5.4.19" --api-url https://api.scanoss.com --api-key 123456 --output attributions.txt`,
+  scanoss-cli attributions --purl "pkg:github/scanoss/engine@v5.4.19" --api-url https://api.scanoss.com --api-key 123456 --output attributions.txt`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runAttributions,
 }

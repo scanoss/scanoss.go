@@ -11,7 +11,7 @@ version.
 
 ## Architecture
 
-- `cmd/` — the CLI (Cobra); `cmd/scanoss` is the `go install` entrypoint.
+- `cmd/` — the CLI (Cobra); `cmd/scanoss-cli` is the `go install` entrypoint.
 - `pkg/` — the reusable Go SDK: scan and decoration services, fingerprinting,
   file filtering, SBOM read/write, and the low-level API client.
 - `internal/` — private helpers (config, version).
@@ -25,24 +25,28 @@ OpenAPI types come from the published SDK `github.com/scanoss/scanoss.api-sdk`
 ### `go install`
 
 ```bash
-go install github.com/scanoss/scanoss.go/cmd/scanoss@latest
+go install github.com/scanoss/scanoss.go/cmd/scanoss-cli@latest
 ```
+
+This installs the CLI as `scanoss-cli` (Go names the binary after its package
+directory) — matching the examples below and avoiding a clash with the SCANOSS
+scan engine (also `scanoss`) on your `PATH`.
 
 ### Prebuilt binary
 
 Download the archive for your platform from the
 [releases page](https://github.com/scanoss/scanoss.go/releases), extract it, and
-move the `scanoss` binary onto your `PATH`:
+move the `scanoss-cli` binary onto your `PATH`:
 
 ```bash
 # Linux (amd64) — adjust the archive for your OS/arch
-tar xzf scanoss-linux-amd64.tar.gz
-sudo mv scanoss /usr/local/bin/
+tar xzf scanoss-cli-linux-amd64.tar.gz
+sudo mv scanoss-cli /usr/local/bin/
 ```
 
 On Windows, unzip the `.zip` and add the folder to your `PATH`. On macOS, an
 unsigned direct download may be quarantined by Gatekeeper — clear it with
-`xattr -d com.apple.quarantine ./scanoss`. Verify a download against
+`xattr -d com.apple.quarantine ./scanoss-cli`. Verify a download against
 `checksums.txt` with `sha256sum -c --ignore-missing checksums.txt`.
 
 ### Docker
@@ -72,20 +76,20 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/src" \
 ```bash
 git clone https://github.com/scanoss/scanoss.go.git
 cd scanoss.go
-make build          # or: go build -o scanoss ./cmd/scanoss
+make build          # or: go build -o scanoss-cli ./cmd/scanoss-cli
 ```
 
 ## Quick start
 
 ```bash
 # Scan a project and save JSON results (default endpoint needs an API key)
-scanoss scan ./my-project --api-key "$SCANOSS_API_KEY" --output results.json
+scanoss-cli scan ./my-project --api-key "$SCANOSS_API_KEY" --output results.json
 
 # Generate fingerprints only
-scanoss wfp ./my-project > project.wfp
+scanoss-cli wfp ./my-project > project.wfp
 
 # Refresh vulnerabilities/licenses on an existing inventory (no re-scan)
-scanoss enrich results.json --include vulns,licenses --api-key "$SCANOSS_API_KEY" > enriched.json
+scanoss-cli enrich results.json --include vulns,licenses --api-key "$SCANOSS_API_KEY" > enriched.json
 ```
 
 Add `-v` / `--verbose` to any command for structured debug logging on stderr — the

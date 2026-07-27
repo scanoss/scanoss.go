@@ -158,7 +158,7 @@ function main() {
         console.log();
 
         // Example 1: Generate fingerprint for a single file
-        const testFile = '../../cmd/scanoss/main.go';
+        const testFile = '../../cmd/scanoss-cli/main.go';
         console.log(`Example 1: Generate WFP for ${testFile}`);
         const fingerprint = lib.generateWFP(testFile);
         if (fingerprint) {

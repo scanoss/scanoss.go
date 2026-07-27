@@ -90,11 +90,11 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            archive: scanoss-linux-amd64.tar.gz
+            archive: scanoss-cli-linux-amd64.tar.gz
           - os: macos-latest
-            archive: scanoss-darwin-arm64.tar.gz
+            archive: scanoss-cli-darwin-arm64.tar.gz
           - os: windows-latest
-            archive: scanoss-windows-amd64.zip
+            archive: scanoss-cli-windows-amd64.zip
     steps:
       - name: Download release archive
         env:
@@ -105,13 +105,13 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           tar xzf "${{ matrix.archive }}"
-          chmod +x scanoss
-          ./scanoss --version
-          ./scanoss --help
+          chmod +x scanoss-cli
+          ./scanoss-cli --version
+          ./scanoss-cli --help
 
       - name: Extract and test (Windows)
         if: runner.os == 'Windows'
         run: |
           Expand-Archive -Path "${{ matrix.archive }}" -DestinationPath .
-          .\scanoss.exe --version
-          .\scanoss.exe --help
+          .\scanoss-cli.exe --version
+          .\scanoss-cli.exe --help
