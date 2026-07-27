@@ -5,15 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - 2026-07-27
 
 ### Changed
 
-- **Breaking:** renamed the CLI binary from `scanoss` to `scanoss-cli` to avoid a
-  `PATH` clash with the SCANOSS scan engine. Update install scripts, download
-  URLs (`scanoss-cli-<os>-<arch>` archives), and any `docker run … scanoss`
-  invocations. `go install …/cmd/scanoss@latest` still produces `scanoss`; rename
-  it manually. SBOM tool metadata (`Tool: scanoss`) is unchanged (product name).
+- Renamed the CLI binary from `scanoss` to `scanoss-cli`. The `go install` path is now
+  `go install github.com/scanoss/scanoss.go/cmd/scanoss-cli@latest`.
 
 ## [0.1.0] - 2026-07-16
 
@@ -66,4 +63,5 @@ Initial release of the SCANOSS Go CLI and SDK (`scanoss`).
   CycloneDX and SPDX (with `WithTool`/`WithAuthor`/`WithTimestamp` document-metadata options).
 - **C shared library** (`libscanoss`) with Node.js and Python bindings.
 
+[0.2.0]: https://github.com/scanoss/scanoss.go/releases/tag/v0.2.0
 [0.1.0]: https://github.com/scanoss/scanoss.go/releases/tag/v0.1.0

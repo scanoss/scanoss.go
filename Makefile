@@ -58,7 +58,7 @@ lint: ## Run golangci-lint
 
 .PHONY: build
 build: ## Build the CLI binary
-	$(GO) build -o $(BIN) ./cmd/scanoss
+	$(GO) build -o $(BIN) ./cmd/scanoss-cli
 
 .PHONY: tidy
 tidy: ## Tidy go.mod / go.sum

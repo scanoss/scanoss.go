@@ -6,7 +6,7 @@ project_name: scanoss
 
 builds:
   - id: scanoss
-    main: ./cmd/scanoss
+    main: ./cmd/scanoss-cli
     binary: scanoss-cli
     env:
       - CGO_ENABLED=0
@@ -26,7 +26,7 @@ builds:
   # HarmonyOS (OpenHarmony) runs the Linux arm64 binary; published under its own
   # name so users find it. Same artifact as scanoss-cli-linux-arm64.
   - id: harmonyos
-    main: ./cmd/scanoss
+    main: ./cmd/scanoss-cli
     binary: scanoss-cli
     env:
       - CGO_ENABLED=0
@@ -107,7 +107,7 @@ release:
     **Go:**
 
     ```bash
-    go install github.com/scanoss/scanoss.go/cmd/scanoss@latest
+    go install github.com/scanoss/scanoss.go/cmd/scanoss-cli@latest
     ```
 
     See the [README](https://github.com/scanoss/scanoss.go/blob/main/README.md) and

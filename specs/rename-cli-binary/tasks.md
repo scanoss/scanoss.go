@@ -33,7 +33,7 @@
 
 ## Phase 3 — CI consumers (must match Phase 1-2 output)
 - [ ] **T005** `.github/workflows/ci.yml`: `go build -v -o scanoss-cli
-      ./cmd/scanoss` (:44) and update smoke calls `./scanoss-cli --version` /
+      ./cmd/scanoss-cli` (:44) and update smoke calls `./scanoss-cli --version` /
       `./scanoss-cli wfp ...` (:48-49). (depends on T001)
       Commit: `ci: build and smoke-test scanoss-cli`.
 - [ ] **T006** `.github/workflows/release.yml`: update archive matrix filenames
@@ -54,9 +54,9 @@
 ## Phase 4 — Docs & changelog
 - [ ] **T007 [P]** `README.md`: update Prebuilt binary (extract/`mv scanoss-cli`),
       Docker example note if needed, and Build-from-source
-      (`go build -o scanoss-cli ./cmd/scanoss`) — lines 64-76, 85-106.
-      Leave the `go install` section, noting it still yields `scanoss` (see spec
-      Out of scope), or add a one-line caveat.
+      (`go build -o scanoss-cli ./cmd/scanoss-cli`) — lines 64-76, 85-106.
+      Update the `go install` section to `…/cmd/scanoss-cli@latest` (now yields
+      `scanoss-cli` directly).
       Commit: `docs: document scanoss-cli binary name`.
 - [ ] **T007b [P]** Usage-example docs: `README.md` Quick-start invocations
       (incl. `enrich`), all `CLIENT_HELP.md` CLI invocations + prose,
@@ -65,15 +65,15 @@
       subprocess). Preserve non-binary references (`scanoss.json`,
       `api.scanoss.com`, PURLs, "scanoss raw", SDK API, `libscanoss-*` artifacts,
       package paths). Commit: `docs: use scanoss-cli in CLI usage examples`.
-- [ ] **T008 [P]** `CHANGELOG.md`: add under `## [Unreleased]` a `### Changed`
-      entry — CLI binary renamed `scanoss` → `scanoss-cli` (breaking; update
-      install scripts / docker invocations).
+- [ ] **T008 [P]** `CHANGELOG.md`: add under `## [0.2.0]` a `### Changed`
+      entry — CLI binary renamed `scanoss` → `scanoss-cli` (pre-1.0, not
+      breaking; update install scripts / docker invocations).
       Commit: `docs: changelog for scanoss-cli rename`.
 
 ## Phase 5 — Verification
 - [ ] **T009** Repo-wide grep for stray old-name references in scope:
       `grep -rnE '(-o scanoss\b|mv scanoss\b|\./scanoss\b|binary: scanoss\b|scanoss\.exe)' \
       Makefile .goreleaser.yaml Dockerfile .github README.md` — expect only
-      intentional keeps (image repo, project_name, labels, `cmd/scanoss` path).
+      intentional keeps (image repo, project_name, labels).
       Run `make build` → `./scanoss-cli --version` and `make check`. No commit
       (verification), or a follow-up fix commit if the grep surfaces a miss.

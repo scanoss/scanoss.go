@@ -10,7 +10,7 @@ Automated workflows for building, testing, and releasing the scanoss project.
 
 **Jobs**:
 - **test** — Go unit tests + `go vet`.
-- **build-cli** — builds the `scanoss-cli` CLI (`go build -o scanoss-cli ./cmd/scanoss`).
+- **build-cli** — builds the `scanoss-cli` CLI (`go build -o scanoss-cli ./cmd/scanoss-cli`).
 - **build-and-test-libscanoss** — builds the shared library on Linux and macOS and exercises the Python and Node.js wrappers.
 - **lint** — `gofmt` check + `golangci-lint`.
 

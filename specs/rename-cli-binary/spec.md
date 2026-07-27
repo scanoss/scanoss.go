@@ -17,13 +17,14 @@ The rename is deliberately limited to the **executable/artifact name** and the
 command name. Project/distribution *identity* that does not sit on the `PATH`
 (the GoReleaser `project_name`, the GHCR image repository `ghcr.io/scanoss/scanoss`,
 OCI image labels) is left unchanged to minimise disruption. The Go package
-directory `cmd/scanoss` is also left unchanged (per decision), which leaves one
-documented gap around `go install` (see Out of scope).
+directory is renamed too (`cmd/scanoss` → `cmd/scanoss-cli`) so that
+`go install …/cmd/scanoss-cli@latest` produces the `scanoss-cli` binary directly,
+with no manual rename.
 
-This is a **breaking change** for existing users: install scripts, download
-URLs, and `docker run ... scanoss` invocations that assume the old names must be
-updated. It ships under `## [Unreleased]` and should be called out in release
-notes.
+The project is pre-1.0 and not yet in production, so this ships as a normal
+`## [0.2.0]` change rather than a breaking one. Still, anyone with old install
+scripts, download URLs, or `docker run ... scanoss` invocations should update
+them; call it out in the release notes.
 
 ## User Scenarios & Testing
 
@@ -82,10 +83,10 @@ shadowing the other.
   `integration.md`). Non-binary references are preserved: `scanoss.json`,
   `api.scanoss.com`, PURLs (`pkg:github/scanoss/engine`), the "scanoss raw"
   inventory format name, "scanoss git tag", the Go SDK API (`scanoss.New(...)`),
-  the `libscanoss` shared-library artifacts, and package paths (`cmd/scanoss`,
-  `pkg/scanoss`).
-- **FR-8** `CHANGELOG.md` `## [Unreleased]` records the rename as a breaking
-  change under a `### Changed` entry.
+  the `libscanoss` shared-library artifacts, and the SDK package path
+  `pkg/scanoss`.
+- **FR-8** `CHANGELOG.md` `## [0.2.0]` records the rename under a `### Changed`
+  entry.
 - **NFR-1** No source/behavior change beyond names: `go build ./...`, `go vet
   ./...`, and the test suite stay green.
 - **NFR-2** The rename is complete and consistent — no stray reference to the old
@@ -103,10 +104,10 @@ These were judgment calls made to keep the change coherent; flag any to revert:
   binary path.
 
 ## Out of scope
-- **`go install` name.** The package directory `cmd/scanoss` is left as-is (per
-  decision), so `go install github.com/scanoss/scanoss.go/cmd/scanoss@latest`
-  still produces a binary named `scanoss` (Go names it after the directory).
-  **Documented gap:** users installing via `go install` must rename it themselves,
-  or a future change renames the directory to `cmd/scanoss-cli`.
+- **`go install` name — now addressed.** The package directory is renamed
+  `cmd/scanoss` → `cmd/scanoss-cli`, so
+  `go install github.com/scanoss/scanoss.go/cmd/scanoss-cli@latest` produces the
+  `scanoss-cli` binary directly (Go names it after the directory). No manual
+  rename is needed.
 - Renaming the GHCR image repository or the GoReleaser project name.
 - Any code, flag, or runtime behavior change.

@@ -41,12 +41,12 @@ jobs:
           go-version-file: go.mod
 
       - name: Build scanoss-cli
-        run: go build -v -o scanoss-cli ./cmd/scanoss
+        run: go build -v -o scanoss-cli ./cmd/scanoss-cli
 
       - name: Test CLI
         run: |
           ./scanoss-cli --version
-          ./scanoss-cli wfp cmd/scanoss/main.go
+          ./scanoss-cli wfp cmd/scanoss-cli/main.go
 
   build-and-test-libscanoss:
     name: Build and Test libscanoss
@@ -96,7 +96,7 @@ jobs:
           version = lib.get_version()
           print(f'✓ Python wrapper - Library version: {version}')
           assert version, f'empty version: {version!r}'
-          fp = lib.generate_wfp('../../cmd/scanoss/main.go')
+          fp = lib.generate_wfp('../../cmd/scanoss-cli/main.go')
           assert len(fp) > 0
           print(f'✓ Python wrapper - Generated fingerprint: {len(fp)} bytes')
           "
@@ -111,7 +111,7 @@ jobs:
           const version = lib.getVersion();
           console.log('✓ Node.js wrapper - Library version:', version);
           if (!version) throw new Error('empty version');
-          const fp = lib.generateWFP('../../cmd/scanoss/main.go');
+          const fp = lib.generateWFP('../../cmd/scanoss-cli/main.go');
           if (!fp || fp.length === 0) throw new Error('Fingerprint generation failed');
           console.log('✓ Node.js wrapper - Generated fingerprint:', fp.length, 'bytes');
           "

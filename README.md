@@ -11,7 +11,7 @@ version.
 
 ## Architecture
 
-- `cmd/` — the CLI (Cobra); `cmd/scanoss` is the `go install` entrypoint.
+- `cmd/` — the CLI (Cobra); `cmd/scanoss-cli` is the `go install` entrypoint.
 - `pkg/` — the reusable Go SDK: scan and decoration services, fingerprinting,
   file filtering, SBOM read/write, and the low-level API client.
 - `internal/` — private helpers (config, version).
@@ -25,12 +25,12 @@ OpenAPI types come from the published SDK `github.com/scanoss/scanoss.api-sdk`
 ### `go install`
 
 ```bash
-go install github.com/scanoss/scanoss.go/cmd/scanoss@latest
+go install github.com/scanoss/scanoss.go/cmd/scanoss-cli@latest
 ```
 
-This installs a binary named `scanoss` (Go names it after the package directory).
-Rename it to `scanoss-cli` if you need to avoid a clash with the SCANOSS scan
-engine on your `PATH`.
+This installs the CLI as `scanoss-cli` (Go names the binary after its package
+directory) — matching the examples below and avoiding a clash with the SCANOSS
+scan engine (also `scanoss`) on your `PATH`.
 
 ### Prebuilt binary
 
@@ -76,7 +76,7 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/src" \
 ```bash
 git clone https://github.com/scanoss/scanoss.go.git
 cd scanoss.go
-make build          # or: go build -o scanoss-cli ./cmd/scanoss
+make build          # or: go build -o scanoss-cli ./cmd/scanoss-cli
 ```
 
 ## Quick start

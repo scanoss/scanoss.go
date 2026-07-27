@@ -18,9 +18,9 @@
   - `.github/workflows/release.yml:93-97,108-117` — archive matrix + smoke calls
     (Unix `chmod +x scanoss`, `./scanoss ...`; Windows `.\scanoss.exe ...`).
   - `README.md:59,64-76,85-106` — `go install`, prebuilt binary, docker, build.
-  - `CHANGELOG.md` — `## [Unreleased]`.
+  - `CHANGELOG.md` — `## [0.2.0]`.
 - **Left unchanged (per spec Decisions):** GoReleaser `project_name`, GHCR image
-  repo `ghcr.io/scanoss/scanoss`, OCI `image.title` labels, dir `cmd/scanoss`.
+  repo `ghcr.io/scanoss/scanoss`, OCI `image.title` labels.
 
 ## Design overview
 The executable name lives in a handful of independent surfaces. Change each to
@@ -48,7 +48,7 @@ docs       ──► install/extract/move scanoss-cli
 - **Release CI:** `release.yml` archive filenames + `scanoss-cli`/`scanoss-cli.exe`
   smoke calls.
 - **Docs:** `README.md` install/build sections; `CHANGELOG.md` `### Changed`
-  breaking-change note.
+  entry under `## [0.2.0]`.
 
 ## Ordering rationale
 Land the source-of-truth artifact producers first (Makefile, goreleaser,
@@ -59,18 +59,19 @@ the tree never references a name that isn't produced yet.
 
 ## Commit conventions
 - **Conventional Commits** — this is a `refactor:` (no user-facing feature), with
-  the changelog entry justifying a `## [Unreleased]` note despite being a refactor
-  (it is a breaking rename users must act on).
+  the changelog entry justifying a `## [0.2.0]` note despite being a refactor
+  (it renames the binary and install path, which users must act on).
 - **Atomic commits** — one surface per commit where it keeps the tree coherent;
   build+cobra may pair with their direct consumers to avoid a broken CI ref.
 - **Short** imperative subjects.
 
 ## Risks / trade-offs
-- **Breaking change** for existing install scripts / download URLs / docker
-  invocations — mitigated by the `CHANGELOG` note and release-notes callout;
+- **Install-command change** (pre-1.0, not in production — not flagged breaking)
+  for existing install scripts / download URLs / docker invocations — mitigated
+  by the `CHANGELOG` note and release-notes callout;
   no code path depends on the name.
-- **`go install` gap** — `cmd/scanoss` dir kept, so `go install` still yields
-  `scanoss`. Documented in spec Out of scope; not silently ignored.
+- **`go install`** — the `cmd/scanoss` dir is renamed to `cmd/scanoss-cli`, so
+  `go install …/cmd/scanoss-cli@latest` yields `scanoss-cli` directly.
 - **Missed reference risk** — mitigated by a final repo-wide grep for the old
   executable-name patterns (`-o scanoss`, `mv scanoss`, `./scanoss`,
   `binary: scanoss`) as a verification task.
