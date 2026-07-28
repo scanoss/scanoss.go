@@ -76,53 +76,53 @@ func TestResolverValueAndSourceAgree(t *testing.T) {
 		file       string
 		env        map[string]string
 		flag       map[string]string
-		wantURL    Resolved
-		wantAPIKey Resolved
+		wantURL    Setting
+		wantAPIKey Setting
 	}{
 		{
 			name:       "nothing configured",
-			wantURL:    Resolved{Value: defaultAPIURL, Source: SourceDefault},
-			wantAPIKey: Resolved{Source: SourceUnset},
+			wantURL:    Setting{Value: defaultAPIURL, Source: SourceDefault},
+			wantAPIKey: Setting{Source: SourceUnset},
 		},
 		{
 			name:       "config file only",
 			file:       `{"api_url": "https://file.example.com", "api_key": "from_file"}`,
-			wantURL:    Resolved{Value: "https://file.example.com", Source: SourceFile},
-			wantAPIKey: Resolved{Value: "from_file", Source: SourceFile},
+			wantURL:    Setting{Value: "https://file.example.com", Source: SourceFile},
+			wantAPIKey: Setting{Value: "from_file", Source: SourceFile},
 		},
 		{
 			name:       "environment overrides the file",
 			file:       `{"api_url": "https://file.example.com", "api_key": "from_file"}`,
 			env:        map[string]string{"SCANOSS_API_URL": "https://env.example.com", "SCANOSS_API_KEY": "from_env"},
-			wantURL:    Resolved{Value: "https://env.example.com", Source: SourceEnv},
-			wantAPIKey: Resolved{Value: "from_env", Source: SourceEnv},
+			wantURL:    Setting{Value: "https://env.example.com", Source: SourceEnv},
+			wantAPIKey: Setting{Value: "from_env", Source: SourceEnv},
 		},
 		{
 			name:       "flag overrides the environment and the file",
 			file:       `{"api_url": "https://file.example.com", "api_key": "from_file"}`,
 			env:        map[string]string{"SCANOSS_API_URL": "https://env.example.com", "SCANOSS_API_KEY": "from_env"},
 			flag:       map[string]string{"api-url": "https://flag.example.com", "api-key": "from_flag"},
-			wantURL:    Resolved{Value: "https://flag.example.com", Source: SourceFlag},
-			wantAPIKey: Resolved{Value: "from_flag", Source: SourceFlag},
+			wantURL:    Setting{Value: "https://flag.example.com", Source: SourceFlag},
+			wantAPIKey: Setting{Value: "from_flag", Source: SourceFlag},
 		},
 		{
 			name:       "an empty environment variable falls through to the file",
 			file:       `{"api_url": "https://file.example.com", "api_key": "from_file"}`,
 			env:        map[string]string{"SCANOSS_API_URL": "", "SCANOSS_API_KEY": ""},
-			wantURL:    Resolved{Value: "https://file.example.com", Source: SourceFile},
-			wantAPIKey: Resolved{Value: "from_file", Source: SourceFile},
+			wantURL:    Setting{Value: "https://file.example.com", Source: SourceFile},
+			wantAPIKey: Setting{Value: "from_file", Source: SourceFile},
 		},
 		{
 			name:       "an empty file value falls through to the flag default",
 			file:       `{"api_url": "", "api_key": ""}`,
-			wantURL:    Resolved{Value: defaultAPIURL, Source: SourceDefault},
-			wantAPIKey: Resolved{Source: SourceUnset},
+			wantURL:    Setting{Value: defaultAPIURL, Source: SourceDefault},
+			wantAPIKey: Setting{Source: SourceUnset},
 		},
 		{
 			name:       "a file value for one key does not affect the other",
 			file:       `{"api_key": "from_file"}`,
-			wantURL:    Resolved{Value: defaultAPIURL, Source: SourceDefault},
-			wantAPIKey: Resolved{Value: "from_file", Source: SourceFile},
+			wantURL:    Setting{Value: defaultAPIURL, Source: SourceDefault},
+			wantAPIKey: Setting{Value: "from_file", Source: SourceFile},
 		},
 	}
 
@@ -140,24 +140,33 @@ func TestResolverValueAndSourceAgree(t *testing.T) {
 				setFlag(t, flags, name, value)
 			}
 
-			resolver, err := NewResolver(flags)
+			r, err := newResolver(flags)
 			if err != nil {
-				t.Fatalf("NewResolver() error: %v", err)
+				t.Fatalf("newResolver() error: %v", err)
 			}
 
-			if got := resolver.Key(KeyAPIURL); got != tc.wantURL {
-				t.Errorf("Key(api_url) = %+v, want %+v", got, tc.wantURL)
-			}
-			if got := resolver.Key(KeyAPIKey); got != tc.wantAPIKey {
-				t.Errorf("Key(api_key) = %+v, want %+v", got, tc.wantAPIKey)
+			// The table states the value and the source; Key is always the key asked
+			// for, asserted once below rather than repeated in every case.
+			for _, tc := range []struct {
+				key  string
+				want Setting
+			}{{KeyAPIURL, tc.wantURL}, {KeyAPIKey, tc.wantAPIKey}} {
+				got := r.Key(tc.key)
+				if got.Value != tc.want.Value || got.Source != tc.want.Source {
+					t.Errorf("Key(%s) = {%q, %s}, want {%q, %s}",
+						tc.key, got.Value, got.Source, tc.want.Value, tc.want.Source)
+				}
+				if got.Key != tc.key {
+					t.Errorf("Key(%s) reported key %q", tc.key, got.Key)
+				}
 			}
 
 			// The value viper resolves must match the value reported alongside the
 			// source. If the two ladders ever disagree, this is what fails.
-			if want := resolver.viper.GetString(KeyAPIURL); tc.wantURL.Source != SourceDefault && want != tc.wantURL.Value {
+			if want := r.viper.GetString(KeyAPIURL); tc.wantURL.Source != SourceDefault && want != tc.wantURL.Value {
 				t.Errorf("viper resolved api_url as %q but the reported value is %q", want, tc.wantURL.Value)
 			}
-			if want := resolver.viper.GetString(KeyAPIKey); tc.wantAPIKey.Source != SourceUnset && want != tc.wantAPIKey.Value {
+			if want := r.viper.GetString(KeyAPIKey); tc.wantAPIKey.Source != SourceUnset && want != tc.wantAPIKey.Value {
 				t.Errorf("viper resolved api_key as %q but the reported value is %q", want, tc.wantAPIKey.Value)
 			}
 		})
@@ -238,11 +247,11 @@ func TestExplicitEmptyFlagOverridesFile(t *testing.T) {
 	flags := apiFlags(t)
 	setFlag(t, flags, "api-key", "")
 
-	resolver, err := NewResolver(flags)
+	r, err := newResolver(flags)
 	if err != nil {
-		t.Fatalf("NewResolver() error: %v", err)
+		t.Fatalf("newResolver() error: %v", err)
 	}
-	got := resolver.Key(KeyAPIKey)
+	got := r.Key(KeyAPIKey)
 	if got.Source != SourceFlag || got.Value != "" {
 		t.Errorf("Key(api_key) = %+v, want an empty value from the flag", got)
 	}

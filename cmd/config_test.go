@@ -153,7 +153,7 @@ func TestConfigSetRejectsUnrecognizedKey(t *testing.T) {
 	if !errors.As(err, &unknown) {
 		t.Fatalf("config set: error = %v, want *cliconfig.UnknownKeyError", err)
 	}
-	for _, key := range cliconfig.CLIKeys() {
+	for _, key := range []string{"api-key", "api-url"} {
 		if !strings.Contains(err.Error(), key) {
 			t.Errorf("error %q does not list %q", err, key)
 		}

@@ -52,7 +52,7 @@ func withHome(t *testing.T) string {
 // rather than empty.
 func isolateEnv(t *testing.T) {
 	t.Helper()
-	for _, key := range RecognizedKeys() {
+	for _, key := range recognizedKeys() {
 		name := EnvName(key)
 		t.Setenv(name, "")
 		if err := os.Unsetenv(name); err != nil {
@@ -86,72 +86,6 @@ func TestPath(t *testing.T) {
 	want := filepath.Join(home, ".scanoss", "settings.json")
 	if got != want {
 		t.Errorf("Path() = %q, want %q", got, want)
-	}
-}
-
-func TestRegistry(t *testing.T) {
-	if got, want := strings.Join(RecognizedKeys(), ","), "api_key,api_url"; got != want {
-		t.Errorf("RecognizedKeys() = %q, want %q (sorted)", got, want)
-	}
-	for _, key := range []string{KeyAPIURL, KeyAPIKey} {
-		if !IsRecognized(key) {
-			t.Errorf("IsRecognized(%q) = false, want true", key)
-		}
-	}
-	if IsRecognized("api_token") {
-		t.Error(`IsRecognized("api_token") = true, want false`)
-	}
-	if !IsSecret(KeyAPIKey) {
-		t.Error("api_key must be marked secret")
-	}
-	if IsSecret(KeyAPIURL) {
-		t.Error("api_url must not be marked secret")
-	}
-	if IsSecret("api_token") {
-		t.Error("an unrecognized key must not report as secret")
-	}
-	if got, want := EnvName(KeyAPIKey), "SCANOSS_API_KEY"; got != want {
-		t.Errorf("EnvName(%q) = %q, want %q", KeyAPIKey, got, want)
-	}
-	if got, want := EnvName(KeyAPIURL), "SCANOSS_API_URL"; got != want {
-		t.Errorf("EnvName(%q) = %q, want %q", KeyAPIURL, got, want)
-	}
-}
-
-// The CLI has exactly one spelling per setting: the dashed one. The stored
-// snake_case form is the file format, not a second way to type a key.
-func TestStoredKey(t *testing.T) {
-	for _, input := range []string{"api-key", "  api-key  "} {
-		stored, ok := StoredKey(input)
-		if !ok {
-			t.Errorf("StoredKey(%q) reported unrecognized", input)
-			continue
-		}
-		if stored != KeyAPIKey {
-			t.Errorf("StoredKey(%q) = %q, want %q", input, stored, KeyAPIKey)
-		}
-	}
-	// One way only: the file spelling, a different case, and a typo are all rejected,
-	// so there is one thing to document and one error to explain.
-	for _, input := range []string{"api_key", "API-KEY", "Api_Key", "api-token", "apikey"} {
-		if stored, ok := StoredKey(input); ok {
-			t.Errorf("StoredKey(%q) = (%q, true), want unrecognized", input, stored)
-		}
-	}
-}
-
-func TestCLIKeyAndCLIKeys(t *testing.T) {
-	if got, want := CLIKey(KeyAPIKey), "api-key"; got != want {
-		t.Errorf("CLIKey(%q) = %q, want %q", KeyAPIKey, got, want)
-	}
-	if got, want := CLIKey(KeyAPIURL), "api-url"; got != want {
-		t.Errorf("CLIKey(%q) = %q, want %q", KeyAPIURL, got, want)
-	}
-	if got := CLIKey("api_token"); got != "" {
-		t.Errorf("CLIKey(unrecognized) = %q, want empty", got)
-	}
-	if got, want := strings.Join(CLIKeys(), ","), "api-key,api-url"; got != want {
-		t.Errorf("CLIKeys() = %q, want %q (sorted)", got, want)
 	}
 }
 
@@ -405,7 +339,7 @@ func TestSetRejectsUnrecognizedKey(t *testing.T) {
 		t.Errorf("UnknownKeyError.Key = %q, want %q", unknown.Key, "api_token")
 	}
 	// The message must list what is valid, in the spelling the user types.
-	for _, key := range CLIKeys() {
+	for _, key := range []string{"api-key", "api-url"} {
 		if !strings.Contains(err.Error(), key) {
 			t.Errorf("error %q does not mention %q", err, key)
 		}

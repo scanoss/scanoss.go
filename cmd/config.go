@@ -195,11 +195,10 @@ func runConfigGet(cmd *cobra.Command, args []string) error {
 		return &cliconfig.UnknownKeyError{Key: args[0]}
 	}
 
-	resolver, err := cliconfig.NewResolver(cmd.Flags())
+	resolved, err := cliconfig.Resolve(cmd.Flags(), key)
 	if err != nil {
 		return err
 	}
-	resolved := resolver.Key(key)
 	if resolved.Value == "" {
 		return fmt.Errorf("%s is not set", cliconfig.CLIKey(key))
 	}
@@ -212,7 +211,7 @@ func runConfigGet(cmd *cobra.Command, args []string) error {
 // source is the only observable signal about it — without it, "your stored key" and
 // "a different key from the environment" would print identically.
 func runConfigList(cmd *cobra.Command, _ []string) error {
-	resolver, err := cliconfig.NewResolver(cmd.Flags())
+	configs, err := cliconfig.ResolveAll(cmd.Flags())
 	if err != nil {
 		return err
 	}
@@ -227,22 +226,21 @@ func runConfigList(cmd *cobra.Command, _ []string) error {
 
 	out := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 
-	// Recognized keys are always listed, so `list` is never blank on a fresh machine
+	// Every recognized setting is listed, so `list` is never blank on a fresh machine
 	// and doubles as a reference for what can be set.
-	for _, key := range cliconfig.RecognizedKeys() {
-		resolved := resolver.Key(key)
-		value := display(key, resolved.Value)
-		if resolved.Source == cliconfig.SourceUnset {
+	for _, config := range configs {
+		value := display(config.Key, config.Value)
+		if config.Source == cliconfig.SourceUnset {
 			value = "(unset)"
 		}
 		// Keys are printed the way they are typed, so a line can be pasted back into
 		// a `config set`. An unset key has no source to report; omitting the cell
 		// rather than emitting an empty one keeps tabwriter from padding the line
 		// with trailing spaces.
-		if label := sourceLabel(key, resolved.Source); label != "" {
-			_, _ = fmt.Fprintf(out, "%s\t%s\t%s\n", cliconfig.CLIKey(key), value, label)
+		if label := sourceLabel(config.Key, config.Source); label != "" {
+			_, _ = fmt.Fprintf(out, "%s\t%s\t%s\n", cliconfig.CLIKey(config.Key), value, label)
 		} else {
-			_, _ = fmt.Fprintf(out, "%s\t%s\n", cliconfig.CLIKey(key), value)
+			_, _ = fmt.Fprintf(out, "%s\t%s\n", cliconfig.CLIKey(config.Key), value)
 		}
 	}
 
