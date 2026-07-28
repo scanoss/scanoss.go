@@ -95,8 +95,8 @@ stored `api_url`:
 
 ```console
 $ scanoss-cli config list
-api_key  ********                           (env: SCANOSS_API_KEY)
-api_url  https://scanoss.internal.acme.com  (config file)
+api_key  ********                              (env: SCANOSS_API_KEY)
+api_url  https://scanoss.internal.example.com  (config file)
 
 Config file: /Users/you/.scanoss/settings.json
 ```
@@ -110,14 +110,14 @@ names the variable so the reader knows what to unset.
 **Precedence is demonstrable on `api_url`,** which is not secret:
 
 ```console
-$ scanoss-cli config set api_url https://scanoss.internal.acme.com
+$ scanoss-cli config set api_url https://scanoss.internal.example.com
 $ scanoss-cli scan . --verbose
-DEBUG resolved api_url source="config file" value=https://scanoss.internal.acme.com
+DEBUG resolved api_url source="config file" value=https://scanoss.internal.example.com
 
-$ SCANOSS_API_URL=https://staging.scanoss.com scanoss-cli scan . --verbose
-DEBUG resolved api_url source=env value=https://staging.scanoss.com
+$ SCANOSS_API_URL=https://scanoss.staging.example.com scanoss-cli scan . --verbose
+DEBUG resolved api_url source=env value=https://scanoss.staging.example.com
 
-$ SCANOSS_API_URL=https://staging.scanoss.com \
+$ SCANOSS_API_URL=https://scanoss.staging.example.com \
     scanoss-cli scan . --api-url https://api.scanoss.com --verbose
 DEBUG resolved api_url source=flag value=https://api.scanoss.com
 ```
@@ -134,7 +134,7 @@ DEBUG resolved api_key source="config file"
 
 ```console
 $ scanoss-cli config get api_url
-https://scanoss.internal.acme.com
+https://scanoss.internal.example.com
 
 $ scanoss-cli config get api_key
 ********

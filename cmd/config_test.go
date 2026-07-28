@@ -24,6 +24,7 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -159,6 +160,233 @@ func TestConfigUnsetRejectsUnrecognizedKey(t *testing.T) {
 	var unknown *cliconfig.UnknownKeyError
 	if err := runConfigUnset(nil, []string{"api_token"}); !errors.As(err, &unknown) {
 		t.Errorf("error = %v, want *cliconfig.UnknownKeyError", err)
+	}
+}
+
+// runConfigOut invokes a config subcommand's RunE and returns what it wrote to
+// stdout.
+func runConfigOut(t *testing.T, run func(*cobra.Command, []string) error, args ...string) (string, error) {
+	t.Helper()
+	var out bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&out)
+	err := run(cmd, args)
+	return out.String(), err
+}
+
+func TestConfigGet(t *testing.T) {
+	configHome(t)
+	if err := runConfigSet(nil, []string{"api_url", "https://scanoss.internal.example.com"}); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runConfigOut(t, runConfigGet, "api_url")
+	if err != nil {
+		t.Fatalf("config get api_url: %v", err)
+	}
+	// Bare value, no label and no decoration: `get` has to compose in a shell.
+	if out != "https://scanoss.internal.example.com\n" {
+		t.Errorf("output = %q, want the bare value", out)
+	}
+}
+
+// `get` reports the effective value, not the stored one, so it answers the question
+// the user is actually asking: what will the next command use?
+func TestConfigGetReportsEffectiveValue(t *testing.T) {
+	configHome(t)
+	if err := runConfigSet(nil, []string{"api_url", "https://file.example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SCANOSS_API_URL", "https://env.example.com")
+
+	out, err := runConfigOut(t, runConfigGet, "api_url")
+	if err != nil {
+		t.Fatalf("config get api_url: %v", err)
+	}
+	if strings.TrimSpace(out) != "https://env.example.com" {
+		t.Errorf("output = %q, want the environment value", out)
+	}
+}
+
+// An unset key exits non-zero rather than printing an empty line, so `if
+// scanoss-cli config get api_key` is a usable check.
+func TestConfigGetUnsetKeyFails(t *testing.T) {
+	configHome(t)
+
+	out, err := runConfigOut(t, runConfigGet, "api_key")
+	if err == nil {
+		t.Fatal("config get api_key succeeded with nothing stored, want an error")
+	}
+	if !strings.Contains(err.Error(), "api_key is not set") {
+		t.Errorf("error = %q, want it to say the key is not set", err)
+	}
+	if out != "" {
+		t.Errorf("output = %q, want nothing", out)
+	}
+}
+
+func TestConfigGetRejectsUnrecognizedKey(t *testing.T) {
+	configHome(t)
+
+	var unknown *cliconfig.UnknownKeyError
+	if _, err := runConfigOut(t, runConfigGet, "api_token"); !errors.As(err, &unknown) {
+		t.Errorf("error = %v, want *cliconfig.UnknownKeyError", err)
+	}
+}
+
+// The whole point of the masking rule: the key's value must not appear in any output
+// path. This asserts the literal value is absent from the stream rather than merely
+// that asterisks are present — a partial reveal would satisfy the weaker check.
+func TestSecretNeverAppearsInOutput(t *testing.T) {
+	configHome(t)
+	const secret = "SC_this_must_never_be_printed"
+	if err := runConfigSet(nil, []string{"api_key", secret}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name string
+		run  func(*cobra.Command, []string) error
+		args []string
+	}{
+		{"get", runConfigGet, []string{"api_key"}},
+		{"list", runConfigList, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := runConfigOut(t, tc.run, tc.args...)
+			if err != nil {
+				t.Fatalf("config %s: %v", tc.name, err)
+			}
+			if strings.Contains(out, secret) {
+				t.Errorf("config %s printed the api_key value: %q", tc.name, out)
+			}
+			// A prefix long enough to be useful to an attacker must not leak either.
+			if strings.Contains(out, secret[:8]) {
+				t.Errorf("config %s leaked a prefix of the api_key: %q", tc.name, out)
+			}
+			if !strings.Contains(out, maskedValue) {
+				t.Errorf("config %s did not mask the api_key: %q", tc.name, out)
+			}
+		})
+	}
+}
+
+// The mask must not reveal the length either, so two keys of very different sizes
+// have to render identically.
+func TestMaskIsConstantWidth(t *testing.T) {
+	configHome(t)
+
+	var renders []string
+	for _, secret := range []string{"a", strings.Repeat("x", 128)} {
+		if err := runConfigSet(nil, []string{"api_key", secret}); err != nil {
+			t.Fatal(err)
+		}
+		out, err := runConfigOut(t, runConfigGet, "api_key")
+		if err != nil {
+			t.Fatal(err)
+		}
+		renders = append(renders, out)
+	}
+	if renders[0] != renders[1] {
+		t.Errorf("mask varies with the value: %q vs %q", renders[0], renders[1])
+	}
+}
+
+// On a fresh machine `list` must still explain itself: an empty report would read as
+// a broken command, and the recognized keys double as a reference.
+func TestConfigListOnFreshMachine(t *testing.T) {
+	home := configHome(t)
+
+	out, err := runConfigOut(t, runConfigList)
+	if err != nil {
+		t.Fatalf("config list: %v", err)
+	}
+	for _, want := range []string{
+		"api_key", "(unset)",
+		"api_url", config.DefaultAPIURL, "(default)",
+		"Config file: " + filepath.Join(home, ".scanoss", "settings.json"),
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("list output does not contain %q:\n%s", want, out)
+		}
+	}
+	// No trailing whitespace: the report is something people diff and paste.
+	for _, line := range strings.Split(out, "\n") {
+		if line != strings.TrimRight(line, " \t") {
+			t.Errorf("line has trailing whitespace: %q", line)
+		}
+	}
+}
+
+// The source is load-bearing, not decoration: with the value masked, it is the only
+// way to tell a stored key from one the environment supplied.
+func TestConfigListReportsSources(t *testing.T) {
+	configHome(t)
+	if err := runConfigSet(nil, []string{"api_key", "SC_stored"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := runConfigSet(nil, []string{"api_url", "https://file.example.com"}); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runConfigOut(t, runConfigList)
+	if err != nil {
+		t.Fatalf("config list: %v", err)
+	}
+	if !strings.Contains(out, "(config file)") {
+		t.Errorf("list does not report the config-file source:\n%s", out)
+	}
+
+	t.Setenv("SCANOSS_API_KEY", "from_env")
+	out, err = runConfigOut(t, runConfigList)
+	if err != nil {
+		t.Fatalf("config list: %v", err)
+	}
+	// Naming the variable answers the follow-up question: which one do I unset?
+	if !strings.Contains(out, "(env: SCANOSS_API_KEY)") {
+		t.Errorf("list does not name the environment variable that won:\n%s", out)
+	}
+}
+
+// A hand-edited key this version does not recognize must be visible, not silently
+// ignored — otherwise `list` implies the file holds less than it does.
+func TestConfigListShowsUnrecognizedKeys(t *testing.T) {
+	home := configHome(t)
+	dir := filepath.Join(home, ".scanoss")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"api_key": "SC_stored", "future_setting": "kept"}`
+	if err := os.WriteFile(filepath.Join(dir, "settings.json"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runConfigOut(t, runConfigList)
+	if err != nil {
+		t.Fatalf("config list: %v", err)
+	}
+	for _, want := range []string{"future_setting", "kept", "unrecognized"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("list output does not contain %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestConfigPath(t *testing.T) {
+	home := configHome(t)
+
+	out, err := runConfigOut(t, runConfigPath)
+	if err != nil {
+		t.Fatalf("config path: %v", err)
+	}
+	want := filepath.Join(home, ".scanoss", "settings.json")
+	if strings.TrimSpace(out) != want {
+		t.Errorf("output = %q, want %q", strings.TrimSpace(out), want)
+	}
+	// The path must be printed whether or not the file exists, and printing it must
+	// not create anything.
+	if _, statErr := os.Stat(filepath.Join(home, ".scanoss")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Error("config path created the settings directory")
 	}
 }
 

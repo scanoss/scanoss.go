@@ -132,10 +132,11 @@ func (r *Resolver) walk(key string) Resolved {
 	if r.viper.InConfig(key) && r.viper.GetString(key) != "" {
 		return Resolved{Value: r.viper.GetString(key), Source: SourceFile}
 	}
-	// The flag default is the last rung, read from the flag rather than from viper
-	// so the source is nameable. An empty default is not a value — report unset.
-	if flag != nil && flag.DefValue != "" {
-		return Resolved{Value: flag.DefValue, Source: SourceDefault}
+	// The built-in default is the last rung, read from the registry rather than from
+	// the flag: `config list` declares no API flags and must still be able to explain
+	// where a value came from. An absent default is not a value — report unset.
+	if def := Default(key); def != "" {
+		return Resolved{Value: def, Source: SourceDefault}
 	}
 	return Resolved{Source: SourceUnset}
 }

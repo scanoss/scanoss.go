@@ -45,6 +45,8 @@ import (
 	"strings"
 
 	"github.com/spf13/viper"
+
+	"github.com/scanoss/scanoss.go/internal/config"
 )
 
 // Recognized setting keys. Keys are snake_case in the file; a new one is an entry
@@ -69,6 +71,11 @@ type keySpec struct {
 	// flag is the CLI flag that overrides this key. Stated rather than derived from
 	// the key name, so the coupling between the two spellings is visible here.
 	flag string
+	// def is the built-in default, used when no flag, environment variable, or
+	// stored value supplies one. It belongs to the setting rather than to any
+	// command's flag, so resolution reports the same default with or without flags —
+	// which is what lets `config list` explain a value it has no flag for.
+	def string
 	// secret marks a key whose value must never be displayed or logged.
 	secret bool
 }
@@ -77,8 +84,13 @@ type keySpec struct {
 // error message listing valid keys, masking, resolution, and `config list` all
 // derive from it, so adding a key does not mean touching each of those in turn.
 var registry = map[string]keySpec{
-	KeyAPIURL: {flag: "api-url"},
-	KeyAPIKey: {flag: "api-key", secret: true},
+	KeyAPIURL: {flag: "api-url", def: config.DefaultAPIURL},
+	KeyAPIKey: {flag: "api-key", secret: true}, // no default: an absent key is absent
+}
+
+// Default returns the built-in default for key, empty when it has none.
+func Default(key string) string {
+	return registry[key].def
 }
 
 // homeDir is indirected so tests can point the package at a temporary home

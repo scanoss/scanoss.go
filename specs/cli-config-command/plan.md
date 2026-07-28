@@ -215,7 +215,9 @@ preserved (FR-4) without extra work.
   `cmd/root.go:47` is currently the only one).
 - `go.mod` / `go.sum`: add `github.com/spf13/viper`, promote `github.com/spf13/pflag` to
   a direct requirement.
-- `README.md`: per [`readme-configuration.md`](./readme-configuration.md).
+- `README.md`: a "Configuration" section after the command table — precedence chain, both
+  env vars, `config` examples, the never-displayed-key rule, and the user-config vs.
+  project-`scanoss.json` clarification. Lands with T006, never ahead of it.
 - `CHANGELOG.md`: `[Unreleased] → Added`.
 
 ## Testing strategy

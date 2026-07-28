@@ -83,7 +83,7 @@
       project's `scanoss.json`; then an `Examples:` block covering set-then-scan, the
       on-prem URL, `list`, `unset`, and `path`. Subcommands get one-line `Short` text only,
       so the examples live in one place. Tests against a temp home. (depends on T001)
-- [ ] **T006** `cmd/config.go`: `get <key>` (bare value to stdout, non-zero exit when
+- [x] **T006** `cmd/config.go`: `get <key>` (bare value to stdout, non-zero exit when
       unset), `list` (every recognized key sorted, showing the **effective** value and the
       winning source — `(default)` / `(config file)` / `(env: SCANOSS_API_KEY)` /
       `(unset)` — plus a trailing `Config file: <path>` line; stored unrecognized keys
@@ -96,13 +96,11 @@
       unset-key exit; the registry's secret marking drives the masking. (depends on T005)
 
 ## Phase 5 — Docs & verification
-- [ ] **T007 [P]** `README.md`: "Configuration" section — precedence chain,
+- [x] **T007 [P]** `README.md`: "Configuration" section — precedence chain,
       `SCANOSS_API_KEY`/`SCANOSS_API_URL`, `config` examples, the never-displayed-key
       rule, the `0600` note, the `config` row in the command table, and the user-config
-      vs. project-`scanoss.json` clarification. **Text is already drafted** in
-      [`readme-configuration.md`](./readme-configuration.md) — apply it in the same commit
-      as T006, never ahead of it, so `main` does not document a command that does not
-      exist yet.
+      vs. project-`scanoss.json` clarification. Landed with T006, so `main` never
+      documented a command that did not exist.
 - [ ] **T008 [P]** `CHANGELOG.md`: `[Unreleased] → Added` entry for the `config` command
       and the env-var/config-file resolution.
 - [ ] **T009** Manual end-to-end check: with no key, `scan .` shows the banner; after

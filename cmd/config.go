@@ -26,6 +26,7 @@ package cmd
 import (
 	"fmt"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
@@ -81,9 +82,57 @@ var configUnsetCmd = &cobra.Command{
 	RunE:  runConfigUnset,
 }
 
+var configGetCmd = &cobra.Command{
+	Use:   "get <key>",
+	Short: "Print one setting (secrets render as ********)",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runConfigGet,
+}
+
+var configListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "Show the effective settings and the source of each",
+	Args:  cobra.NoArgs,
+	RunE:  runConfigList,
+}
+
+var configPathCmd = &cobra.Command{
+	Use:   "path",
+	Short: "Print the config file path",
+	Args:  cobra.NoArgs,
+	RunE:  runConfigPath,
+}
+
 func init() {
 	rootCmd.AddCommand(configCmd)
-	configCmd.AddCommand(configSetCmd, configUnsetCmd)
+	configCmd.AddCommand(configSetCmd, configUnsetCmd, configGetCmd, configListCmd, configPathCmd)
+}
+
+// maskedValue is what a secret renders as. It is a constant so that neither the
+// value nor its length is disclosed.
+const maskedValue = "********"
+
+// display renders a value for output, masking it when the key is secret. Every
+// output path goes through here, so there is one place where a secret can be
+// printed — and it never prints one.
+func display(key, value string) string {
+	if cliconfig.IsSecret(key) {
+		return maskedValue
+	}
+	return value
+}
+
+// sourceLabel renders where a value came from. The environment label names the
+// variable, since "which one do I unset?" is the immediate follow-up question.
+func sourceLabel(key string, source cliconfig.Source) string {
+	switch source {
+	case cliconfig.SourceEnv:
+		return "(env: " + cliconfig.EnvName(key) + ")"
+	case cliconfig.SourceUnset:
+		return ""
+	default:
+		return "(" + string(source) + ")"
+	}
 }
 
 func runConfigSet(_ *cobra.Command, args []string) error {
@@ -124,5 +173,93 @@ func runConfigUnset(_ *cobra.Command, args []string) error {
 		return err
 	}
 	okf("Removed %s from %s", key, path)
+	return nil
+}
+
+// runConfigGet prints one setting's effective value, undecorated so it composes in a
+// shell. A secret prints as ******** — so for those, get answers only whether the
+// key is set (by its exit code), and a script that needs the value uses the
+// environment variable instead.
+func runConfigGet(cmd *cobra.Command, args []string) error {
+	key := args[0]
+	if !cliconfig.IsRecognized(key) {
+		return &cliconfig.UnknownKeyError{Key: key}
+	}
+
+	resolver, err := cliconfig.NewResolver(cmd.Flags())
+	if err != nil {
+		return err
+	}
+	resolved := resolver.Key(key)
+	if resolved.Value == "" {
+		return fmt.Errorf("%s is not set", key)
+	}
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), display(key, resolved.Value))
+	return nil
+}
+
+// runConfigList reports the value each command will actually use and where it came
+// from. The source is not decoration: a secret always renders as ********, so the
+// source is the only observable signal about it — without it, "your stored key" and
+// "a different key from the environment" would print identically.
+func runConfigList(cmd *cobra.Command, _ []string) error {
+	resolver, err := cliconfig.NewResolver(cmd.Flags())
+	if err != nil {
+		return err
+	}
+	stored, err := cliconfig.Load()
+	if err != nil {
+		return err
+	}
+	path, err := cliconfig.Path()
+	if err != nil {
+		return err
+	}
+
+	out := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
+
+	// Recognized keys are always listed, so `list` is never blank on a fresh machine
+	// and doubles as a reference for what can be set.
+	for _, key := range cliconfig.RecognizedKeys() {
+		resolved := resolver.Key(key)
+		value := display(key, resolved.Value)
+		if resolved.Source == cliconfig.SourceUnset {
+			value = "(unset)"
+		}
+		// An unset key has no source to report; omitting the cell rather than
+		// emitting an empty one keeps tabwriter from padding the line with trailing
+		// spaces.
+		if label := sourceLabel(key, resolved.Source); label != "" {
+			_, _ = fmt.Fprintf(out, "%s\t%s\t%s\n", key, value, label)
+		} else {
+			_, _ = fmt.Fprintf(out, "%s\t%s\n", key, value)
+		}
+	}
+
+	// Keys the file carries that this version does not recognize: shown so a
+	// hand-edited file is visible rather than silently ignored.
+	for _, key := range stored.Keys() {
+		if cliconfig.IsRecognized(key) {
+			continue
+		}
+		value, _ := stored.Get(key)
+		_, _ = fmt.Fprintf(out, "%s\t%s\t%s\n", key, value, "(config file, unrecognized)")
+	}
+	if err := out.Flush(); err != nil {
+		return err
+	}
+
+	// The file itself stays one command away, since `list` reports effective values
+	// rather than the file's contents.
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\nConfig file: %s\n", path)
+	return nil
+}
+
+func runConfigPath(cmd *cobra.Command, _ []string) error {
+	path, err := cliconfig.Path()
+	if err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), path)
 	return nil
 }
