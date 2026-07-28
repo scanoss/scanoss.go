@@ -38,7 +38,7 @@
       `api_key` absent from the file on disk. (depends on T000)
 
 ## Phase 2 — `internal/cliconfig`: resolution
-- [ ] **T002** Same package: `newViper()` (`SetConfigFile` + `SetConfigType("json")` +
+- [x] **T002** Same package: `newViper()` (`SetConfigFile` + `SetConfigType("json")` +
       `SetEnvPrefix("SCANOSS")` + `AutomaticEnv`; a missing file is `*fs.PathError`, not
       `ConfigFileNotFoundError`, so check `errors.Is(err, os.ErrNotExist)`; a parse error
       is wrapped with the path), `API struct{ URL, Key }`, the `resolve` helper, and

@@ -32,14 +32,33 @@ import (
 	"testing"
 )
 
-// withHome points the package at a temporary home for the duration of one test.
+// withHome points the package at a temporary home and clears the settings
+// environment variables for the duration of one test.
 func withHome(t *testing.T) string {
 	t.Helper()
+	isolateEnv(t)
 	home := t.TempDir()
 	original := homeDir
 	homeDir = func() (string, error) { return home, nil }
 	t.Cleanup(func() { homeDir = original })
 	return home
+}
+
+// isolateEnv unsets every SCANOSS_* settings variable for the duration of one test.
+// Without this, a developer (or a CI job) with SCANOSS_API_KEY exported would see
+// their own credential win the precedence ladder and the tests would fail — or
+// worse, pass for the wrong reason. t.Setenv records the original value so cleanup
+// restores it; the Unsetenv afterwards is what makes the variable genuinely absent
+// rather than empty.
+func isolateEnv(t *testing.T) {
+	t.Helper()
+	for _, key := range RecognizedKeys() {
+		name := EnvName(key)
+		t.Setenv(name, "")
+		if err := os.Unsetenv(name); err != nil {
+			t.Fatalf("unsetting %s: %v", name, err)
+		}
+	}
 }
 
 // readFileMap returns the settings file parsed as a map, failing the test if it

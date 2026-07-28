@@ -66,16 +66,19 @@ const (
 
 // keySpec describes one recognized key.
 type keySpec struct {
+	// flag is the CLI flag that overrides this key. Stated rather than derived from
+	// the key name, so the coupling between the two spellings is visible here.
+	flag string
 	// secret marks a key whose value must never be displayed or logged.
 	secret bool
 }
 
 // registry is the single source of truth for what keys exist. Validation, the
-// error message listing valid keys, masking, and `config list` all derive from it,
-// so adding a key does not mean touching each of those in turn.
+// error message listing valid keys, masking, resolution, and `config list` all
+// derive from it, so adding a key does not mean touching each of those in turn.
 var registry = map[string]keySpec{
-	KeyAPIURL: {},
-	KeyAPIKey: {secret: true},
+	KeyAPIURL: {flag: "api-url"},
+	KeyAPIKey: {flag: "api-key", secret: true},
 }
 
 // homeDir is indirected so tests can point the package at a temporary home
@@ -93,6 +96,12 @@ func RecognizedKeys() []string {
 func IsRecognized(key string) bool {
 	_, ok := registry[key]
 	return ok
+}
+
+// FlagName returns the CLI flag that overrides key, e.g. api_url → api-url.
+// It is empty for a key the CLI does not recognize.
+func FlagName(key string) string {
+	return registry[key].flag
 }
 
 // IsSecret reports whether key's value must never be displayed or logged.
@@ -190,23 +199,32 @@ func Unset(key string) error {
 	})
 }
 
-// read parses the settings file into a plain map. viper does the parsing; the map
-// keeps every key found, which is what preserves unrecognized ones across a write.
+// fileViper returns a viper that has read the settings file and sees nothing else:
+// no environment, no flags. A missing file yields an empty instance, since "not
+// configured" is a normal state; a malformed one is an error, because falling back
+// to defaults would silently scan against the wrong endpoint.
 //
-// This instance is deliberately file-only — no AutomaticEnv, no BindPFlag. viper's
-// merged view is what a write must never see (see write).
-func read(path string) (map[string]any, error) {
+// Keeping a file-only instance is what makes a safe write possible: viper's merged
+// view must never reach the file (see write).
+func fileViper(path string) (*viper.Viper, error) {
 	v := viper.New()
 	v.SetConfigFile(path)
 	v.SetConfigType("json")
 
 	// With SetConfigFile a missing file surfaces as fs.ErrNotExist, not
 	// viper.ConfigFileNotFoundError — that one is only produced by path search.
-	if err := v.ReadInConfig(); err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return map[string]any{}, nil
-		}
+	if err := v.ReadInConfig(); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("parsing %s: %w", path, err)
+	}
+	return v, nil
+}
+
+// read parses the settings file into a plain map, which keeps every key found and
+// is what preserves unrecognized ones across a write.
+func read(path string) (map[string]any, error) {
+	v, err := fileViper(path)
+	if err != nil {
+		return nil, err
 	}
 	return v.AllSettings(), nil
 }
