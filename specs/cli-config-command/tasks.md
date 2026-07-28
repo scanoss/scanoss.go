@@ -59,7 +59,7 @@
       from drifting. (depends on T001)
 
 ## Phase 3 — Wire the call sites
-- [ ] **T003** Switch the six read sites to `cliconfig.ResolveAPI(cmd.Flags())`,
+- [x] **T003** Switch the six read sites to `cliconfig.ResolveAPI(cmd.Flags())`,
       propagating the error instead of discarding it with `_`: `cmd/auth.go:66`
       (`checkAuth` — this is what makes a stored key satisfy the no-key guard),
       `cmd/purlcommon.go:167` (`clientOptions` — covers the five PURL commands and
@@ -69,7 +69,7 @@
       `cmd/root.go` is not touched.
       Tests: extend `cmd/auth_test.go` so a stored key satisfies the guard end-to-end.
       (depends on T002)
-- [ ] **T004** Guard test in `cmd/`: walk the package's own `.go` sources and fail if
+- [x] **T004** Guard test in `cmd/`: walk the package's own `.go` sources and fail if
       `GetString("api-key")` / `GetString("api-url")` appears outside the approved call
       sites, so a future command cannot silently bypass resolution. (depends on T003)
 

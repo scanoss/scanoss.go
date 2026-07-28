@@ -33,6 +33,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/scanoss/scanoss.go/internal/cliconfig"
 	"github.com/scanoss/scanoss.go/pkg/dependencies"
 	"github.com/scanoss/scanoss.go/pkg/dependencies/parsers"
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
@@ -120,8 +121,13 @@ func runDependencies(cmd *cobra.Command, args []string) error {
 	transient, _ := cmd.Flags().GetBool("transient")
 	depth, _ := cmd.Flags().GetInt("depth")
 	limit, _ := cmd.Flags().GetInt("limit")
-	apiURL, _ := cmd.Flags().GetString("api-url")
-	apiKey, _ := cmd.Flags().GetString("api-key")
+	api, err := cliconfig.ResolveAPI(cmd.Flags())
+	if err != nil {
+		return err
+	}
+	// Kept as locals: the query helpers below take the endpoint and key as strings,
+	// and rewriting their signatures is not part of wiring resolution in.
+	apiURL, apiKey := api.URL, api.Key
 	ignoreCertErrors, _ := cmd.Flags().GetBool("ignore-cert-errors")
 
 	if ignoreCertErrors {
