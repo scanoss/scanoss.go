@@ -29,7 +29,6 @@ package scansource
 
 import (
 	"sort"
-	"strconv"
 	"strings"
 
 	scanossapi "github.com/scanoss/scanoss.api-sdk"
@@ -232,8 +231,8 @@ func filesByURLHash(files []scanossapi.FileResult) map[string][]sbom.FileEvidenc
 				MatchType:       string(f.MatchType),
 				MatchPercentage: m.MatchPercentage,
 				OssFilePath:     m.OssFilePath,
-				InputLineRanges: formatRanges(m.InputLineRanges),
-				OssLineRanges:   formatRanges(m.OssLineRanges),
+				InputLineRanges: lineRanges(m.InputLineRanges),
+				OssLineRanges:   lineRanges(m.OssLineRanges),
 			}
 			byHash[m.UrlHash] = append(byHash[m.UrlHash], ev)
 		}
@@ -245,15 +244,15 @@ func filesByURLHash(files []scanossapi.FileResult) map[string][]sbom.FileEvidenc
 	return byHash
 }
 
-// formatRanges renders line ranges as "start-end" strings (the form the sbom writers
-// expect), or nil when there are none.
-func formatRanges(ranges []scanossapi.LineRange) []string {
+// lineRanges maps the scan result's line ranges onto the inventory's own type, or nil when
+// there are none.
+func lineRanges(ranges []scanossapi.LineRange) []sbom.LineRange {
 	if len(ranges) == 0 {
 		return nil
 	}
-	out := make([]string, 0, len(ranges))
+	out := make([]sbom.LineRange, 0, len(ranges))
 	for _, r := range ranges {
-		out = append(out, strconv.Itoa(r.StartLine)+"-"+strconv.Itoa(r.EndLine))
+		out = append(out, sbom.LineRange{StartLine: r.StartLine, EndLine: r.EndLine})
 	}
 	return out
 }
