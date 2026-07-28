@@ -17,10 +17,11 @@ effective value through one precedence chain:
 --flag  >  environment variable  >  ~/.scanoss/settings.json  >  built-in default
 ```
 
-Only `api_url` and `api_key` are supported as recognized keys in this change; the
-file format, the key registry, and the resolution chain are built so a later key is
-an additive change. Keys are `snake_case`; unrecognized keys already present in the
-file are preserved untouched on write.
+Only `api-url` and `api-key` are supported in this change; the file format, the key
+registry, and the resolution chain are built so a later key is an additive change.
+Settings are named with dashes on the command line, exactly as the flags are, and
+stored `snake_case` in the file — one spelling to type, one to read on disk.
+Unrecognized keys already present in the file are preserved untouched on write.
 
 ```json
 {
@@ -47,30 +48,30 @@ once so that `scanoss-cli scan .` just works, while keeping the ability to overr
 either value per invocation with a flag or per shell with an environment variable.
 
 ### Acceptance scenarios
-1. **Given** no config file, **when** I run `scanoss-cli config set api_key TOKEN`,
+1. **Given** no config file, **when** I run `scanoss-cli config set api-key TOKEN`,
    **then** `~/.scanoss/settings.json` is created containing `{"api_key": "TOKEN"}`,
    the directory is mode `0700` and the file mode `0600`.
-2. **Given** a stored `api_key`, **when** I run any API command with no `--api-key`
+2. **Given** a stored `api-key`, **when** I run any API command with no `--api-key`
    and no env var, **then** the stored key is used and the no-key banner is not shown.
-3. **Given** a stored `api_key`, **when** `SCANOSS_API_KEY` is set, **then** the env
+3. **Given** a stored `api-key`, **when** `SCANOSS_API_KEY` is set, **then** the env
    var wins; **when** `--api-key` is also passed, **then** the flag wins over both.
-4. **Given** a stored `api_url`, **when** I run a command with no `--api-url`,
+4. **Given** a stored `api-url`, **when** I run a command with no `--api-url`,
    **then** requests target the stored URL instead of the built-in default.
-5. **Given** a config file carrying `api_key` plus a key this version does not
-   recognize, **when** I run `config set api_url https://x`, **then** the resulting
+5. **Given** a config file carrying `api-key` plus a key this version does not
+   recognize, **when** I run `config set api-url https://x`, **then** the resulting
    file has all three keys — the unrecognized key is preserved verbatim.
 6. **Given** a stored config, **when** I run `config list`, **then** all keys are
-   printed and `api_key` renders as a fixed run of asterisks (`********`) — never its
+   printed and `api-key` renders as a fixed run of asterisks (`********`) — never its
    value, never a prefix or suffix of it, and never a length that reveals the real
    one. There is no flag that reveals it.
-7. **Given** a stored config, **when** I run `config get api_url`, **then** the bare
+7. **Given** a stored config, **when** I run `config get api-url`, **then** the bare
    value is printed to stdout (script-friendly, no decoration); **when** I run
-   `config get api_key`, **then** it prints `********` — secret keys have no display
-   path in this CLI. `config get api_key` therefore reports only whether the key is
+   `config get api-key`, **then** it prints `********` — secret keys have no display
+   path in this CLI. `config get api-key` therefore reports only whether the key is
    set, exiting non-zero when it is not.
 8. **When** I run `config set some_unknown_key v`, **then** it fails with a non-zero
    exit and an error listing the recognized keys; the file is not modified.
-9. **When** I run `config unset api_key`, **then** the key is removed from the file
+9. **When** I run `config unset api-key`, **then** the key is removed from the file
    and the remaining keys are preserved.
 10. **When** I run `config path`, **then** the absolute config file path is printed
     whether or not the file exists.
@@ -86,40 +87,40 @@ are the cases a test should reproduce.
 
 ```console
 $ scanoss-cli config list
-api_key  (unset)
-api_url  https://api.scanoss.com  (default)
+api-key  (unset)
+api-url  https://api.scanoss.com  (default)
 ```
 
-After `config set api_key SC_abc123def456`, with `SCANOSS_API_KEY` also exported and a
-stored `api_url`:
+After `config set api-key SC_abc123def456`, with `SCANOSS_API_KEY` also exported and a
+stored `api-url`:
 
 ```console
 $ scanoss-cli config list
-api_key  ********                              (env: SCANOSS_API_KEY)
-api_url  https://scanoss.internal.example.com  (config file)
+api-key  ********                              (env: SCANOSS_API_KEY)
+api-url  https://scanoss.internal.example.com  (config file)
 
 Config file: /Users/you/.scanoss/settings.json
 ```
 
-The source annotation is load-bearing, not decoration: because `api_key` always renders
+The source annotation is load-bearing, not decoration: because `api-key` always renders
 as `********`, the source is the *only* observable signal about it. Without it, "using
 your stored key" and "using a different key from the environment" produce byte-identical
 output — precisely the state a user needs to see when debugging a 401. The env source
 names the variable so the reader knows what to unset.
 
-**Precedence is demonstrable on `api_url`,** which is not secret:
+**Precedence is demonstrable on `api-url`,** which is not secret:
 
 ```console
-$ scanoss-cli config set api_url https://scanoss.internal.example.com
+$ scanoss-cli config set api-url https://scanoss.internal.example.com
 $ scanoss-cli scan . --verbose
-DEBUG resolved api_url source="config file" value=https://scanoss.internal.example.com
+DEBUG resolved api-url source="config file" value=https://scanoss.internal.example.com
 
 $ SCANOSS_API_URL=https://scanoss.staging.example.com scanoss-cli scan . --verbose
-DEBUG resolved api_url source=env value=https://scanoss.staging.example.com
+DEBUG resolved api-url source=env value=https://scanoss.staging.example.com
 
 $ SCANOSS_API_URL=https://scanoss.staging.example.com \
     scanoss-cli scan . --api-url https://api.scanoss.com --verbose
-DEBUG resolved api_url source=flag value=https://api.scanoss.com
+DEBUG resolved api-url source=flag value=https://api.scanoss.com
 ```
 
 **A secret logs its source, never its value** — the same `IsSecret()` registry flag drives
@@ -127,16 +128,16 @@ both masking and logging:
 
 ```console
 $ scanoss-cli scan . --verbose
-DEBUG resolved api_key source="config file"
+DEBUG resolved api-key source="config file"
 ```
 
 **`get` composes for non-secrets and answers only set/unset for secrets:**
 
 ```console
-$ scanoss-cli config get api_url
+$ scanoss-cli config get api-url
 https://scanoss.internal.example.com
 
-$ scanoss-cli config get api_key
+$ scanoss-cli config get api-key
 ********
 ```
 
@@ -144,10 +145,10 @@ $ scanoss-cli config get api_key
 
 ```console
 $ scanoss-cli config set api_token SC_abc123
-Error: unrecognized key "api_token"; recognized keys are: api_key, api_url
+Error: unrecognized key "api_token"; recognized keys are: api-key, api-url
 
-$ scanoss-cli config get api_key      # nothing stored
-Error: api_key is not set             # exit 1
+$ scanoss-cli config get api-key      # nothing stored
+Error: api-key is not set             # exit 1
 
 $ scanoss-cli scan .                  # malformed settings.json
 Error: parsing /Users/you/.scanoss/settings.json: invalid character '}' looking for beginning of object key string
@@ -162,11 +163,18 @@ Error: parsing /Users/you/.scanoss/settings.json: invalid character '}' looking 
 - `~/.scanoss` exists with looser permissions than `0700` (e.g. pre-created by hand)
   → left as-is; only paths this command creates get the tightened mode.
 - Empty string values in the file (`"api_key": ""`) are treated as unset.
+- The command line accepts only the dashed spelling: `config set api_key …`,
+  `config set API-KEY …` and `config set apikey …` all fail with the unrecognized-key
+  message. The file's `snake_case` is its storage format, not a second way to type a
+  key — one vocabulary means one thing to document and one error to explain.
+- Everything the CLI prints names settings with dashes, including the `--verbose`
+  resolution log (`resolved api-url source=…`), so any line of output can be pasted
+  back into a command.
 - Keys are case-insensitive and normalized to lower case on write: Viper lowercases
   every key it reads, so a hand-edited `"MyCustom_Key"` is rewritten as
   `"mycustom_key"`. The value is preserved; only the spelling of the key changes.
   Consistent with the snake_case convention, and pinned by a test.
-- `config set api_url` trims whitespace and a trailing slash, matching the SDK's
+- `config set api-url` trims whitespace and a trailing slash, matching the SDK's
   `WithAPIURL` normalization.
 - Env var set to the empty string is treated as unset (falls through to the file).
 - `$HOME` unresolvable → `config` subcommands error out; the resolution chain
@@ -178,14 +186,20 @@ Error: parsing /Users/you/.scanoss/settings.json: invalid character '}' looking 
   `get <key>`, `list`, `unset <key>`, `path`.
 - **FR-2** Storage location `$HOME/.scanoss/settings.json`, JSON object, `snake_case`
   keys, written pretty-printed with keys in sorted order.
-- **FR-3** Recognized keys: `api_url`, `api_key`. `set`/`unset`/`get` reject any
-  other key with a message listing the recognized ones.
+- **FR-3** Settings are named `api-url` and `api-key` on the command line — the same
+  names as the flags — and stored `api_url`/`api_key` in the file. Exactly one spelling
+  is accepted per setting: `set`/`unset`/`get` reject anything else, including the
+  file's own `api_key`, a different case (`API-KEY`), and typos, with a message listing
+  the valid names. Surrounding whitespace is trimmed, since that is not a spelling.
+  The mapping lives in the key registry rather than in a string transform, so a future
+  key whose command-line name is not a mechanical rewrite of its stored name is
+  expressible.
 - **FR-4** Writes preserve unrecognized keys. Values round-trip through
   `map[string]any`, so JSON numbers pass through `float64`: an integer beyond float64's
   exact range (>2^53) is not preserved bit-for-bit. Acceptable while no recognized key is
   numeric.
 - **FR-4a** A write never persists a value that came from the environment or a flag. With
-  `SCANOSS_API_KEY` exported, `config set api_url <url>` must leave `api_key` absent from
+  `SCANOSS_API_KEY` exported, `config set api-url <url>` must leave `api_key` absent from
   the file.
 - **FR-5** A write creates whatever is missing: the `~/.scanoss` directory (including
   it not existing at all) and the `settings.json` file itself. No setup step, no
@@ -201,7 +215,7 @@ Error: parsing /Users/you/.scanoss/settings.json: invalid character '}' looking 
   `copyright`).
 - **FR-9** The no-key guard (`requireKeyForDefaultEndpoint`) sees resolved values, so
   a stored key satisfies it.
-- **FR-10** A secret key is never displayed. `api_key` renders as a fixed `********` in
+- **FR-10** A secret key is never displayed. `api-key` renders as a fixed `********` in
   every output path (`list`, `get`), with no reveal flag and no partial reveal; the
   asterisk count is constant so it does not leak the real length. Keys are marked
   secret in the registry, so a future secret key inherits this.
@@ -223,7 +237,7 @@ Error: parsing /Users/you/.scanoss/settings.json: invalid character '}' looking 
   written with world-readable permissions.
 
 ## Out of scope
-- **Any key beyond `api_url`/`api_key`.** `config set` rejects anything else. Adding a
+- **Any key beyond `api-url`/`api-key`.** `config set` rejects anything else. Adding a
   recognized key later is one entry in the key registry — no format change, no
   migration, and a hand-edited unknown key is preserved meanwhile — but wiring a new key
   into command *behavior* is separate work, not covered here.

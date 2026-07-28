@@ -66,11 +66,69 @@ func storedSettings(t *testing.T, home string) map[string]any {
 func TestConfigSet(t *testing.T) {
 	home := configHome(t)
 
-	if err := runConfigSet(nil, []string{"api_key", "SC_abc123"}); err != nil {
+	if err := runConfigSet(nil, []string{"api-key", "SC_abc123"}); err != nil {
 		t.Fatalf("config set: %v", err)
 	}
 	if got := storedSettings(t, home)["api_key"]; got != "SC_abc123" {
 		t.Errorf("stored api_key = %v, want %q", got, "SC_abc123")
+	}
+}
+
+// The command line has one spelling — the dashed one, matching every flag — and it is
+// translated to the file's snake_case on the way in.
+func TestConfigSetUsesCLISpelling(t *testing.T) {
+	home := configHome(t)
+	if err := runConfigSet(nil, []string{"api-key", "SC_abc123"}); err != nil {
+		t.Fatalf("config set api-key: %v", err)
+	}
+	stored := storedSettings(t, home)
+	if got := stored["api_key"]; got != "SC_abc123" {
+		t.Errorf("stored under api_key = %v, want the value in snake_case", got)
+	}
+	if _, ok := stored["api-key"]; ok {
+		t.Error("the dashed spelling reached the file")
+	}
+}
+
+// The file's own spelling is not a second way to type a key: one way only, so there is
+// one thing to document and one error to explain.
+func TestConfigRejectsStoredSpelling(t *testing.T) {
+	configHome(t)
+
+	var unknown *cliconfig.UnknownKeyError
+	if err := runConfigSet(nil, []string{"api_key", "SC_abc123"}); !errors.As(err, &unknown) {
+		t.Errorf("config set api_key: error = %v, want *cliconfig.UnknownKeyError", err)
+	}
+	if err := runConfigUnset(nil, []string{"api_url"}); !errors.As(err, &unknown) {
+		t.Errorf("config unset api_url: error = %v, want *cliconfig.UnknownKeyError", err)
+	}
+	if _, err := runConfigOut(t, runConfigGet, "api_key"); !errors.As(err, &unknown) {
+		t.Errorf("config get api_key: error = %v, want *cliconfig.UnknownKeyError", err)
+	}
+	// A different case is a different spelling, and there is only one.
+	if err := runConfigSet(nil, []string{"API-KEY", "SC_abc123"}); !errors.As(err, &unknown) {
+		t.Errorf("config set API-KEY: error = %v, want *cliconfig.UnknownKeyError", err)
+	}
+}
+
+// `list` prints the dashed spelling, so a line can be pasted straight back into a
+// `config set`.
+func TestConfigListUsesCLISpelling(t *testing.T) {
+	configHome(t)
+
+	out, err := runConfigOut(t, runConfigList)
+	if err != nil {
+		t.Fatalf("config list: %v", err)
+	}
+	for _, want := range []string{"api-key", "api-url"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("list output does not use the CLI spelling %q:\n%s", want, out)
+		}
+	}
+	for _, unwanted := range []string{"api_key", "api_url"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("list output uses the stored spelling %q:\n%s", unwanted, out)
+		}
 	}
 }
 
@@ -79,7 +137,7 @@ func TestConfigSet(t *testing.T) {
 func TestConfigSetNormalizesURL(t *testing.T) {
 	home := configHome(t)
 
-	if err := runConfigSet(nil, []string{"api_url", "  https://scanoss.internal.example.com/  "}); err != nil {
+	if err := runConfigSet(nil, []string{"api-url", "  https://scanoss.internal.example.com/  "}); err != nil {
 		t.Fatalf("config set: %v", err)
 	}
 	if got := storedSettings(t, home)["api_url"]; got != "https://scanoss.internal.example.com" {
@@ -95,7 +153,7 @@ func TestConfigSetRejectsUnrecognizedKey(t *testing.T) {
 	if !errors.As(err, &unknown) {
 		t.Fatalf("config set: error = %v, want *cliconfig.UnknownKeyError", err)
 	}
-	for _, key := range cliconfig.RecognizedKeys() {
+	for _, key := range cliconfig.CLIKeys() {
 		if !strings.Contains(err.Error(), key) {
 			t.Errorf("error %q does not list %q", err, key)
 		}
@@ -111,12 +169,12 @@ func TestConfigSetRejectsEmptyValue(t *testing.T) {
 	configHome(t)
 
 	for _, value := range []string{"", "   "} {
-		err := runConfigSet(nil, []string{"api_key", value})
+		err := runConfigSet(nil, []string{"api-key", value})
 		if err == nil {
-			t.Fatalf("config set api_key %q succeeded, want an error", value)
+			t.Fatalf("config set api-key %q succeeded, want an error", value)
 		}
-		if !strings.Contains(err.Error(), "config unset api_key") {
-			t.Errorf("error %q does not point at `config unset api_key`", err)
+		if !strings.Contains(err.Error(), "config unset api-key") {
+			t.Errorf("error %q does not point at `config unset api-key`", err)
 		}
 	}
 }
@@ -135,13 +193,13 @@ func TestConfigSetUnknownKeyWinsOverEmptyValue(t *testing.T) {
 func TestConfigUnset(t *testing.T) {
 	home := configHome(t)
 
-	if err := runConfigSet(nil, []string{"api_key", "SC_abc123"}); err != nil {
+	if err := runConfigSet(nil, []string{"api-key", "SC_abc123"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := runConfigSet(nil, []string{"api_url", "https://scanoss.internal.example.com"}); err != nil {
+	if err := runConfigSet(nil, []string{"api-url", "https://scanoss.internal.example.com"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := runConfigUnset(nil, []string{"api_key"}); err != nil {
+	if err := runConfigUnset(nil, []string{"api-key"}); err != nil {
 		t.Fatalf("config unset: %v", err)
 	}
 
@@ -176,11 +234,11 @@ func runConfigOut(t *testing.T, run func(*cobra.Command, []string) error, args .
 
 func TestConfigGet(t *testing.T) {
 	configHome(t)
-	if err := runConfigSet(nil, []string{"api_url", "https://scanoss.internal.example.com"}); err != nil {
+	if err := runConfigSet(nil, []string{"api-url", "https://scanoss.internal.example.com"}); err != nil {
 		t.Fatal(err)
 	}
 
-	out, err := runConfigOut(t, runConfigGet, "api_url")
+	out, err := runConfigOut(t, runConfigGet, "api-url")
 	if err != nil {
 		t.Fatalf("config get api_url: %v", err)
 	}
@@ -194,12 +252,12 @@ func TestConfigGet(t *testing.T) {
 // the user is actually asking: what will the next command use?
 func TestConfigGetReportsEffectiveValue(t *testing.T) {
 	configHome(t)
-	if err := runConfigSet(nil, []string{"api_url", "https://file.example.com"}); err != nil {
+	if err := runConfigSet(nil, []string{"api-url", "https://file.example.com"}); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("SCANOSS_API_URL", "https://env.example.com")
 
-	out, err := runConfigOut(t, runConfigGet, "api_url")
+	out, err := runConfigOut(t, runConfigGet, "api-url")
 	if err != nil {
 		t.Fatalf("config get api_url: %v", err)
 	}
@@ -213,11 +271,11 @@ func TestConfigGetReportsEffectiveValue(t *testing.T) {
 func TestConfigGetUnsetKeyFails(t *testing.T) {
 	configHome(t)
 
-	out, err := runConfigOut(t, runConfigGet, "api_key")
+	out, err := runConfigOut(t, runConfigGet, "api-key")
 	if err == nil {
-		t.Fatal("config get api_key succeeded with nothing stored, want an error")
+		t.Fatal("config get api-key succeeded with nothing stored, want an error")
 	}
-	if !strings.Contains(err.Error(), "api_key is not set") {
+	if !strings.Contains(err.Error(), "api-key is not set") {
 		t.Errorf("error = %q, want it to say the key is not set", err)
 	}
 	if out != "" {
@@ -240,7 +298,7 @@ func TestConfigGetRejectsUnrecognizedKey(t *testing.T) {
 func TestSecretNeverAppearsInOutput(t *testing.T) {
 	configHome(t)
 	const secret = "SC_this_must_never_be_printed"
-	if err := runConfigSet(nil, []string{"api_key", secret}); err != nil {
+	if err := runConfigSet(nil, []string{"api-key", secret}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -249,7 +307,7 @@ func TestSecretNeverAppearsInOutput(t *testing.T) {
 		run  func(*cobra.Command, []string) error
 		args []string
 	}{
-		{"get", runConfigGet, []string{"api_key"}},
+		{"get", runConfigGet, []string{"api-key"}},
 		{"list", runConfigList, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -278,10 +336,10 @@ func TestMaskIsConstantWidth(t *testing.T) {
 
 	var renders []string
 	for _, secret := range []string{"a", strings.Repeat("x", 128)} {
-		if err := runConfigSet(nil, []string{"api_key", secret}); err != nil {
+		if err := runConfigSet(nil, []string{"api-key", secret}); err != nil {
 			t.Fatal(err)
 		}
-		out, err := runConfigOut(t, runConfigGet, "api_key")
+		out, err := runConfigOut(t, runConfigGet, "api-key")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -302,8 +360,8 @@ func TestConfigListOnFreshMachine(t *testing.T) {
 		t.Fatalf("config list: %v", err)
 	}
 	for _, want := range []string{
-		"api_key", "(unset)",
-		"api_url", config.DefaultAPIURL, "(default)",
+		"api-key", "(unset)",
+		"api-url", config.DefaultAPIURL, "(default)",
 		"Config file: " + filepath.Join(home, ".scanoss", "settings.json"),
 	} {
 		if !strings.Contains(out, want) {
@@ -322,10 +380,10 @@ func TestConfigListOnFreshMachine(t *testing.T) {
 // way to tell a stored key from one the environment supplied.
 func TestConfigListReportsSources(t *testing.T) {
 	configHome(t)
-	if err := runConfigSet(nil, []string{"api_key", "SC_stored"}); err != nil {
+	if err := runConfigSet(nil, []string{"api-key", "SC_stored"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := runConfigSet(nil, []string{"api_url", "https://file.example.com"}); err != nil {
+	if err := runConfigSet(nil, []string{"api-url", "https://file.example.com"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -403,9 +461,9 @@ func TestConfigCommandHelp(t *testing.T) {
 		"********",
 		"scanoss.json",
 		"Examples:",
-		"config set api_key",
+		"config set api-key",
 		"config list",
-		"config unset api_key",
+		"config unset api-key",
 		"config path",
 	} {
 		if !strings.Contains(configCmd.Long, want) {
@@ -434,7 +492,7 @@ func TestStoredKeySatisfiesAuthGuard(t *testing.T) {
 		t.Fatal("checkAuth passed with no key on the default endpoint")
 	}
 
-	if err := runConfigSet(nil, []string{"api_key", "SC_stored"}); err != nil {
+	if err := runConfigSet(nil, []string{"api-key", "SC_stored"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := checkAuth(cmd); err != nil {

@@ -88,7 +88,7 @@ func NewResolver(flags *pflag.FlagSet) (*Resolver, error) {
 		flags = pflag.NewFlagSet("", pflag.ContinueOnError)
 	}
 	for key, spec := range registry {
-		flag := flags.Lookup(spec.flag)
+		flag := flags.Lookup(spec.cli)
 		if flag == nil {
 			continue // this command does not offer the flag
 		}
@@ -103,11 +103,12 @@ func NewResolver(flags *pflag.FlagSet) (*Resolver, error) {
 func (r *Resolver) Key(key string) Resolved {
 	resolved := r.walk(key)
 
-	// A secret's value must not reach a log, so only its source is recorded.
+	// Diagnostics name the setting the way the user types it, like every other
+	// message. A secret's value must not reach a log, so only its source is recorded.
 	if IsSecret(key) {
-		slog.Debug("resolved "+key, "source", resolved.Source)
+		slog.Debug("resolved "+CLIKey(key), "source", resolved.Source)
 	} else {
-		slog.Debug("resolved "+key, "source", resolved.Source, "value", resolved.Value)
+		slog.Debug("resolved "+CLIKey(key), "source", resolved.Source, "value", resolved.Value)
 	}
 	return resolved
 }
@@ -115,7 +116,7 @@ func (r *Resolver) Key(key string) Resolved {
 // walk is the precedence ladder. It mirrors what viper's own lookup does, purely
 // so the winning rung can be named.
 func (r *Resolver) walk(key string) Resolved {
-	flag := r.flags.Lookup(FlagName(key))
+	flag := r.flags.Lookup(CLIKey(key))
 
 	// An explicitly-typed flag wins: the value a flag holds cannot tell you whether
 	// the user chose it, so Changed is the only reliable signal.

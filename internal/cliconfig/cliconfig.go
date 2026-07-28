@@ -42,6 +42,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -68,9 +69,15 @@ const (
 
 // keySpec describes one recognized key.
 type keySpec struct {
-	// flag is the CLI flag that overrides this key. Stated rather than derived from
-	// the key name, so the coupling between the two spellings is visible here.
-	flag string
+	// cli is how the key is spelled on the command line: both the flag (--api-key)
+	// and the config subcommand argument (config set api-key). They are deliberately
+	// the same string — one vocabulary for the user, snake_case only inside the file.
+	//
+	// Stated per key rather than derived by swapping - for _, so a future key whose
+	// command-line name is not a mechanical transform of its stored name is
+	// expressible, and so an unrecognized key is never silently rewritten into
+	// something that looks recognized.
+	cli string
 	// def is the built-in default, used when no flag, environment variable, or
 	// stored value supplies one. It belongs to the setting rather than to any
 	// command's flag, so resolution reports the same default with or without flags —
@@ -84,9 +91,21 @@ type keySpec struct {
 // error message listing valid keys, masking, resolution, and `config list` all
 // derive from it, so adding a key does not mean touching each of those in turn.
 var registry = map[string]keySpec{
-	KeyAPIURL: {flag: "api-url", def: config.DefaultAPIURL},
-	KeyAPIKey: {flag: "api-key", secret: true}, // no default: an absent key is absent
+	KeyAPIURL: {cli: "api-url", def: config.DefaultAPIURL},
+	KeyAPIKey: {cli: "api-key", secret: true}, // no default: an absent key is absent
 }
+
+// storedKeys maps a command-line key to the form stored in the file, built from the
+// registry so the two directions cannot disagree. Only the command-line spelling is
+// a key here: the CLI has exactly one vocabulary, and `config set api_key` is a
+// mistake worth reporting rather than quietly accepting.
+var storedKeys = func() map[string]string {
+	m := make(map[string]string, len(registry))
+	for stored, spec := range registry {
+		m[spec.cli] = stored
+	}
+	return m
+}()
 
 // Default returns the built-in default for key, empty when it has none.
 func Default(key string) string {
@@ -97,23 +116,51 @@ func Default(key string) string {
 // without depending on HOME/USERPROFILE semantics per platform.
 var homeDir = os.UserHomeDir
 
-// RecognizedKeys returns the recognized keys, sorted, for help and error text.
+// RecognizedKeys returns the recognized keys in their stored (snake_case) form,
+// sorted. Use CLIKeys for anything a user reads.
 func RecognizedKeys() []string {
 	return slices.Sorted(maps.Keys(registry))
 }
 
-// IsRecognized reports whether key is one this version knows about. Keys the CLI
-// does not recognize may still exist in the file — they are preserved, not
-// rejected — but they cannot be set or read through the config command.
+// CLIKeys returns the recognized keys in the form users type, sorted — the list for
+// help and error text.
+func CLIKeys() []string {
+	keys := make([]string, 0, len(registry))
+	for _, spec := range registry {
+		keys = append(keys, spec.cli)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// StoredKey maps a command-line key to the form stored in the file: api-key →
+// api_key. There is exactly one accepted spelling per setting — the dashed one, as
+// listed by CLIKeys — so api_key, API-KEY and apikey are all reported as
+// unrecognized. One vocabulary means one thing to document and one error to explain.
+//
+// Surrounding whitespace is trimmed: that is not a spelling, and leaving it in
+// produces a baffling `unrecognized key " api-key"`.
+func StoredKey(input string) (string, bool) {
+	stored, ok := storedKeys[strings.TrimSpace(input)]
+	return stored, ok
+}
+
+// CLIKey returns how key is spelled on the command line: api_key → api-key. Every
+// recognized key the CLI prints goes through here, so its output can be pasted back
+// into a command. It is also the flag name, deliberately the same string.
+func CLIKey(key string) string {
+	return registry[key].cli
+}
+
+// IsRecognized reports whether key — in its stored form — is one this version knows
+// about. Keys the CLI does not recognize may still exist in the file: they are
+// preserved, not rejected, but nothing reads them.
+//
+// This takes the stored spelling because it guards the Go API (Set, Unset). Command
+// arguments arrive in the command-line spelling and go through StoredKey first.
 func IsRecognized(key string) bool {
 	_, ok := registry[key]
 	return ok
-}
-
-// FlagName returns the CLI flag that overrides key, e.g. api_url → api-url.
-// It is empty for a key the CLI does not recognize.
-func FlagName(key string) string {
-	return registry[key].flag
 }
 
 // IsSecret reports whether key's value must never be displayed or logged.
@@ -135,7 +182,7 @@ type UnknownKeyError struct {
 
 func (e *UnknownKeyError) Error() string {
 	return fmt.Sprintf("unrecognized key %q; recognized keys are: %s",
-		e.Key, strings.Join(RecognizedKeys(), ", "))
+		e.Key, strings.Join(CLIKeys(), ", "))
 }
 
 // Path returns the absolute path of the settings file, whether or not it exists.
@@ -189,8 +236,9 @@ func (c *Config) Keys() []string {
 	return slices.Sorted(maps.Keys(c.values))
 }
 
-// Set stores value under key, creating ~/.scanoss and the file if missing. Keys
-// already in the file that this version does not recognize are left untouched.
+// Set stores value under key — the stored (snake_case) form; command arguments go
+// through StoredKey first. It creates ~/.scanoss and the file if missing, and leaves
+// keys already in the file that this version does not recognize untouched.
 func Set(key, value string) error {
 	if !IsRecognized(key) {
 		return &UnknownKeyError{Key: key}

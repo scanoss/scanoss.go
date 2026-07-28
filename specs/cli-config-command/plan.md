@@ -114,30 +114,34 @@ Two adjustments to the original sketch, both correctness rather than style:
 
 `ResolveAPI` wires the two flags and returns both keys:
 
-```go
-func ResolveAPI(flags *pflag.FlagSet) (API, error) {
-	v, err := newViper()
-	if err != nil {
-		return API{}, err
-	}
-	if err := v.BindPFlag(KeyAPIURL, flags.Lookup("api-url")); err != nil {
-		return API{}, err
-	}
-	if err := v.BindPFlag(KeyAPIKey, flags.Lookup("api-key")); err != nil {
-		return API{}, err
-	}
-	url, urlSource := resolve(v, flags, KeyAPIURL, "api-url")
-	key, keySource := resolve(v, flags, KeyAPIKey, "api-key")
-
-	slog.Debug("resolved api_url", "source", urlSource, "value", url)
-	slog.Debug("resolved api_key", "source", keySource) // secret: source only
-	return API{URL: url, Key: key}, nil
-}
-```
+A `Resolver` holds the viper instance and the flag set, so the file is read once and
+both `ResolveAPI` (for the six call sites) and `config list` (which needs the source per
+key) work off it. `NewResolver` loops the registry to `BindPFlag` each key it finds a
+flag for; `ResolveAPI` is a thin wrapper returning `API{URL, Key}`.
 
 `BindPFlag` needs a non-nil flag, so a command that declares only one of the two (or
-neither) must be handled — `ResolveAPI` skips the binding and the rung when
-`flags.Lookup` returns nil, which is also what keeps `wfp` and `sbom` unaffected.
+neither) skips that binding — which is what keeps `wfp` and `sbom` unaffected, and what
+lets `config list` resolve with no API flags at all.
+
+The debug line records the source per key, and the value only for non-secret keys, so an
+API key never reaches a log.
+
+### Key naming: dashes outside, snake_case inside
+Settings are named `api-url`/`api-key` on the command line — the same strings as the
+flags — and stored `api_url`/`api_key` in the file. Exactly one spelling is accepted per
+setting; the file's own form is not a second way to type a key, so there is one thing to
+document and one error to explain.
+
+The mapping is the registry's `cli` field rather than a `-`↔`_` transform. Stated per key,
+it lets a future setting whose command-line name is not a mechanical rewrite of its stored
+name exist, and it stops an unrecognized key from being silently rewritten into something
+that looks familiar.
+
+The boundary is one function. `cliconfig.StoredKey` translates a command argument to the
+stored key; the Go API (`Set`, `Unset`, `Resolver.Key`) speaks stored keys and its own
+`KeyAPIURL`/`KeyAPIKey` constants. Everything the CLI *prints* — confirmations, `list`,
+`get`, errors, and the `--verbose` log — goes through `CLIKey`, so output can be pasted
+back into a command.
 
 **Deliberately narrow.** `ResolveAPI` covers `api_url` and `api_key` only. `chunk-size`,
 `workers`, and `ignore-cert-errors` — also read by `clientOptions` — stay flag-only and
@@ -188,14 +192,17 @@ preserved (FR-4) without extra work.
   - **Storage.** `Path()` → `$HOME/.scanoss/settings.json` via `os.UserHomeDir()`, behind
     a package var so tests can inject a temp home. `Set`/`Unset` as above (write
     instance + `atomicWrite`), `Load`/`Keys` for `config list`.
-  - **Registry.** `KeyAPIURL = "api_url"`, `KeyAPIKey = "api_key"`, `RecognizedKeys()`
-    (sorted), `IsRecognized(key)`, `IsSecret(key)` (`api_key` is secret, so a future
-    secret key inherits the never-display rule), `EnvName(key)` →
-    `"SCANOSS_" + strings.ToUpper(key)`, matching Viper's `SetEnvPrefix` derivation so
-    the helper and `AutomaticEnv` cannot disagree.
-  - **Resolution.** `API struct{ URL, Key string }`, `ResolveAPI(flags *pflag.FlagSet)`,
-    `newViper`, and `resolve` as above. A `Source` variant (or `ResolveAPIWithSources`)
-    exposes the per-key source for `config list`.
+  - **Registry.** `KeyAPIURL = "api_url"`, `KeyAPIKey = "api_key"`, and per key a `cli`
+    name, a built-in `def`, and a `secret` flag. Accessors: `RecognizedKeys()` (stored
+    form, sorted), `CLIKeys()` (command-line form, for help and error text),
+    `StoredKey(input)` and `CLIKey(key)` for the two directions, `IsRecognized(key)`,
+    `Default(key)`, `IsSecret(key)` (`api_key` is secret, so a future secret key inherits
+    the never-display rule), and `EnvName(key)` → `"SCANOSS_" + strings.ToUpper(key)`,
+    matching Viper's `SetEnvPrefix` derivation so the resolver and `AutomaticEnv` cannot
+    disagree.
+  - **Resolution.** `API struct{ URL, Key string }`, `Source`, `Resolved{Value, Source}`,
+    `Resolver` with `Key(key)` and `API()`, plus `ResolveAPI(flags *pflag.FlagSet)` as the
+    entry point for commands. `config list` uses the `Resolver` directly, for the sources.
   - **Typed error.** `UnknownKeyError{Key}` rendering
     `unrecognized key "x"; recognized keys are: api_key, api_url`, so `set`/`get`/`unset`
     share one message and `cmd` only propagates.

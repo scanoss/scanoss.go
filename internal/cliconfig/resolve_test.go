@@ -248,14 +248,14 @@ func TestExplicitEmptyFlagOverridesFile(t *testing.T) {
 	}
 }
 
-func TestFlagName(t *testing.T) {
-	if got, want := FlagName(KeyAPIURL), "api-url"; got != want {
-		t.Errorf("FlagName(%q) = %q, want %q", KeyAPIURL, got, want)
+func TestCLIKey(t *testing.T) {
+	if got, want := CLIKey(KeyAPIURL), "api-url"; got != want {
+		t.Errorf("CLIKey(%q) = %q, want %q", KeyAPIURL, got, want)
 	}
-	if got, want := FlagName(KeyAPIKey), "api-key"; got != want {
-		t.Errorf("FlagName(%q) = %q, want %q", KeyAPIKey, got, want)
+	if got, want := CLIKey(KeyAPIKey), "api-key"; got != want {
+		t.Errorf("CLIKey(%q) = %q, want %q", KeyAPIKey, got, want)
 	}
-	if got := FlagName("api_token"); got != "" {
-		t.Errorf("FlagName(unrecognized) = %q, want empty", got)
+	if got := CLIKey("api_token"); got != "" {
+		t.Errorf("CLIKey(unrecognized) = %q, want empty", got)
 	}
 }

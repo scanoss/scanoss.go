@@ -37,7 +37,8 @@ var configCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Manage stored CLI settings",
 	Long: `The config command stores CLI settings in ~/.scanoss/settings.json so they do
-not have to be passed on every invocation. Recognized keys are api_url and api_key.
+not have to be passed on every invocation. The keys are api-url and api-key — the same
+names as the flags. The file itself stores them snake_case (api_url, api_key).
 
 Each setting is resolved as: flag > environment variable > config file > built-in
 default. The environment variables are SCANOSS_API_URL and SCANOSS_API_KEY.
@@ -51,17 +52,17 @@ This is your own configuration, and is unrelated to a project's scanoss.json (th
 
 Examples:
   # Store an API key, then scan without passing it
-  scanoss-cli config set api_key YOUR_API_KEY
+  scanoss-cli config set api-key YOUR_API_KEY
   scanoss-cli scan ./my-project
 
   # Target an on-prem endpoint (a custom URL may run keyless)
-  scanoss-cli config set api_url https://scanoss.internal.example.com
+  scanoss-cli config set api-url https://scanoss.internal.example.com
 
   # Show the effective settings and where each one came from
   scanoss-cli config list
 
   # Remove a stored key, or locate the file
-  scanoss-cli config unset api_key
+  scanoss-cli config unset api-key
   scanoss-cli config path`,
 	Args: cobra.NoArgs,
 	// No subcommand: show usage rather than a terse error, matching scan/enrich.
@@ -136,43 +137,51 @@ func sourceLabel(key string, source cliconfig.Source) string {
 }
 
 func runConfigSet(_ *cobra.Command, args []string) error {
-	key, value := args[0], args[1]
+	// The command line has one spelling per setting (api-key, api-url); the file has
+	// another (snake_case). This is the single point of translation.
+	stored, ok := cliconfig.StoredKey(args[0])
+	if !ok {
+		return &cliconfig.UnknownKeyError{Key: args[0]}
+	}
+	value := args[1]
 
-	// Store api_url the way the SDK will use it: trimmed, no trailing slash. Same
+	// Store api-url the way the SDK will use it: trimmed, no trailing slash. Same
 	// normalization the endpoint comparison in the no-key guard applies.
-	if key == cliconfig.KeyAPIURL {
+	if stored == cliconfig.KeyAPIURL {
 		value = normalizeURL(value)
 	}
 	// An empty value would be stored and then read back as unset — a silent no-op.
-	// Point at the command that actually expresses the intent. Recognized keys only,
-	// so a typo still reports the unknown key rather than complaining about the value.
-	if cliconfig.IsRecognized(key) && strings.TrimSpace(value) == "" {
+	// Point at the command that actually expresses the intent.
+	if strings.TrimSpace(value) == "" {
+		name := cliconfig.CLIKey(stored)
 		return fmt.Errorf("%s cannot be set to an empty value; use %q to remove it",
-			key, "scanoss-cli config unset "+key)
+			name, "scanoss-cli config unset "+name)
 	}
 
-	if err := cliconfig.Set(key, value); err != nil {
+	if err := cliconfig.Set(stored, value); err != nil {
 		return err
 	}
 	path, err := cliconfig.Path()
 	if err != nil {
 		return err
 	}
-	okf("Saved %s to %s", key, path)
+	okf("Saved %s to %s", cliconfig.CLIKey(stored), path)
 	return nil
 }
 
 func runConfigUnset(_ *cobra.Command, args []string) error {
-	key := args[0]
-
-	if err := cliconfig.Unset(key); err != nil {
+	stored, ok := cliconfig.StoredKey(args[0])
+	if !ok {
+		return &cliconfig.UnknownKeyError{Key: args[0]}
+	}
+	if err := cliconfig.Unset(stored); err != nil {
 		return err
 	}
 	path, err := cliconfig.Path()
 	if err != nil {
 		return err
 	}
-	okf("Removed %s from %s", key, path)
+	okf("Removed %s from %s", cliconfig.CLIKey(stored), path)
 	return nil
 }
 
@@ -181,9 +190,9 @@ func runConfigUnset(_ *cobra.Command, args []string) error {
 // key is set (by its exit code), and a script that needs the value uses the
 // environment variable instead.
 func runConfigGet(cmd *cobra.Command, args []string) error {
-	key := args[0]
-	if !cliconfig.IsRecognized(key) {
-		return &cliconfig.UnknownKeyError{Key: key}
+	key, ok := cliconfig.StoredKey(args[0])
+	if !ok {
+		return &cliconfig.UnknownKeyError{Key: args[0]}
 	}
 
 	resolver, err := cliconfig.NewResolver(cmd.Flags())
@@ -192,7 +201,7 @@ func runConfigGet(cmd *cobra.Command, args []string) error {
 	}
 	resolved := resolver.Key(key)
 	if resolved.Value == "" {
-		return fmt.Errorf("%s is not set", key)
+		return fmt.Errorf("%s is not set", cliconfig.CLIKey(key))
 	}
 	_, _ = fmt.Fprintln(cmd.OutOrStdout(), display(key, resolved.Value))
 	return nil
@@ -226,13 +235,14 @@ func runConfigList(cmd *cobra.Command, _ []string) error {
 		if resolved.Source == cliconfig.SourceUnset {
 			value = "(unset)"
 		}
-		// An unset key has no source to report; omitting the cell rather than
-		// emitting an empty one keeps tabwriter from padding the line with trailing
-		// spaces.
+		// Keys are printed the way they are typed, so a line can be pasted back into
+		// a `config set`. An unset key has no source to report; omitting the cell
+		// rather than emitting an empty one keeps tabwriter from padding the line
+		// with trailing spaces.
 		if label := sourceLabel(key, resolved.Source); label != "" {
-			_, _ = fmt.Fprintf(out, "%s\t%s\t%s\n", key, value, label)
+			_, _ = fmt.Fprintf(out, "%s\t%s\t%s\n", cliconfig.CLIKey(key), value, label)
 		} else {
-			_, _ = fmt.Fprintf(out, "%s\t%s\n", key, value)
+			_, _ = fmt.Fprintf(out, "%s\t%s\n", cliconfig.CLIKey(key), value)
 		}
 	}
 

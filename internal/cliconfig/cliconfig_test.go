@@ -118,6 +118,43 @@ func TestRegistry(t *testing.T) {
 	}
 }
 
+// The CLI has exactly one spelling per setting: the dashed one. The stored
+// snake_case form is the file format, not a second way to type a key.
+func TestStoredKey(t *testing.T) {
+	for _, input := range []string{"api-key", "  api-key  "} {
+		stored, ok := StoredKey(input)
+		if !ok {
+			t.Errorf("StoredKey(%q) reported unrecognized", input)
+			continue
+		}
+		if stored != KeyAPIKey {
+			t.Errorf("StoredKey(%q) = %q, want %q", input, stored, KeyAPIKey)
+		}
+	}
+	// One way only: the file spelling, a different case, and a typo are all rejected,
+	// so there is one thing to document and one error to explain.
+	for _, input := range []string{"api_key", "API-KEY", "Api_Key", "api-token", "apikey"} {
+		if stored, ok := StoredKey(input); ok {
+			t.Errorf("StoredKey(%q) = (%q, true), want unrecognized", input, stored)
+		}
+	}
+}
+
+func TestCLIKeyAndCLIKeys(t *testing.T) {
+	if got, want := CLIKey(KeyAPIKey), "api-key"; got != want {
+		t.Errorf("CLIKey(%q) = %q, want %q", KeyAPIKey, got, want)
+	}
+	if got, want := CLIKey(KeyAPIURL), "api-url"; got != want {
+		t.Errorf("CLIKey(%q) = %q, want %q", KeyAPIURL, got, want)
+	}
+	if got := CLIKey("api_token"); got != "" {
+		t.Errorf("CLIKey(unrecognized) = %q, want empty", got)
+	}
+	if got, want := strings.Join(CLIKeys(), ","), "api-key,api-url"; got != want {
+		t.Errorf("CLIKeys() = %q, want %q (sorted)", got, want)
+	}
+}
+
 // A missing file is an empty config, and reading must not create anything: a
 // machine that never runs `config set` never gets a ~/.scanoss directory.
 func TestLoadMissingFileCreatesNothing(t *testing.T) {
@@ -367,8 +404,8 @@ func TestSetRejectsUnrecognizedKey(t *testing.T) {
 	if unknown.Key != "api_token" {
 		t.Errorf("UnknownKeyError.Key = %q, want %q", unknown.Key, "api_token")
 	}
-	// The message must list what is valid, so the user can correct a typo.
-	for _, key := range RecognizedKeys() {
+	// The message must list what is valid, in the spelling the user types.
+	for _, key := range CLIKeys() {
 		if !strings.Contains(err.Error(), key) {
 			t.Errorf("error %q does not mention %q", err, key)
 		}

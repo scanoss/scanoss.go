@@ -128,12 +128,13 @@ SBOM output formats, and default values.
 Store your credentials once instead of passing `--api-key` on every command:
 
 ```bash
-scanoss-cli config set api_key SC_abc123def456
+scanoss-cli config set api-key SC_abc123def456
 scanoss-cli scan ./my-project --output results.json
 ```
 
-Settings live in `~/.scanoss/settings.json` (created on first `config set`, directory
-`0700`, file `0600`), with `snake_case` keys:
+Settings are named `api-key` and `api-url` on the command line — the same names as the
+flags. They live in `~/.scanoss/settings.json`, created on first `config set` with mode
+`0600` in a `0700` directory, where the JSON uses `snake_case`:
 
 ```json
 {
@@ -141,6 +142,9 @@ Settings live in `~/.scanoss/settings.json` (created on first `config set`, dire
   "api_url": "https://api.scanoss.com"
 }
 ```
+
+The command line always uses the dashed names; `snake_case` is the file's format, not a
+second way to type a key.
 
 > **Not the same file as `scanoss.json`.** `~/.scanoss/settings.json` is *your*
 > configuration — credentials and endpoint. A project's `scanoss.json` (or the file you
@@ -159,7 +163,7 @@ Environment variables are `SCANOSS_API_KEY` and `SCANOSS_API_URL`. An empty valu
 the environment or the file is treated as unset and falls through to the next source.
 
 ```bash
-scanoss-cli config set api_url https://scanoss.internal.example.com
+scanoss-cli config set api-url https://scanoss.internal.example.com
 
 # 1. the stored value is used
 scanoss-cli scan .
@@ -181,15 +185,15 @@ value).
 
 ```console
 $ scanoss-cli config list
-api_key  ********                              (env: SCANOSS_API_KEY)
-api_url  https://scanoss.internal.example.com  (config file)
+api-key  ********                              (env: SCANOSS_API_KEY)
+api-url  https://scanoss.internal.example.com  (config file)
 
 Config file: /Users/you/.scanoss/settings.json
 ```
 
 **The API key is never printed.** `list` and `get` always render it as `********` — there
 is no flag that reveals it, so it cannot land in your shell history or a CI log. `config
-get api_key` therefore only tells you whether it is set (exit code `0` or `1`). Scripts
+get api-key` therefore only tells you whether it is set (exit code `0` or `1`). Scripts
 that need the value should use `$SCANOSS_API_KEY`; to read your own file, open it
 directly:
 
@@ -200,7 +204,7 @@ cat "$(scanoss-cli config path)"
 Non-secret values print normally, so `config get` composes:
 
 ```console
-$ scanoss-cli config get api_url
+$ scanoss-cli config get api-url
 https://scanoss.internal.example.com
 ```
 
@@ -210,7 +214,7 @@ A custom API URL may run keyless, so pointing the CLI at an internal deployment 
 command:
 
 ```bash
-scanoss-cli config set api_url https://scanoss.internal.example.com
+scanoss-cli config set api-url https://scanoss.internal.example.com
 scanoss-cli scan .
 ```
 
@@ -229,8 +233,8 @@ command line where it would land in build logs:
 ### Rotating and removing
 
 ```bash
-scanoss-cli config set api_key SC_newkey789   # overwrite in place
-scanoss-cli config unset api_key              # remove the key
+scanoss-cli config set api-key SC_newkey789   # overwrite in place
+scanoss-cli config unset api-key              # remove the key
 scanoss-cli config path                       # print the file location
 ```
 
