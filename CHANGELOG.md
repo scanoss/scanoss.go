@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`config`** — store the API endpoint and key once in `~/.scanoss/settings.json` instead of
+  passing `--api-key` on every command: `config set <key> <value>`, `config get <key>`,
+  `config list`, `config unset <key>`, and `config path`. Keys are named `api-url` and `api-key`,
+  the same as the flags; the file itself stores them `snake_case` (`api_url`, `api_key`). The file
+  is created on first `config set` with mode `0600` in a `0700` directory, and keys it does not
+  recognize are preserved on write. `config set api-url` requires an `https://` or `http://`
+  scheme, so a bare host is rejected where it can still be fixed rather than failing later as an
+  unsupported-protocol error from another command.
+- Every command that accepts `--api-url`/`--api-key` now resolves each value as
+  **flag > environment variable > `~/.scanoss/settings.json` > built-in default**. The environment
+  variables are `SCANOSS_API_URL` and `SCANOSS_API_KEY`; passing the flag still overrides both. A
+  stored key satisfies the no-key check, so the "no API key provided" banner no longer appears for
+  a configured user. The API key is never displayed: `config list` and `config get` render it as
+  `********`, with no flag to reveal it, and `--verbose` logs which source won without the value.
+
 ### Changed
 
 - **BREAKING** — the raw inventory format now reports matched line ranges as structured objects

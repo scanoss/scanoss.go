@@ -32,6 +32,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/scanoss/scanoss.go/internal/cliconfig"
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
 )
 
@@ -60,12 +61,18 @@ func normalizeURL(u string) string {
 	return strings.TrimRight(strings.TrimSpace(u), "/")
 }
 
-// checkAuth reads the api-url/api-key flags and applies the no-key guard. Call it
-// at the top of a command's RunE to fail fast before doing any work.
+// checkAuth resolves the API settings and applies the no-key guard. Call it at the
+// top of a command's RunE to fail fast before doing any work.
+//
+// Resolving here rather than reading the flags directly is what lets a key stored
+// with `config set` satisfy the guard: the banner must not fire for a user whose
+// credentials are on disk.
 func checkAuth(cmd *cobra.Command) error {
-	apiURL, _ := cmd.Flags().GetString("api-url")
-	apiKey, _ := cmd.Flags().GetString("api-key")
-	return requireKeyForDefaultEndpoint(apiURL, apiKey)
+	api, err := cliconfig.ResolveAPI(cmd.Flags())
+	if err != nil {
+		return err
+	}
+	return requireKeyForDefaultEndpoint(api.URL, api.Key)
 }
 
 // requireKeyForDefaultEndpoint fails fast (no request) when the user targets the

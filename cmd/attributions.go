@@ -35,6 +35,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/scanoss/scanoss.go/internal/cliconfig"
 	"github.com/scanoss/scanoss.go/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -106,8 +107,10 @@ func runAttributions(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	apiURL, _ := cmd.Flags().GetString("api-url")
-	apiKey, _ := cmd.Flags().GetString("api-key")
+	api, err := cliconfig.ResolveAPI(cmd.Flags())
+	if err != nil {
+		return err
+	}
 	outputFile, _ := cmd.Flags().GetString("output")
 	ignoreCertErrors, _ := cmd.Flags().GetBool("ignore-cert-errors")
 
@@ -138,7 +141,7 @@ func runAttributions(cmd *cobra.Command, args []string) error {
 	}
 
 	// Send SBOM file to API
-	attributionText, err := sendSBOMForAttributions(apiURL, apiKey, sbomFilePath, ignoreCertErrors)
+	attributionText, err := sendSBOMForAttributions(api.URL, api.Key, sbomFilePath, ignoreCertErrors)
 	if err != nil {
 		if tempFile {
 			// Clean up temp file before returning error
