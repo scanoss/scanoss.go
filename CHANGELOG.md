@@ -5,6 +5,15 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **BREAKING** — the raw inventory format now reports matched line ranges as structured objects
+  (`{"start_line": 82, "end_line": 209}`) instead of `"82-209"` strings, matching the shape the scan
+  engine already returns. `schema_version` is `2.0`; a `1.0` document carrying string ranges no
+  longer parses. CycloneDX and SPDX output is unchanged.
+
 ## [0.2.0] - 2026-07-27
 
 ### Changed

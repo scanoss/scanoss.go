@@ -39,7 +39,8 @@ type Inventory struct { Components []Component; Vulnerabilities []Vulnerability 
 type Component struct { Purl, Vendor, Name, Version, URL, URLHash, DownloadLocation string; Licenses []License; Files []FileEvidence }
 type LicenseAcknowledgement string // AckDeclared | AckConcluded
 type License struct { ID string; Acknowledgement LicenseAcknowledgement }
-type FileEvidence struct { Path, MatchType string; InputLineRanges, OssLineRanges []string }
+type LineRange struct { StartLine, EndLine int }
+type FileEvidence struct { Path, MatchType string; InputLineRanges, OssLineRanges []LineRange }
 type Vulnerability struct { ID, Severity, Source, URL, Summary string; Purls []string }
 type Format string
 const ( FormatCycloneDX Format = "cyclonedx"; FormatSPDX Format = "spdx" )

@@ -29,7 +29,7 @@ import (
 )
 
 // RawSchemaVersion is the version of the raw inventory document. Bump on a breaking shape change.
-const RawSchemaVersion = "1.0"
+const RawSchemaVersion = "2.0"
 
 // RawDocument is the raw output format: an Inventory wrapped in a versioned envelope. The embedded
 // Inventory promotes its `components`/`vulnerabilities` keys to the top level, so the JSON is
