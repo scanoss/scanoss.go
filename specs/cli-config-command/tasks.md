@@ -74,7 +74,7 @@
       sites, so a future command cannot silently bypass resolution. (depends on T003)
 
 ## Phase 4 — `config` command
-- [ ] **T005** `cmd/config.go` (new): `configCmd` registered on `rootCmd`, plus
+- [x] **T005** `cmd/config.go` (new): `configCmd` registered on `rootCmd`, plus
       `set <key> <value>` (rejects unrecognized keys, listing the valid ones; normalizes
       `api_url` via `normalizeURL`) and `unset <key>`. Both save atomically and confirm
       on stderr with the resolved path. `configCmd` carries a `Long` in the house style
