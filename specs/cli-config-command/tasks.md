@@ -10,13 +10,14 @@
 - `make check` clean before presenting each commit.
 
 ## Phase 0 — Dependency
-- [ ] **T000** `go get github.com/spf13/viper`; promote `github.com/spf13/pflag` to a
-      direct requirement in `go.mod`. `go mod tidy`, then `make check` clean (verify
-      golangci-lint is happy with the new imports before any feature code depends on
-      them). No functional change in this commit.
+- [x] **T000** ~~Add `github.com/spf13/viper` as its own commit.~~ **Merged into T001:**
+      `go mod tidy` removes a dependency nothing imports, so the dependency cannot land
+      ahead of the code that uses it. `go.mod`/`go.sum` therefore change as part of T001.
+      `spf13/pflag` is promoted to a direct requirement in **T002**, which is where the
+      first `*pflag.FlagSet` import appears.
 
 ## Phase 1 — `internal/cliconfig`: storage
-- [ ] **T001** `internal/cliconfig/cliconfig.go` (new, with a package comment stating it
+- [x] **T001** `internal/cliconfig/cliconfig.go` (new, with a package comment stating it
       is the *user/CLI* config — not the project `scanoss.json` — and that it must stay
       out of `pkg/`): `Path()` (`$HOME/.scanoss/settings.json`, home resolved through an
       injectable package var); key registry (`KeyAPIURL`, `KeyAPIKey`,
