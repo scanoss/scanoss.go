@@ -58,66 +58,41 @@ Two properties are the point of this shape:
   Viper never reaches the SDK.
 
 ### The resolver
+`fileViper` opens the settings file and, for resolution, the instance also gets
+`SetEnvPrefix("SCANOSS")` + `AutomaticEnv` so the environment variable names are derived
+rather than spelled out twice. One Viper detail to know: with `SetConfigFile` a missing
+file surfaces as `fs.ErrNotExist`, not `viper.ConfigFileNotFoundError` — that one is only
+produced by path search — so the "not configured yet" case checks for it explicitly.
 
-```go
-func newViper() (*viper.Viper, error) {
-	path, err := Path()
-	if err != nil {
-		return nil, err
-	}
-	v := viper.New()
-	v.SetConfigFile(path)
-	v.SetConfigType("json")
-	v.SetEnvPrefix("SCANOSS")
-	v.AutomaticEnv() // api_url → SCANOSS_API_URL
+Viper resolves the value; `walk` repeats the ladder to name the source. Two rungs need
+care, both correctness rather than style:
 
-	// With SetConfigFile a missing file is *fs.PathError, not ConfigFileNotFoundError
-	// (that one is only produced by path search), so both cases are checked.
-	if err := v.ReadInConfig(); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("parsing %s: %w", path, err)
-	}
-	return v, nil
-}
+- **The config rung needs the value, not just `InConfig`.** Viper treats a
+  present-but-empty config value as found and returns `""` ahead of the flag default,
+  which contradicts the "empty means unset" rule. (The env rung needs no equivalent
+  guard: `AutomaticEnv` already treats an empty variable as unset unless `AllowEmptyEnv`
+  is on, which it is not.)
+- **The default rung reads the registry, not the flag.** `config list` declares no API
+  flags and must still explain where `api-url` came from, so the built-in default belongs
+  to the setting rather than to any command's flag — which also keeps
+  `config.DefaultAPIURL` the single source for it.
 
-// resolve reports the effective value of one key and where it came from.
-// Viper resolves the value; this ladder exists to name the source.
-func resolve(v *viper.Viper, flags *pflag.FlagSet, key, flagName string) (value, source string) {
-	f := flags.Lookup(flagName)
-	if f != nil && f.Changed {
-		return v.GetString(key), "flag"
-	}
-	if env := EnvName(key); os.Getenv(env) != "" {
-		return v.GetString(key), "env: " + env
-	}
-	// InConfig alone is not enough: an empty value in the file counts as unset, and
-	// Viper would otherwise return "" in preference to the flag default.
-	if v.InConfig(key) && v.GetString(key) != "" {
-		return v.GetString(key), "config file"
-	}
-	if f != nil {
-		return f.DefValue, "default"
-	}
-	return "", "unset"
-}
-```
+An unexported `resolver` holds the viper instance and the flag set, so the file is read
+once per call and the ladder above has somewhere to live. It loops the registry to
+`BindPFlag` each key it finds a flag for.
 
-Two adjustments to the original sketch, both correctness rather than style:
+Callers never see it. The package exposes three functions instead, one per question a
+caller actually asks:
 
-- **The empty-value guard on the config rung.** Viper treats a present-but-empty config
-  value as found and returns `""` ahead of the pflag default, which contradicts the
-  "empty means unset" rule. Checking the value as well as `InConfig` restores it.
-  (Viper's own `AutomaticEnv` already treats an empty *env* var as unset unless
-  `AllowEmptyEnv` is enabled, so the env rung needs no equivalent guard — the helper's
-  `os.Getenv(env) != ""` matches that default.)
-- **An explicit `default` rung returning `f.DefValue`**, so the source is nameable and
-  the value does not depend on Viper's last-resort pflag fallback.
+| function | answers | used by |
+| --- | --- | --- |
+| `ResolveAPI(flags)` | the endpoint and key this command should use | the six read sites |
+| `Resolve(flags, key)` | one setting's value and source | `config get` |
+| `ResolveAll(flags)` | every setting with its source, sorted | `config list` |
 
-`ResolveAPI` wires the two flags and returns both keys:
-
-A `Resolver` holds the viper instance and the flag set, so the file is read once and
-both `ResolveAPI` (for the six call sites) and `config list` (which needs the source per
-key) work off it. `NewResolver` loops the registry to `BindPFlag` each key it finds a
-flag for; `ResolveAPI` is a thin wrapper returning `API{URL, Key}`.
+Keeping `resolver` private is deliberate: the resolution machinery is not something a
+caller should be able to depend on, and Go expresses that through what is exported — not
+through which file the code sits in.
 
 `BindPFlag` needs a non-nil flag, so a command that declares only one of the two (or
 neither) skips that binding — which is what keeps `wfp` and `sbom` unaffected, and what
@@ -138,7 +113,7 @@ name exist, and it stops an unrecognized key from being silently rewritten into 
 that looks familiar.
 
 The boundary is one function. `cliconfig.StoredKey` translates a command argument to the
-stored key; the Go API (`Set`, `Unset`, `Resolver.Key`) speaks stored keys and its own
+stored key; the Go API (`Set`, `Unset`, `Resolve`) speaks stored keys and its own
 `KeyAPIURL`/`KeyAPIKey` constants. Everything the CLI *prints* — confirmations, `list`,
 `get`, errors, and the `--verbose` log — goes through `CLIKey`, so output can be pasted
 back into a command.
@@ -149,67 +124,47 @@ keep reading straight from cobra.
 
 ### The write path
 `viper.WriteConfig` serializes Viper's **merged** view, so a write from the resolving
-instance would persist env- and flag-derived values into the file: `config set api_url X`
-with `SCANOSS_API_KEY` exported would write that CI token to disk. Writes therefore use a
-separate instance with neither `AutomaticEnv` nor `BindPFlag`, and the file is serialized
-by us to keep `0600` and the atomic rename (`WriteConfig` writes `0644` and truncates in
-place):
+instance would persist env- and flag-derived values into the file: `config set api-url X`
+with `SCANOSS_API_KEY` exported would write that CI token to disk. It also writes `0644`
+and truncates in place instead of renaming.
 
-```go
-func Set(key, value string) error {
-	if !IsRecognized(key) {
-		return &UnknownKeyError{Key: key}
-	}
-	path, err := Path()
-	if err != nil {
-		return err
-	}
-	// No AutomaticEnv, no BindPFlag: this instance must see the file and nothing else.
-	w := viper.New()
-	w.SetConfigFile(path)
-	w.SetConfigType("json")
-	if err := w.ReadInConfig(); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("parsing %s: %w", path, err)
-	}
-	w.Set(key, value)
+So writes never touch it. `Set` and `Unset` both go through one `mutate` helper that:
 
-	data, err := json.MarshalIndent(w.AllSettings(), "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	return atomicWrite(path, data, 0o600) // temp file in the same dir, then rename
-}
-```
+1. reads the current file with a **file-only** Viper instance — no `AutomaticEnv`, no
+   `BindPFlag`, so the merged view cannot leak in;
+2. applies the change to the plain `map[string]any` that `AllSettings()` returns, which
+   carries every key found and so preserves unrecognized ones (FR-4) for free;
+3. serializes with `json.MarshalIndent` (a map marshals with sorted keys, so the file
+   stays diff-friendly) and writes through `atomicWrite`: create the directory `0700` if
+   missing, write a sibling temp file `0600`, then rename.
 
-`w.AllSettings()` carries every key read from the file, so unrecognized keys are
-preserved (FR-4) without extra work.
+`TestSetDoesNotPersistEnvironmentValues` is the regression test for step 1.
 
 ## Key changes
-- `internal/cliconfig/cliconfig.go` (new) — one package:
-  - **Storage.** `Path()` → `$HOME/.scanoss/settings.json` via `os.UserHomeDir()`, behind
-    a package var so tests can inject a temp home. `Set`/`Unset` as above (write
-    instance + `atomicWrite`), `Load`/`Keys` for `config list`.
-  - **Registry.** `KeyAPIURL = "api_url"`, `KeyAPIKey = "api_key"`, and per key a `cli`
-    name, a built-in `def`, and a `secret` flag. Accessors: `RecognizedKeys()` (stored
-    form, sorted), `CLIKeys()` (command-line form, for help and error text),
-    `StoredKey(input)` and `CLIKey(key)` for the two directions, `IsRecognized(key)`,
-    `Default(key)`, `IsSecret(key)` (`api_key` is secret, so a future secret key inherits
-    the never-display rule), and `EnvName(key)` → `"SCANOSS_" + strings.ToUpper(key)`,
-    matching Viper's `SetEnvPrefix` derivation so the resolver and `AutomaticEnv` cannot
-    disagree.
-  - **Resolution.** `API struct{ URL, Key string }`, `Source`, `Resolved{Value, Source}`,
-    `Resolver` with `Key(key)` and `API()`, plus `ResolveAPI(flags *pflag.FlagSet)` as the
-    entry point for commands. `config list` uses the `Resolver` directly, for the sources.
+- `internal/cliconfig/` (new) — one package, one file per concern, so a file name says
+  what is in it:
+  - **`registry.go` — what settings exist.** `KeyAPIURL = "api_url"`,
+    `KeyAPIKey = "api_key"`, and per key a `cli` name, a built-in `def`, and a `secret`
+    flag. Exported: `StoredKey(input)` and `CLIKey(key)` for the two directions,
+    `IsRecognized(key)`, `IsSecret(key)`, and `EnvName(key)` →
+    `"SCANOSS_" + strings.ToUpper(key)`, matching Viper's `SetEnvPrefix` derivation so the
+    resolver and `AutomaticEnv` cannot disagree. `recognizedKeys`, `cliKeys` and
+    `defaultOf` stay private — nothing outside the package needs them.
+  - **`store.go` — the file.** `Path()` → `$HOME/.scanoss/settings.json` via
+    `os.UserHomeDir()`, behind a package var so tests can inject a temp home. `Set`/`Unset`
+    as above (write instance + `atomicWrite`), and `Load`/`Get`/`Keys` for the unrecognized
+    keys `config list` reports.
+  - **`resolve.go` — which source wins.** `API{URL, Key}`, `Source`,
+    `Setting{Key, Value, Source}`, the private `resolver`, and the three exported entry
+    points `ResolveAPI` / `Resolve` / `ResolveAll`.
+  - **`doc.go`** — the package comment, matching `pkg/settings/doc.go`.
   - **Typed error.** `UnknownKeyError{Key}` rendering
-    `unrecognized key "x"; recognized keys are: api_key, api_url`, so `set`/`get`/`unset`
+    `unrecognized key "x"; recognized keys are: api-key, api-url`, so `set`/`get`/`unset`
     share one message and `cmd` only propagates.
 - `cmd/config.go` (new): `configCmd` + `set`/`get`/`list`/`unset`/`path`, built on the
   module's registry and storage. `cobra.ExactArgs` per subcommand, secret keys rendered
   as a constant `********` by a single `display(key, value)` helper used by both `list`
-  and `get` (no reveal flag exists), and `set api_url` normalized through `normalizeURL`
+  and `get` (no reveal flag exists), and `set api-url` normalized through `normalizeURL`
   (`cmd/auth.go:59`). Help text per T005.
 - **Six call sites** switch from `cmd.Flags().GetString(...)` to
   `cliconfig.ResolveAPI(cmd.Flags())`, propagating the error instead of discarding it
@@ -228,6 +183,9 @@ preserved (FR-4) without extra work.
 - `CHANGELOG.md`: `[Unreleased] → Added`.
 
 ## Testing strategy
+- Tests mirror the source split: `registry_test.go` covers the vocabulary and needs no
+  filesystem, `store_test.go` carries the shared helpers plus every file-level case, and
+  `resolve_test.go` covers the ladder.
 - `internal/cliconfig` storage: table tests with `t.Setenv` on the injected home —
   missing file, directory created from nothing, `~/.scanoss` present as a file,
   unrecognized-key preservation, `0600`/`0700` modes, malformed JSON, empty value as

@@ -106,15 +106,31 @@
 - [x] **T009** Manual end-to-end check, all verified against the built binary with a
       temporary `HOME` and an isolated environment:
       - no key on the default endpoint → the no-key banner, exit 1.
-      - after `config set api_key`, the same command clears the guard (it fails on the
+      - after `config set api-key`, the same command clears the guard (it fails on the
         target path instead, proving no network was needed to prove the point).
-      - `scan` against a stored `api_url` reaches that host
+      - `scan` against a stored `api-url` reaches that host
         (`Post "https://scanoss.file.example.com/v3/wfp/scan"`, exit 1); `SCANOSS_API_URL`
         overrides it; `--api-url` overrides both. Confirmed in the request URL and in the
         `--verbose` resolution log (`source="config file"` → `source=env` → `source=flag`).
-      - a stored `api_key` reports `source="config file"`, and an exported
+      - a stored `api-key` reports `source="config file"`, and an exported
         `SCANOSS_API_KEY` reports `(env: SCANOSS_API_KEY)` in `config list` — source only,
         never the value.
       - hand-added `future_setting` and `some_threshold` survive a `config set` and appear
         in `config list` marked unrecognized.
       - `make check` clean; `go test -race` clean.
+
+## Phase 6 — Follow-up, after the tasks above closed
+- [x] **T010** Name settings `api-url`/`api-key` on the command line, the same as the
+      flags, keeping the file `snake_case`. Exactly one spelling is accepted; the mapping
+      is the registry's `cli` field, not a `-`↔`_` transform. Everything the CLI prints —
+      including the `--verbose` log — goes through `CLIKey`.
+- [x] **T011** Use `config.DefaultAPIURL` for the `dependencies` flag default: it was the
+      last hardcoded copy of the endpoint, and a divergent default there would have
+      silently exempted that command from the no-key guard.
+- [x] **T012** Reorganize `internal/cliconfig` and narrow its surface: one file per
+      concern (`registry.go` / `store.go` / `resolve.go` / `doc.go`) so a file name says
+      what is in it, with tests mirroring the split. The `resolver` is private and the
+      package exposes `ResolveAPI` / `Resolve` / `ResolveAll`; `Resolved` and `Setting`
+      collapsed into one type; `recognizedKeys`, `cliKeys` and `defaultOf` unexported;
+      the four-line `read` wrapper inlined. Exported functions went from 17 to 12, with
+      no behaviour change.
