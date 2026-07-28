@@ -118,7 +118,10 @@ func runEnrich(cmd *cobra.Command, args []string) error {
 	layers = effectiveLayers(outputFormat, layers)
 
 	prog := &scanProgress{}
-	client := buildScanClient(cmd, prog)
+	client, err := buildScanClient(cmd, prog)
+	if err != nil {
+		return err
+	}
 
 	ctx, cancel := createCancellableContext()
 	defer cancel()

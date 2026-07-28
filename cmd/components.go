@@ -74,7 +74,11 @@ func runComponentsSearch(cmd *cobra.Command, _ []string) error {
 	limit, _ := cmd.Flags().GetInt("limit")
 	offset, _ := cmd.Flags().GetInt("offset")
 
-	res, err := newClient(cmd).Components.Search(cmd.Context(), scanoss.ComponentSearch{
+	client, err := newClient(cmd)
+	if err != nil {
+		return err
+	}
+	res, err := client.Components.Search(cmd.Context(), scanoss.ComponentSearch{
 		Search:    search,
 		Vendor:    vendor,
 		Component: component,
@@ -98,7 +102,11 @@ func runComponentsVersions(cmd *cobra.Command, _ []string) error {
 	}
 	limit, _ := cmd.Flags().GetInt("limit")
 
-	res, err := newClient(cmd).Components.Versions(cmd.Context(), purl, limit)
+	client, err := newClient(cmd)
+	if err != nil {
+		return err
+	}
+	res, err := client.Components.Versions(cmd.Context(), purl, limit)
 	if err != nil {
 		return renderAPIError(err)
 	}

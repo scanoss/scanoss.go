@@ -27,6 +27,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/scanoss/scanoss.go/internal/cliconfig"
 	"github.com/scanoss/scanoss.go/internal/config"
 	"github.com/scanoss/scanoss.go/pkg/output"
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
@@ -71,8 +72,10 @@ func runResults(cmd *cobra.Command, args []string) error {
 
 	scanID := args[0]
 
-	apiURL, _ := cmd.Flags().GetString("api-url")
-	apiKey, _ := cmd.Flags().GetString("api-key")
+	api, err := cliconfig.ResolveAPI(cmd.Flags())
+	if err != nil {
+		return err
+	}
 	outputFile, _ := cmd.Flags().GetString("output")
 	pollInterval, _ := cmd.Flags().GetDuration("poll-interval")
 
@@ -84,8 +87,8 @@ func runResults(cmd *cobra.Command, args []string) error {
 
 	prog := &scanProgress{}
 	client := scanoss.New(
-		scanoss.WithAPIURL(apiURL),
-		scanoss.WithAPIKey(apiKey),
+		scanoss.WithAPIURL(api.URL),
+		scanoss.WithAPIKey(api.Key),
 		scanoss.WithProgress(prog.fn),
 	)
 

@@ -31,6 +31,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/scanoss/scanoss.go/internal/cliconfig"
 	"github.com/scanoss/scanoss.go/internal/config"
 	"github.com/scanoss/scanoss.go/pkg/filter"
 	"github.com/scanoss/scanoss.go/pkg/output"
@@ -383,7 +384,10 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 
 	prog := &scanProgress{}
-	client := buildScanClient(cmd, prog)
+	client, err := buildScanClient(cmd, prog)
+	if err != nil {
+		return err
+	}
 
 	ctx, cancel := createCancellableContext()
 	defer cancel()
@@ -473,7 +477,10 @@ func runScanWFP(cmd *cobra.Command, args []string) error {
 	}
 
 	prog := &scanProgress{}
-	client := buildScanClient(cmd, prog)
+	client, err := buildScanClient(cmd, prog)
+	if err != nil {
+		return err
+	}
 
 	ctx, cancel := createCancellableContext()
 	defer cancel()
@@ -496,19 +503,23 @@ func runScanWFP(cmd *cobra.Command, args []string) error {
 
 // buildScanClient constructs the SDK client from the shared scan flags, wiring the progress
 // renderer (scan + per-layer, keyed by Service) and the scan-id notify hook.
-func buildScanClient(cmd *cobra.Command, prog *scanProgress) *scanoss.Client {
-	apiURL, _ := cmd.Flags().GetString("api-url")
-	apiKey, _ := cmd.Flags().GetString("api-key")
+func buildScanClient(cmd *cobra.Command, prog *scanProgress) (*scanoss.Client, error) {
+	api, err := cliconfig.ResolveAPI(cmd.Flags())
+	if err != nil {
+		return nil, err
+	}
 	ignoreCertErrors, _ := cmd.Flags().GetBool("ignore-cert-errors")
 
 	opts := []scanoss.Option{
-		scanoss.WithAPIURL(apiURL),
-		scanoss.WithAPIKey(apiKey),
+		scanoss.WithAPIURL(api.URL),
+		scanoss.WithAPIKey(api.Key),
 		scanoss.WithProgress(prog.fn),
 		scanoss.WithScanIDNotify(func(id string) {
 			prog.writeLine("") // separate the scan-id block from the filter/skip notices above
 			prog.writeLine(infoLine("Scan id: %s", id))
-			prog.writeLine("  If interrupted, resume with:\n  " + buildResultsCommand(id, apiURL, apiKey))
+			// The resume hint carries the resolved endpoint, so it still works in a
+			// shell without the environment variable that produced it.
+			prog.writeLine("  If interrupted, resume with:\n  " + buildResultsCommand(id, api.URL, api.Key))
 			prog.writeLine("") // separate the resume hint from the progress bars below
 		}),
 	}
@@ -516,7 +527,7 @@ func buildScanClient(cmd *cobra.Command, prog *scanProgress) *scanoss.Client {
 		slog.Warn("ignoring TLS certificate errors (insecure)")
 		opts = append(opts, scanoss.WithInsecureTLS(true))
 	}
-	return scanoss.New(opts...)
+	return scanoss.New(opts...), nil
 }
 
 // scanTuning builds the per-scan options (chunk size, poll interval, and bom.remove) from the

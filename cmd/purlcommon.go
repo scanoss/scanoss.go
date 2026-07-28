@@ -36,6 +36,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/vbauerster/mpb/v8"
 
+	"github.com/scanoss/scanoss.go/internal/cliconfig"
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
 )
 
@@ -160,12 +161,15 @@ func readComponentsFile(path, defaultRequirement string) ([]scanoss.Component, e
 	return components, nil
 }
 
-// clientOptions builds the SDK client options from the API flags. The chunk-size
-// and workers flags are optional (absent on the non-PURL-list commands); when not
-// set they resolve to 0 and the SDK keeps its defaults.
-func clientOptions(cmd *cobra.Command) []scanoss.Option {
-	apiURL, _ := cmd.Flags().GetString("api-url")
-	apiKey, _ := cmd.Flags().GetString("api-key")
+// clientOptions builds the SDK client options. The API URL and key are resolved
+// (flag > environment > config file > default); the chunk-size and workers flags are
+// optional (absent on the non-PURL-list commands) and when unset resolve to 0, so
+// the SDK keeps its defaults.
+func clientOptions(cmd *cobra.Command) ([]scanoss.Option, error) {
+	api, err := cliconfig.ResolveAPI(cmd.Flags())
+	if err != nil {
+		return nil, err
+	}
 	chunkSize, _ := cmd.Flags().GetInt("chunk-size")
 	workers, _ := cmd.Flags().GetInt("workers")
 	ignoreCertErrors, _ := cmd.Flags().GetBool("ignore-cert-errors")
@@ -175,30 +179,38 @@ func clientOptions(cmd *cobra.Command) []scanoss.Option {
 	}
 
 	return []scanoss.Option{
-		scanoss.WithAPIURL(apiURL),
-		scanoss.WithAPIKey(apiKey),
+		scanoss.WithAPIURL(api.URL),
+		scanoss.WithAPIKey(api.Key),
 		scanoss.WithChunkSize(chunkSize),
 		scanoss.WithWorkers(workers),
 		scanoss.WithInsecureTLS(ignoreCertErrors),
-	}
+	}, nil
 }
 
 // newClient builds an SDK client from the API flags, without a progress bar. Used
 // by the single-shot commands (components search/versions).
-func newClient(cmd *cobra.Command) *scanoss.Client {
-	return scanoss.New(clientOptions(cmd)...)
+func newClient(cmd *cobra.Command) (*scanoss.Client, error) {
+	opts, err := clientOptions(cmd)
+	if err != nil {
+		return nil, err
+	}
+	return scanoss.New(opts...), nil
 }
 
 // newProgressClient builds an SDK client wired to a stderr progress bar, and a
 // finish func to flush the bar once the call returns.
-func newProgressClient(cmd *cobra.Command) (*scanoss.Client, func()) {
+func newProgressClient(cmd *cobra.Command) (*scanoss.Client, func(), error) {
 	var (
 		mu    sync.Mutex
 		prog  *mpb.Progress
 		bar   *mpb.Bar
 		total int
 	)
-	opts := append(clientOptions(cmd), scanoss.WithProgress(func(p scanoss.Progress) {
+	base, err := clientOptions(cmd)
+	if err != nil {
+		return nil, nil, err
+	}
+	opts := append(base, scanoss.WithProgress(func(p scanoss.Progress) {
 		mu.Lock()
 		defer mu.Unlock()
 		if bar == nil {
@@ -215,7 +227,7 @@ func newProgressClient(cmd *cobra.Command) (*scanoss.Client, func()) {
 			bar.SetCurrent(int64(total)) // force 100% in case the final tick was below total
 			prog.Wait()
 		}
-	}
+	}, nil
 }
 
 // hasPurlInput reports whether the user supplied any component input (--purl or
@@ -245,7 +257,10 @@ func runPurlServiceTyped[T any](cmd *cobra.Command, call typedDecorateFunc[T]) e
 	if err != nil {
 		return err
 	}
-	client, finish := newProgressClient(cmd)
+	client, finish, err := newProgressClient(cmd)
+	if err != nil {
+		return err
+	}
 	v, err := call(client, cmd.Context(), components)
 	if err != nil {
 		return renderAPIError(err)
