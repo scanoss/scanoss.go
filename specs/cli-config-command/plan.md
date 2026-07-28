@@ -277,5 +277,6 @@ preserved (FR-4) without extra work.
 - **Secret at rest in plaintext**, mode `0600` only. Keychain support is out of scope.
 - **Name overloading** with `pkg/settings` / `--settings`. Mitigated by naming the command
   `config` and the package `internal/cliconfig`, plus the README note.
-- **`dependencies` hardcodes its URL default** instead of `config.DefaultAPIURL`. Same
-  literal value, so resolution behaves correctly; tidying it is out of scope.
+- ~~**`dependencies` hardcodes its URL default** instead of `config.DefaultAPIURL`.~~
+  Fixed alongside T005: it was the last hardcoded copy of the endpoint outside the two
+  constants, so the default could have drifted from every other command's.

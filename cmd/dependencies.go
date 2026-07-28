@@ -34,6 +34,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/scanoss/scanoss.go/internal/cliconfig"
+	"github.com/scanoss/scanoss.go/internal/config"
 	"github.com/scanoss/scanoss.go/pkg/dependencies"
 	"github.com/scanoss/scanoss.go/pkg/dependencies/parsers"
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
@@ -106,7 +107,7 @@ func init() {
 	dependenciesCmd.Flags().Int("limit", 10, "Limit for transitive dependencies (only with --transient)")
 
 	// API configuration
-	dependenciesCmd.Flags().String("api-url", "https://api.scanoss.com", "SCANOSS API base URL")
+	dependenciesCmd.Flags().String("api-url", config.DefaultAPIURL, "SCANOSS API base URL")
 	dependenciesCmd.Flags().String("api-key", "", "API key for authentication")
 	dependenciesCmd.Flags().Bool("ignore-cert-errors", false, "Ignore TLS certificate errors (insecure)")
 
