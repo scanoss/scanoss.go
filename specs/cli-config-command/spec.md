@@ -162,6 +162,10 @@ Error: parsing /Users/you/.scanoss/settings.json: invalid character '}' looking 
 - `~/.scanoss` exists with looser permissions than `0700` (e.g. pre-created by hand)
   → left as-is; only paths this command creates get the tightened mode.
 - Empty string values in the file (`"api_key": ""`) are treated as unset.
+- Keys are case-insensitive and normalized to lower case on write: Viper lowercases
+  every key it reads, so a hand-edited `"MyCustom_Key"` is rewritten as
+  `"mycustom_key"`. The value is preserved; only the spelling of the key changes.
+  Consistent with the snake_case convention, and pinned by a test.
 - `config set api_url` trims whitespace and a trailing slash, matching the SDK's
   `WithAPIURL` normalization.
 - Env var set to the empty string is treated as unset (falls through to the file).

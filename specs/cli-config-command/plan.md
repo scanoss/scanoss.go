@@ -264,8 +264,10 @@ preserved (FR-4) without extra work.
   currently has 13 indirect dependencies. Accepted deliberately in exchange for the
   resolution and env-derivation it provides, and for consistency with the wider
   cobra/viper idiom.
-- **Viper lowercases keys and treats `.` as a nesting delimiter.** Harmless for the flat
-  snake_case keys here; a future key containing a dot would be silently nested.
+- **Viper lowercases keys and treats `.` as a nesting delimiter.** Confirmed in
+  implementation: a hand-edited `"MyCustom_Key"` is rewritten as `"mycustom_key"`, so key
+  preservation is case-insensitive rather than verbatim. Harmless for the flat snake_case
+  convention and pinned by a test; a future key containing a dot would be silently nested.
 - **A new command could read the flag directly** and silently ignore the config file.
   Mitigated structurally: three of the six sites are shared helpers, and the guard test
   fails the build otherwise.
