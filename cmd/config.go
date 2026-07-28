@@ -123,6 +123,14 @@ func display(key, value string) string {
 	return value
 }
 
+// hasHTTPScheme reports whether value carries an http(s) scheme. The comparison is
+// case-insensitive because URL schemes are (RFC 3986), so HTTPS:// is not a typo to
+// reject.
+func hasHTTPScheme(value string) bool {
+	lower := strings.ToLower(value)
+	return strings.HasPrefix(lower, "https://") || strings.HasPrefix(lower, "http://")
+}
+
 // sourceLabel renders where a value came from. The environment label names the
 // variable, since "which one do I unset?" is the immediate follow-up question.
 func sourceLabel(key string, source cliconfig.Source) string {
@@ -137,51 +145,55 @@ func sourceLabel(key string, source cliconfig.Source) string {
 }
 
 func runConfigSet(_ *cobra.Command, args []string) error {
-	// The command line has one spelling per setting (api-key, api-url); the file has
-	// another (snake_case). This is the single point of translation.
-	stored, ok := cliconfig.StoredKey(args[0])
+	// The user types api-key/api-url; the file holds api_key/api_url. storedKey is the
+	// file's spelling, which is what the rest of this function and the package speak.
+	storedKey, ok := cliconfig.StoredKey(args[0])
 	if !ok {
 		return &cliconfig.UnknownKeyError{Key: args[0]}
 	}
 	value := args[1]
 
-	// Store api-url the way the SDK will use it: trimmed, no trailing slash. Same
-	// normalization the endpoint comparison in the no-key guard applies.
-	if stored == cliconfig.KeyAPIURL {
-		value = normalizeURL(value)
-	}
 	// An empty value would be stored and then read back as unset — a silent no-op.
 	// Point at the command that actually expresses the intent.
 	if strings.TrimSpace(value) == "" {
-		name := cliconfig.CLIKey(stored)
+		name := cliconfig.CLIKey(storedKey)
 		return fmt.Errorf("%s cannot be set to an empty value; use %q to remove it",
 			name, "scanoss-cli config unset "+name)
 	}
+	// api-url is stored the way the SDK will use it, and must carry a scheme: without
+	// one the failure surfaces much later, in another command, as Go's "unsupported
+	// protocol scheme".
+	if storedKey == cliconfig.KeyAPIURL {
+		value = normalizeURL(value)
+		if !hasHTTPScheme(value) {
+			return fmt.Errorf("api-url must start with https:// or http:// (got %q)", value)
+		}
+	}
 
-	if err := cliconfig.Set(stored, value); err != nil {
+	if err := cliconfig.Set(storedKey, value); err != nil {
 		return err
 	}
 	path, err := cliconfig.Path()
 	if err != nil {
 		return err
 	}
-	okf("Saved %s to %s", cliconfig.CLIKey(stored), path)
+	okf("Saved %s to %s", cliconfig.CLIKey(storedKey), path)
 	return nil
 }
 
 func runConfigUnset(_ *cobra.Command, args []string) error {
-	stored, ok := cliconfig.StoredKey(args[0])
+	storedKey, ok := cliconfig.StoredKey(args[0])
 	if !ok {
 		return &cliconfig.UnknownKeyError{Key: args[0]}
 	}
-	if err := cliconfig.Unset(stored); err != nil {
+	if err := cliconfig.Unset(storedKey); err != nil {
 		return err
 	}
 	path, err := cliconfig.Path()
 	if err != nil {
 		return err
 	}
-	okf("Removed %s from %s", cliconfig.CLIKey(stored), path)
+	okf("Removed %s from %s", cliconfig.CLIKey(storedKey), path)
 	return nil
 }
 
@@ -190,19 +202,19 @@ func runConfigUnset(_ *cobra.Command, args []string) error {
 // key is set (by its exit code), and a script that needs the value uses the
 // environment variable instead.
 func runConfigGet(cmd *cobra.Command, args []string) error {
-	key, ok := cliconfig.StoredKey(args[0])
+	storedKey, ok := cliconfig.StoredKey(args[0])
 	if !ok {
 		return &cliconfig.UnknownKeyError{Key: args[0]}
 	}
 
-	resolved, err := cliconfig.Resolve(cmd.Flags(), key)
+	resolved, err := cliconfig.Resolve(cmd.Flags(), storedKey)
 	if err != nil {
 		return err
 	}
 	if resolved.Value == "" {
-		return fmt.Errorf("%s is not set", cliconfig.CLIKey(key))
+		return fmt.Errorf("%s is not set", cliconfig.CLIKey(storedKey))
 	}
-	_, _ = fmt.Fprintln(cmd.OutOrStdout(), display(key, resolved.Value))
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), display(storedKey, resolved.Value))
 	return nil
 }
 
@@ -215,7 +227,7 @@ func runConfigList(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	stored, err := cliconfig.Load()
+	file, err := cliconfig.Load()
 	if err != nil {
 		return err
 	}
@@ -246,11 +258,11 @@ func runConfigList(cmd *cobra.Command, _ []string) error {
 
 	// Keys the file carries that this version does not recognize: shown so a
 	// hand-edited file is visible rather than silently ignored.
-	for _, key := range stored.Keys() {
+	for _, key := range file.Keys() {
 		if cliconfig.IsRecognized(key) {
 			continue
 		}
-		value, _ := stored.Get(key)
+		value, _ := file.Get(key)
 		_, _ = fmt.Fprintf(out, "%s\t%s\t%s\n", key, value, "(config file, unrecognized)")
 	}
 	if err := out.Flush(); err != nil {

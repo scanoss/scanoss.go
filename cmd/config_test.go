@@ -145,6 +145,57 @@ func TestConfigSetNormalizesURL(t *testing.T) {
 	}
 }
 
+// An endpoint with no scheme is stored happily by the file layer and only fails much
+// later, in a different command. Reject it where the user can still fix it.
+func TestConfigSetRequiresURLScheme(t *testing.T) {
+	accepted := []string{
+		"https://scanoss.internal.example.com",
+		"http://scanoss.internal.example.com",
+		"HTTPS://scanoss.internal.example.com", // schemes are case-insensitive
+		"https://scanoss.internal.example.com:8443/v3",
+	}
+	rejected := []string{
+		"scanoss.internal.example.com",
+		"scanoss.internal.example.com:8443",
+		"//scanoss.internal.example.com",
+		"ftp://scanoss.internal.example.com",
+		"htp://scanoss.internal.example.com",
+	}
+
+	for _, value := range accepted {
+		t.Run("accepted/"+value, func(t *testing.T) {
+			configHome(t)
+			if err := runConfigSet(nil, []string{"api-url", value}); err != nil {
+				t.Errorf("config set api-url %q: %v", value, err)
+			}
+		})
+	}
+	for _, value := range rejected {
+		t.Run("rejected/"+value, func(t *testing.T) {
+			home := configHome(t)
+			err := runConfigSet(nil, []string{"api-url", value})
+			if err == nil {
+				t.Fatalf("config set api-url %q succeeded, want an error", value)
+			}
+			if !strings.Contains(err.Error(), "https:// or http://") {
+				t.Errorf("error %q does not name the accepted schemes", err)
+			}
+			// A rejected value must not reach the file.
+			if _, statErr := os.Stat(filepath.Join(home, ".scanoss")); !errors.Is(statErr, os.ErrNotExist) {
+				t.Error("a rejected api-url created the settings directory")
+			}
+		})
+	}
+}
+
+// The scheme rule is api-url's alone: an API key is opaque and must not be second-guessed.
+func TestConfigSetDoesNotValidateTheKey(t *testing.T) {
+	configHome(t)
+	if err := runConfigSet(nil, []string{"api-key", "scanoss.internal.example.com"}); err != nil {
+		t.Errorf("config set api-key: %v", err)
+	}
+}
+
 func TestConfigSetRejectsUnrecognizedKey(t *testing.T) {
 	home := configHome(t)
 
