@@ -101,9 +101,20 @@
       rule, the `0600` note, the `config` row in the command table, and the user-config
       vs. project-`scanoss.json` clarification. Landed with T006, so `main` never
       documented a command that did not exist.
-- [ ] **T008 [P]** `CHANGELOG.md`: `[Unreleased] → Added` entry for the `config` command
+- [x] **T008 [P]** `CHANGELOG.md`: `[Unreleased] → Added` entry for the `config` command
       and the env-var/config-file resolution.
-- [ ] **T009** Manual end-to-end check: with no key, `scan .` shows the banner; after
-      `config set api_key TOKEN` it runs; `SCANOSS_API_KEY` overrides the file;
-      `--api-key` overrides both; `config set api_url` retargets requests; an
-      unrecognized key in the file survives a `config set`. `make check` clean.
+- [x] **T009** Manual end-to-end check, all verified against the built binary with a
+      temporary `HOME` and an isolated environment:
+      - no key on the default endpoint → the no-key banner, exit 1.
+      - after `config set api_key`, the same command clears the guard (it fails on the
+        target path instead, proving no network was needed to prove the point).
+      - `scan` against a stored `api_url` reaches that host
+        (`Post "https://scanoss.file.example.com/v3/wfp/scan"`, exit 1); `SCANOSS_API_URL`
+        overrides it; `--api-url` overrides both. Confirmed in the request URL and in the
+        `--verbose` resolution log (`source="config file"` → `source=env` → `source=flag`).
+      - a stored `api_key` reports `source="config file"`, and an exported
+        `SCANOSS_API_KEY` reports `(env: SCANOSS_API_KEY)` in `config list` — source only,
+        never the value.
+      - hand-added `future_setting` and `some_threshold` survive a `config set` and appear
+        in `config list` marked unrecognized.
+      - `make check` clean; `go test -race` clean.
