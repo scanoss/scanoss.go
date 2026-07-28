@@ -43,7 +43,7 @@ func sampleInventory() Inventory {
 				URLHash:  "abc123",
 				Evidence: []FileEvidence{
 					{Path: "src/a.c", MatchType: "file"},
-					{Path: "src/b.c", MatchType: "snippet", InputLineRanges: []string{"12-48"}, OssLineRanges: []string{"100-136"}},
+					{Path: "src/b.c", MatchType: "snippet", InputLineRanges: []LineRange{{StartLine: 12, EndLine: 48}}, OssLineRanges: []LineRange{{StartLine: 100, EndLine: 136}}},
 				},
 			},
 			{

@@ -114,19 +114,27 @@ type License struct {
 	Acknowledgement LicenseAcknowledgement `json:"acknowledgement,omitempty"` // declared (default) | concluded
 }
 
+// LineRange is a matched line range (inclusive) within a file. It mirrors the shape the scan
+// engine reports, so ranges travel from the scan result to the SBOM writers without being
+// encoded to text and parsed back.
+type LineRange struct {
+	StartLine int `json:"start_line"` // first line of the matched range
+	EndLine   int `json:"end_line"`   // last line of the matched range
+}
+
 // FileEvidence is one occurrence of a component in the scanned project (a CycloneDX
 // evidence.occurrence): a scanned file that matched (match_type "file"/"snippet", with — for
 // snippets — where and how strongly it matched inside the OSS component), or the manifest that
 // declared it (match_type "declared", with only the path set).
 type FileEvidence struct {
-	Path            string   `json:"path"`                        // occurrence location: scanned file path, or the manifest path for a declared dependency
-	SourceHash      string   `json:"source_hash,omitempty"`       // hash of the scanned input file (from the WFP)
-	FileHash        string   `json:"file_hash,omitempty"`         // hash of the matched file (== source_hash for a file match; the OSS file's for a snippet)
-	MatchType       string   `json:"match_type,omitempty"`        // "file" (whole file) | "snippet" | "declared" (from a manifest)
-	MatchPercentage int      `json:"match_percentage,omitempty"`  // match confidence (snippet only)
-	OssFilePath     string   `json:"oss_file_path,omitempty"`     // matched file path inside the OSS component
-	InputLineRanges []string `json:"input_line_ranges,omitempty"` // matched line ranges in the scanned file (snippet only)
-	OssLineRanges   []string `json:"oss_line_ranges,omitempty"`   // matched line ranges in the OSS component (snippet only)
+	Path            string      `json:"path"`                        // occurrence location: scanned file path, or the manifest path for a declared dependency
+	SourceHash      string      `json:"source_hash,omitempty"`       // hash of the scanned input file (from the WFP)
+	FileHash        string      `json:"file_hash,omitempty"`         // hash of the matched file (== source_hash for a file match; the OSS file's for a snippet)
+	MatchType       string      `json:"match_type,omitempty"`        // "file" (whole file) | "snippet" | "declared" (from a manifest)
+	MatchPercentage int         `json:"match_percentage,omitempty"`  // match confidence (snippet only)
+	OssFilePath     string      `json:"oss_file_path,omitempty"`     // matched file path inside the OSS component
+	InputLineRanges []LineRange `json:"input_line_ranges,omitempty"` // matched line ranges in the scanned file (snippet only)
+	OssLineRanges   []LineRange `json:"oss_line_ranges,omitempty"`   // matched line ranges in the OSS component (snippet only)
 }
 
 // Vulnerability is one known vulnerability affecting one or more components, in a

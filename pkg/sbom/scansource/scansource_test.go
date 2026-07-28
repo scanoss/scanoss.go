@@ -100,7 +100,7 @@ func TestFromScanResult_FileEvidence(t *testing.T) {
 	if files[0].Path != "src/a.c" || files[1].Path != "src/b.c" {
 		t.Errorf("files not sorted by path: %v", files)
 	}
-	if files[1].MatchType != "snippet" || len(files[1].InputLineRanges) != 1 || files[1].InputLineRanges[0] != "12-48" {
+	if files[1].MatchType != "snippet" || len(files[1].InputLineRanges) != 1 || files[1].InputLineRanges[0] != (sbom.LineRange{StartLine: 12, EndLine: 48}) {
 		t.Errorf("snippet evidence wrong: %+v", files[1])
 	}
 }
@@ -148,11 +148,11 @@ func TestFromScanResult_MultiMatchFile(t *testing.T) {
 		}
 	}
 	// h1 sorts before h2; each gets its own match's ranges.
-	if got := inv.Components[0].Evidence[0].InputLineRanges; len(got) != 1 || got[0] != "12-48" {
-		t.Errorf("h1 evidence ranges = %v, want [12-48]", got)
+	if got := inv.Components[0].Evidence[0].InputLineRanges; len(got) != 1 || got[0] != (sbom.LineRange{StartLine: 12, EndLine: 48}) {
+		t.Errorf("h1 evidence ranges = %v, want [{12 48}]", got)
 	}
-	if got := inv.Components[1].Evidence[0].InputLineRanges; len(got) != 1 || got[0] != "12-40" {
-		t.Errorf("h2 evidence ranges = %v, want [12-40]", got)
+	if got := inv.Components[1].Evidence[0].InputLineRanges; len(got) != 1 || got[0] != (sbom.LineRange{StartLine: 12, EndLine: 40}) {
+		t.Errorf("h2 evidence ranges = %v, want [{12 40}]", got)
 	}
 	// The minimal catalog entry (no url/release_date/file/rank) still maps cleanly.
 	other := inv.Components[1]
