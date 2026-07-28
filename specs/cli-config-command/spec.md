@@ -154,6 +154,16 @@ $ scanoss-cli scan .                  # malformed settings.json
 Error: parsing /Users/you/.scanoss/settings.json: invalid character '}' looking for beginning of object key string
 ```
 
+**An endpoint with no scheme is refused, and nothing is written:**
+
+```console
+$ scanoss-cli config set api-url scanoss.internal.example.com
+Error: api-url must start with https:// or http:// (got "scanoss.internal.example.com")
+
+$ scanoss-cli config set api-url ftp://scanoss.internal.example.com
+Error: api-url must start with https:// or http:// (got "ftp://scanoss.internal.example.com")
+```
+
 ### Edge cases
 - No config file / empty file → behavior identical to today (defaults + flags).
 - `~/.scanoss` missing → created by the write; reads never create anything, so a
@@ -226,6 +236,17 @@ Error: parsing /Users/you/.scanoss/settings.json: invalid character '}' looking 
   present in the file are listed as stored values.
 - **FR-12** A malformed or unreadable config file is a hard error, not a silent
   fallback.
+- **FR-13** `config set api-url` requires an `https://` or `http://` scheme (compared
+  case-insensitively, since schemes are). A bare host is rejected where the user can still
+  fix it, rather than being stored with a `Saved` confirmation and then failing in a
+  different command as `unsupported protocol scheme ""`. It is a prefix check, not a URL
+  parse: `url.Parse` accepts a bare host as a relative reference, reads `host:8443` as a
+  *scheme*, and accepts `ftp://` and `htp://`, so a parse-based check would need a scheme
+  allowlist and a separate host check to be worth more. The error quotes the value back
+  and suggests nothing — prefixing `https://` blindly turns `ftp://host` into
+  `https://ftp://host`. `api-key` is not validated: it is opaque. `--api-url` and
+  `SCANOSS_API_URL` are not either, since there the failure already surfaces in the same
+  invocation.
 - **NFR-1** Config reading, environment-variable naming, and value resolution use
   `github.com/spf13/viper`. Writing does **not**: `viper.WriteConfig` serializes Viper's
   merged view and would persist env- and flag-derived values into the file, so writes go

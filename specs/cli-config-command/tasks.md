@@ -134,3 +134,8 @@
       collapsed into one type; `recognizedKeys`, `cliKeys` and `defaultOf` unexported;
       the four-line `read` wrapper inlined. Exported functions went from 17 to 12, with
       no behaviour change.
+- [x] **T013** `config set api-url` requires an `https://`/`http://` scheme (FR-13). A
+      prefix check in `cmd/config.go`, case-insensitive, sharing the one `if` that already
+      normalizes the URL — the two are that setting's rules. Tests cover four accepted and
+      five rejected values, that a rejected value creates no file, and that `api-key` is
+      not validated.

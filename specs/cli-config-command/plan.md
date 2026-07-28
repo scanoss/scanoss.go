@@ -164,8 +164,11 @@ So writes never touch it. `Set` and `Unset` both go through one `mutate` helper 
 - `cmd/config.go` (new): `configCmd` + `set`/`get`/`list`/`unset`/`path`, built on the
   module's registry and storage. `cobra.ExactArgs` per subcommand, secret keys rendered
   as a constant `********` by a single `display(key, value)` helper used by both `list`
-  and `get` (no reveal flag exists), and `set api-url` normalized through `normalizeURL`
-  (`cmd/auth.go:59`). Help text per T005.
+  and `get` (no reveal flag exists). `set api-url` normalizes through `normalizeURL`
+  (`cmd/auth.go:59`) and requires an `https://`/`http://` scheme (FR-13) — one `if` for
+  that setting's two rules, since a third setting with its own rules would want its own.
+  `StoredKey` at the top of each subcommand is the single point where the command-line
+  spelling becomes the stored one. Help text per T005.
 - **Six call sites** switch from `cmd.Flags().GetString(...)` to
   `cliconfig.ResolveAPI(cmd.Flags())`, propagating the error instead of discarding it
   with `_`: `cmd/auth.go:66` (`checkAuth`), `cmd/purlcommon.go:167` (`clientOptions`),
