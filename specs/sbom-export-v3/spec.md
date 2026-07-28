@@ -119,10 +119,17 @@ type License struct {
 // FileEvidence is one scanned file that matched a component (a CycloneDX
 // evidence.occurrence). For snippet matches it carries the matched line ranges.
 type FileEvidence struct {
-    Path            string   // scanned file path (the occurrence "location")
-    MatchType       string   // "file" (whole file) | "snippet"
-    InputLineRanges []string // matched line ranges in the scanned file (snippet only)
-    OssLineRanges   []string // matched line ranges in the OSS component (snippet only)
+    Path            string      // scanned file path (the occurrence "location")
+    MatchType       string      // "file" (whole file) | "snippet"
+    InputLineRanges []LineRange // matched line ranges in the scanned file (snippet only)
+    OssLineRanges   []LineRange // matched line ranges in the OSS component (snippet only)
+}
+
+// LineRange is a matched line range (inclusive), mirroring the scan engine's shape so
+// ranges are never encoded to text and parsed back.
+type LineRange struct {
+    StartLine int // first line of the matched range
+    EndLine   int // last line of the matched range
 }
 
 // Vulnerability is one known vulnerability affecting one or more components, in a

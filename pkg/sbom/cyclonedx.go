@@ -189,7 +189,8 @@ func cycloneDXOccurrences(files []FileEvidence) []cdx.EvidenceOccurrence {
 	for _, f := range files {
 		o := cdx.EvidenceOccurrence{Location: f.Path}
 		if f.MatchType == "snippet" {
-			if start, ok := firstRangeStart(f.InputLineRanges); ok {
+			if len(f.InputLineRanges) > 0 {
+				start := f.InputLineRanges[0].StartLine
 				o.Line = &start
 			}
 			if ctx := rangesContext(f.InputLineRanges, f.OssLineRanges); ctx != "" {
@@ -201,34 +202,27 @@ func cycloneDXOccurrences(files []FileEvidence) []cdx.EvidenceOccurrence {
 	return occurrences
 }
 
-// firstRangeStart parses the leading line number of the first range (e.g. "12-48").
-func firstRangeStart(ranges []string) (int, bool) {
-	for _, r := range ranges {
-		r = strings.TrimSpace(r)
-		if r == "" {
-			continue
-		}
-		numStr := r
-		if i := strings.IndexAny(r, "-,"); i >= 0 {
-			numStr = r[:i]
-		}
-		if n, err := strconv.Atoi(strings.TrimSpace(numStr)); err == nil {
-			return n, true
-		}
-	}
-	return 0, false
-}
-
-// rangesContext renders the matched line ranges as human-readable text.
-func rangesContext(input, oss []string) string {
+// rangesContext renders the matched line ranges as human-readable text, e.g.
+// "input lines 12-48; oss lines 100-136". CycloneDX occurrences have no native range field,
+// so this is the only place a range is rendered as text.
+func rangesContext(input, oss []LineRange) string {
 	var parts []string
 	if len(input) > 0 {
-		parts = append(parts, "input lines "+strings.Join(input, ","))
+		parts = append(parts, "input lines "+joinRanges(input))
 	}
 	if len(oss) > 0 {
-		parts = append(parts, "oss lines "+strings.Join(oss, ","))
+		parts = append(parts, "oss lines "+joinRanges(oss))
 	}
 	return strings.Join(parts, "; ")
+}
+
+// joinRanges renders ranges as a comma-separated "start-end" list.
+func joinRanges(ranges []LineRange) string {
+	parts := make([]string, 0, len(ranges))
+	for _, r := range ranges {
+		parts = append(parts, strconv.Itoa(r.StartLine)+"-"+strconv.Itoa(r.EndLine))
+	}
+	return strings.Join(parts, ",")
 }
 
 // cycloneDXVulnerabilities emits one BOM-level vulnerability per inventory entry, with
