@@ -36,15 +36,16 @@ type fakeInfo struct {
 	name  string
 	size  int64
 	isDir bool
+	mode  os.FileMode
 }
 
 func (f fakeInfo) Name() string { return f.name }
 func (f fakeInfo) Size() int64  { return f.size }
 func (f fakeInfo) Mode() os.FileMode {
 	if f.isDir {
-		return os.ModeDir
+		return os.ModeDir | f.mode
 	}
-	return 0
+	return f.mode
 }
 func (f fakeInfo) ModTime() time.Time { return time.Time{} }
 func (f fakeInfo) IsDir() bool        { return f.isDir }
@@ -152,6 +153,74 @@ func TestCollectDefaults(t *testing.T) {
 	// pruned, not counted).
 	if res.SkippedCount != 4 {
 		t.Fatalf("SkippedCount = %d, want 4", res.SkippedCount)
+	}
+}
+
+// Zero-byte files are always skipped: they carry no content to match, so a
+// fingerprint of one is a WFP entry with a zero hash and no lines. The rule does
+// not depend on the defaults, on the size bounds, or on anything a caller can
+// switch off.
+func TestCollectSkipsUnscannable(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "empty.go"), 0)
+	writeFile(t, filepath.Join(root, "main.go"), 200)
+
+	for _, o := range map[string]Options{
+		"defaults on":            {Defaults: true},
+		"defaults off":           {Defaults: false},
+		"zero-valued options":    {},
+		"with an explicit floor": {Defaults: true, MinSize: 100},
+	} {
+		res, err := Collect(root, o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, f := range res.Files {
+			if filepath.Base(f) == "empty.go" {
+				t.Errorf("%+v: empty.go must never be collected", o)
+			}
+		}
+		if res.SkippedCount < 1 {
+			t.Errorf("%+v: the empty file must be counted as skipped", o)
+		}
+	}
+}
+
+// A symlink is skipped: its target is collected on its own when it is inside the
+// tree, so following it would report the same content twice under two names.
+// Both scanoss.py and scanoss.js drop them too.
+func TestCollectSkipsSymlinks(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "real.go"), 200)
+	if err := os.Symlink(filepath.Join(root, "real.go"), filepath.Join(root, "link.go")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	res, err := Collect(root, DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := baseNames(res.Files); !equalStrings(got, []string{"real.go"}) {
+		t.Fatalf("kept %v, want [real.go] — the link must not be collected", got)
+	}
+	if res.SkippedCount != 1 {
+		t.Errorf("SkippedCount = %d, want 1", res.SkippedCount)
+	}
+}
+
+// NewMatcher (the streaming path) agrees with Collect on unscannable entries.
+func TestNewMatcherSkipsUnscannable(t *testing.T) {
+	for _, o := range []Options{{Defaults: true}, {Defaults: false}, {}} {
+		m := NewMatcher(o)
+		if !m.Match("empty.go", aFile("empty.go", 0)) {
+			t.Errorf("%+v: a zero-byte file should be skipped", o)
+		}
+		if !m.Match("link.go", fakeInfo{name: "link.go", size: 20, mode: os.ModeSymlink}) {
+			t.Errorf("%+v: a symlink should be skipped", o)
+		}
+		if m.Match("main.go", aFile("main.go", 200)) {
+			t.Errorf("%+v: a 200-byte file should not be skipped", o)
+		}
 	}
 }
 

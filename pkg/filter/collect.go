@@ -140,6 +140,7 @@ func (m *keepMatcher) Key() string { return "keep:" + m.base.Key() }
 // skipped.
 func NewMatcher(o Options) Matcher {
 	var sources [][]Matcher
+	sources = append(sources, UnscannableSource())
 	if o.Defaults {
 		sources = append(sources, DefaultSource(o.defaults()))
 	}
@@ -178,9 +179,11 @@ func (o Options) defaults() Defaults {
 // skipped. Rules are loaded from the enabled sources (defaults, scanoss.json,
 // .gitignore), deduplicated, and applied as a single composite. Hidden files and
 // directories (names beginning with ".") are always skipped, preserving prior
-// behavior. Symlinked directories are not followed. Returned paths are absolute.
+// behavior, as are zero-byte files and symbolic links (see UnscannableSource).
+// Symlinked directories are not followed. Returned paths are absolute.
 func Collect(root string, o Options) (*CollectResult, error) {
 	var sources [][]Matcher
+	sources = append(sources, UnscannableSource())
 	if o.Defaults {
 		sources = append(sources, DefaultSource(o.defaults()))
 	}

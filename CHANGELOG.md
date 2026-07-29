@@ -37,6 +37,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   built-in bounds, so callers that start from a constructor need no change.
 
 ### Fixed
+- Zero-byte files and symbolic links are no longer fingerprinted. An empty file produced a WFP
+  entry with a zero hash and no lines, and a link reported the same content twice — its target is
+  collected on its own. Neither is configurable: they are not policy, and both match what the
+  Python and JS clients already do.
 - `--max-size` (and the new `--min-size`) were silently ignored when combined with
   `--default-filters=false`: the bounds were applied from inside the built-in default filters, so
   switching those off discarded them. They are now applied independently, in both the directory

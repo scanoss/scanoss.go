@@ -93,6 +93,19 @@ func DefaultSource(d Defaults) []Matcher {
 	return ms
 }
 
+// UnscannableSource skips entries there is no point fingerprinting, whatever the
+// other rules say. It is not configurable and applies on every collection,
+// independently of the default lists and of the size bounds — these are not
+// policy choices but statements about the entry:
+//
+//   - zero-byte files: no content to match, so the WFP entry carries a zero hash
+//     and no lines — bytes on the wire no scan can act on;
+//   - symbolic links: the target is collected on its own when it is inside the
+//     tree, so following the link would report the same content twice.
+func UnscannableSource() []Matcher {
+	return []Matcher{emptyFileMatcher{}, symlinkMatcher{}}
+}
+
 // SizeSource turns a [min, max] byte range into a matcher. It is a source of its
 // own — not part of DefaultSource — because the bounds come from the caller
 // (--min-size/--max-size), not from the built-in lists: switching the defaults
