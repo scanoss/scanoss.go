@@ -41,6 +41,8 @@ func addAPIFlags(cmd *cobra.Command) {
 	fs := cmd.PersistentFlags()
 	fs.String("api-url", scanoss.DefaultAPIURL, "SCANOSS API base URL")
 	fs.String("api-key", "", "API key for authentication")
+	fs.String("proxy", "", "Proxy URL, e.g. http://proxy.example.com:8080 (also honors HTTP_PROXY/HTTPS_PROXY)")
+	fs.String("ca-cert", "", "Path to a PEM file with an additional CA to trust")
 	fs.Bool("ignore-cert-errors", false, "Ignore TLS certificate errors (insecure)")
 	fs.StringP("output", "o", "", "Output file (default: stdout)")
 }
