@@ -75,3 +75,29 @@ func TestRawDocument_LineRangesRoundTrip(t *testing.T) {
 		t.Errorf("oss ranges = %+v, want %+v", ev.OssLineRanges, oss)
 	}
 }
+
+// A scan that matched nothing emits an empty list, not null. A nil slice
+// marshals to null, which forces every consumer to special-case the field
+// before ranging over it — and strict JSON-schema validators reject it.
+func TestRawDocumentEmptyComponentsIsList(t *testing.T) {
+	out, err := NewRawDocument(Inventory{}, RawMetadata{Tool: "t", ToolVersion: "1"}).Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, `"components": null`) {
+		t.Errorf("components must be [] when there are none, got:\n%s", out)
+	}
+	if !strings.Contains(out, `"components": []`) {
+		t.Errorf("expected an empty list, got:\n%s", out)
+	}
+
+	// And it round-trips: parsing it back yields an inventory with no components
+	// rather than an error.
+	inv, err := ParseRaw([]byte(out))
+	if err != nil {
+		t.Fatalf("ParseRaw on an empty document: %v", err)
+	}
+	if len(inv.Components) != 0 {
+		t.Errorf("expected no components, got %d", len(inv.Components))
+	}
+}
