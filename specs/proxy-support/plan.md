@@ -69,7 +69,9 @@ one implementation for both the CLI and the SDK.
 `WithInsecureTLS` stays, reimplemented over `NewHTTPClient` so it stops dropping the proxy.
 
 ## Key changes
-- `pkg/scanoss/transport.go` (new): `TransportOptions`, `NewHTTPClient`. Clone
+- `pkg/scanoss/httpclient.go` (new — `transport.go` already holds the retry transport,
+  so the two names split cleanly: how we retry versus how we connect): `TransportOptions`,
+  `NewHTTPClient`. Clone
   `http.DefaultTransport`, then set what was asked for. The proxy is checked for an
   `https://`/`http://` prefix first and rejected naming the value otherwise — `url.Parse`
   reads a scheme-less `host:port` as a scheme with no host, which surfaces as
@@ -83,8 +85,10 @@ one implementation for both the CLI and the SDK.
 - `pkg/scanoss/client.go`: `WithInsecureTLS` delegates to `NewHTTPClient`.
 - `pkg/api/client.go`: add `SetHTTPClient(*http.Client)`; `SetInsecureTLS` delegates to
   it. No behaviour change for existing callers.
-- `cmd/httpclient.go`: `newHTTPClient` takes the three inputs and delegates to
-  `scanoss.NewHTTPClient`, so the CLI has one transport builder.
+- `cmd/httpclient.go` is deleted. It exists to build an insecure client for the one raw
+  HTTP call in `attributions`, and keeping it would mean a second file named
+  `httpclient.go` whose only job is to forward to the first. The CLI builds its client the
+  same way everywhere.
 - `cmd/apicommon.go` (new): `addAPIFlags` moves here from `purlcommon.go`, and the five
   commands that declare the four API flags by hand call it instead. A neutral file name is
   the point — the helper was invisible inside `purlcommon.go`. `clientOptions` stays where

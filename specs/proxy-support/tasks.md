@@ -20,7 +20,8 @@
       This is what turns T004 into two lines in one file.
 
 ## Phase 1 — The transport
-- [ ] **T001** `pkg/scanoss/transport.go` (new): `TransportOptions{Proxy, CACertFile,
+- [ ] **T001** `pkg/scanoss/httpclient.go` (new — `transport.go` is taken by the retry
+      transport): `TransportOptions{Proxy, CACertFile,
       Insecure}` and `NewHTTPClient(opts) (*http.Client, error)`, built by cloning
       `http.DefaultTransport`. Set only what was asked for: the proxy must start with
       `https://` or `http://` and is rejected naming the value otherwise, then
@@ -35,9 +36,11 @@
       it stops dropping the proxy. (depends on T001)
 
 ## Phase 2 — CLI wiring
-- [ ] **T003** `cmd/httpclient.go`: `newHTTPClient` takes proxy, CA file and insecure and
-      delegates to `scanoss.NewHTTPClient`, returning its error. Update its one caller,
-      `cmd/attributions.go:236`. (depends on T001)
+- [ ] **T003** Delete `cmd/httpclient.go`. Its `newHTTPClient(insecure)` has one caller
+      (`cmd/attributions.go:236`) and would otherwise become a wrapper that calls
+      `scanoss.NewHTTPClient` — a second file with the same name whose only job is to
+      forward. The caller builds its client the same way every other command will.
+      (depends on T001)
 - [ ] **T004** Add `--proxy` and `--ca-cert` inside `addAPIFlags` — two lines in
       `cmd/apicommon.go`, reaching all eleven commands. (depends on T000)
 - [ ] **T005** Read the three flags where `--ignore-cert-errors` is already read
