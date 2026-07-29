@@ -21,7 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   supported.
 - **`scanoss.NewHTTPClient`** builds an `*http.Client` with the same proxy and CA settings, for use
   with the existing `WithHTTPClient` option. `pkg/api` gained `SetHTTPClient`.
-- 
+- **`--min-size`** on `scan` and `wfp` — skip files below a size in bytes.
+- **`--max-size` on `wfp`**.
+
 ### Changed
 - Files under 100 bytes are no longer skipped
 - **SDK, breaking** — `filter.Defaults` no longer carries `MinSize`/`MaxSize`, and neither does
