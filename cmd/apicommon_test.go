@@ -163,7 +163,9 @@ func TestAPIHTTPClientWarnsWhenCACertIsIgnored(t *testing.T) {
 		if !strings.Contains(out, "ignoring TLS certificate errors") {
 			t.Errorf("the insecure warning is missing:\n%s", out)
 		}
-		if !strings.Contains(out, "--ca-cert has no effect") {
+		// The setting is named without a leading dash: it can come from the config
+		// file, so calling it "--ca-cert" would name a flag the user never passed.
+		if !strings.Contains(out, "ca-cert has no effect") {
 			t.Errorf("the ca-cert warning is missing:\n%s", out)
 		}
 	})
@@ -175,8 +177,76 @@ func TestAPIHTTPClientWarnsWhenCACertIsIgnored(t *testing.T) {
 		if _, err := newHTTPClient(apiCommand(t, map[string]string{"ignore-cert-errors": "true"})); err != nil {
 			t.Fatalf("newHTTPClient() error: %v", err)
 		}
-		if strings.Contains(logged.String(), "--ca-cert") {
-			t.Errorf("warned about --ca-cert when it was not passed:\n%s", logged.String())
+		if strings.Contains(logged.String(), "ca-cert") {
+			t.Errorf("warned about ca-cert when it was not set:\n%s", logged.String())
 		}
 	})
+}
+
+// A stored setting must reach the transport with no flag passed — the whole point of
+// making proxy and ca-cert config keys.
+func TestNewHTTPClientUsesStoredSettings(t *testing.T) {
+	configHome(t)
+	if err := runConfigSet(nil, []string{"proxy", "http://stored.example.com:8080"}); err != nil {
+		t.Fatal(err)
+	}
+
+	client, err := newHTTPClient(apiCommand(t, nil))
+	if err != nil {
+		t.Fatalf("newHTTPClient() error: %v", err)
+	}
+	req, err := http.NewRequest(http.MethodGet, "https://api.scanoss.com/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := client.Transport.(*http.Transport).Proxy(req)
+	if err != nil {
+		t.Fatalf("resolving the proxy: %v", err)
+	}
+	if got == nil || got.String() != "http://stored.example.com:8080" {
+		t.Errorf("proxy = %v, want the stored value", got)
+	}
+
+}
+
+// And the flag still wins over a stored value.
+func TestNewHTTPClientFlagBeatsStoredSettings(t *testing.T) {
+	configHome(t)
+	if err := runConfigSet(nil, []string{"proxy", "http://stored.example.com:8080"}); err != nil {
+		t.Fatal(err)
+	}
+
+	client, err := newHTTPClient(apiCommand(t, map[string]string{"proxy": "http://flag.example.com:8080"}))
+	if err != nil {
+		t.Fatalf("newHTTPClient() error: %v", err)
+	}
+	req, err := http.NewRequest(http.MethodGet, "https://api.scanoss.com/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := client.Transport.(*http.Transport).Proxy(req)
+	if err != nil {
+		t.Fatalf("resolving the proxy: %v", err)
+	}
+	if got == nil || got.String() != "http://flag.example.com:8080" {
+		t.Errorf("proxy = %v, want the flag value", got)
+	}
+}
+
+// A stored CA that cannot be read fails the command, naming the path — the same error
+// the flag produces, since nothing about the source changes the file being unreadable.
+func TestNewHTTPClientStoredCACertMustExist(t *testing.T) {
+	configHome(t)
+	missing := filepath.Join(t.TempDir(), "gone.pem")
+	if err := runConfigSet(nil, []string{"ca-cert", missing}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := newHTTPClient(apiCommand(t, nil))
+	if err == nil {
+		t.Fatal("newHTTPClient() succeeded with an unreadable stored CA, want an error")
+	}
+	if !strings.Contains(err.Error(), missing) {
+		t.Errorf("error %q does not name the path", err)
+	}
 }

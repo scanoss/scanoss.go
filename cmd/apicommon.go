@@ -29,6 +29,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/scanoss/scanoss.go/internal/cliconfig"
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
 )
 
@@ -58,24 +59,30 @@ func addAPIFlags(cmd *cobra.Command) {
 // With no flags set the client keeps Go's defaults, which means HTTP_PROXY,
 // HTTPS_PROXY and NO_PROXY are honoured without any code of ours.
 func newHTTPClient(cmd *cobra.Command) (*http.Client, error) {
-	proxy, _ := cmd.Flags().GetString("proxy")
-	caCert, _ := cmd.Flags().GetString("ca-cert")
+	// Resolved rather than read off the flags: both can also come from the
+	// environment or ~/.scanoss/settings.json, so a stored value works with no flag.
+	transport, err := cliconfig.ResolveTransport(cmd.Flags())
+	if err != nil {
+		return nil, err
+	}
+	// ignore-cert-errors stays a flag. Storing "never verify certificates" would
+	// remove the deliberateness that makes it acceptable per run.
 	insecure, _ := cmd.Flags().GetBool("ignore-cert-errors")
 
 	if insecure {
 		slog.Warn("ignoring TLS certificate errors (insecure)")
-		// Dropped, not just unused: saying the flag has no effect and then failing
+		// Dropped, not just unused: saying the CA has no effect and then failing
 		// because that same file is unreadable would contradict itself. With
 		// verification off the file is never consulted, so it is not read either.
-		if caCert != "" {
-			slog.Warn("--ca-cert has no effect with --ignore-cert-errors")
-			caCert = ""
+		if transport.CACertFile != "" {
+			slog.Warn("ca-cert has no effect with --ignore-cert-errors")
+			transport.CACertFile = ""
 		}
 	}
 
 	return scanoss.NewHTTPClient(scanoss.HTTPClientOptions{
-		Proxy:      proxy,
-		CACertFile: caCert,
+		Proxy:      transport.Proxy,
+		CACertFile: transport.CACertFile,
 		Insecure:   insecure,
 	})
 }
