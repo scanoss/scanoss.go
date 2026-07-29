@@ -76,28 +76,31 @@ Verified manifest by manifest: all 13 are either covered by a skipped extension
 and rescued by the exemption, or have no extension at all (`Gemfile`). So a
 delta here would fix nothing.
 
-### 3. A profile per operation
+### 3. A profile per layer
+
+One constructor per layer, not an enum and a dispatcher: each caller knows at
+compile time which one it is, so a named function is clearer than a runtime
+lookup. (`pkg/settings` does need an operation parameter — it selects between
+three sections of the same JSON — but `pkg/filter` has nothing to select.)
 
 ```go
-type Operation int
-
-const (
-	OpScan Operation = iota
-	OpFingerprint
-	OpDependencies
-)
-
-// OptionsFor returns the collection profile for an operation. The caller still
-// supplies what only it knows: the user's flags and the scanoss.json section.
-func OptionsFor(op Operation) Options
+func ScanOptions() Options         // exists
+func FingerprintOptions() Options  // new
+func DependencyOptions() Options   // new
 ```
 
 | | `Defaults` | `GitIgnore` | manifests | dirs |
 |---|---|---|---|---|
-| `OpScan` / `OpFingerprint` | true | true | skipped | common + scan-only |
-| `OpDependencies` | true | **false** | **preserved** | common + dependency-only |
+| `ScanOptions` / `FingerprintOptions` | true | true | skipped | common + scan-only |
+| `DependencyOptions` | true | **false** | **preserved** | common + dependency-only |
 
 `GitIgnore: false` for dependencies preserves today's behaviour (FR-4).
+
+`DefaultSkippedDirs` is removed rather than renamed: with three directory lists,
+"default" identifies none of them. What a caller applying the rules by hand
+needs is `CommonSkippedDirs` — the set no operation wants, and therefore the
+most a pre-filter can safely prune before it knows what will consume the
+result.
 
 ### 4. Filtering happens once
 
@@ -122,7 +125,8 @@ which is why a test pins the outcome rather than the mechanism.
 
 ## Key changes
 - `pkg/filter/defaults.go` — shared list + deltas; `.whl`.
-- `pkg/filter/collect.go` — `Operation`, `OptionsFor`, `DependencyDefaults`.
+- `pkg/filter/collect.go` — `FingerprintOptions`, `DependencyOptions`;
+  `NewMatcher` applies directory rules to the whole path (T011).
 - `pkg/settings/settings.go` — `DependencyFilter()`.
 - `pkg/scanner/worker.go` — drop the extension check.
 - `pkg/fingerprint/wfp/wfp.go` — delete `filteredExt` and `ShouldSkipFile`.

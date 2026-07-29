@@ -96,6 +96,14 @@ want a flag that says "do not filter" to actually not filter.
 - **FR-8** Differences between operations are expressed as named deltas over a
   shared list, so the difference is visible in one place and inherits future
   additions.
+- **FR-9** `NewMatcher` applies **every** rule kind, directory rules included.
+  Today it answers correctly for extensions, names and endings — which need only
+  the entry's name — and silently answers "keep" for a path inside a skipped
+  directory, because those rules only inspect `info`. `Collect` does not have
+  the problem: it prunes while walking. The consequence is that a caller outside
+  a tree walk gets half a filter and has to rebuild the other half by hand, with
+  no way to tell which half is missing. For the same `(rel, info)`, `NewMatcher`
+  and `Collect` must agree.
 - **NFR-1** No new dependencies. No change to `scanoss.json`'s format.
 
 ## Out of scope

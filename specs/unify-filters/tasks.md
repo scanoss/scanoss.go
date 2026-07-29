@@ -105,6 +105,35 @@ relied on it its own filter. Landing T005 without T006 changes `libscanoss`.
       `grep -rn "ShouldSkipFile\|filteredExt"` returns nothing outside the
       CHANGELOG. `make check` and `go test -race ./...` clean.
 
+## Phase 5 — Close the other half of the filter
+
+`NewMatcher` is the entry point for callers that cannot walk a tree — archive
+extraction, streaming. It applies extension, name and ending rules correctly,
+and silently ignores directory rules: those only inspect `info`, and for a file
+inside `node_modules/` the `info` is the file. Verified:
+
+    NewMatcher(ScanOptions()).Match("node_modules/left-pad/index.js", fileInfo)
+    → false
+
+`Collect` never hits this because it prunes with `SkipDir` while walking, so the
+question is never asked. The gap is only visible from outside a walk — which is
+why a consumer ends up reimplementing exactly the missing half.
+
+- [ ] **T011** `pkg/filter`: make `NewMatcher` apply directory rules to every
+      ancestor segment of `rel`, so it answers the same as `Collect` for the same
+      entry.
+      - An `ancestorMatcher` wrapper, applied **only** in `NewMatcher` —
+        `Collect` already prunes while walking and would just re-evaluate.
+      - The manifest exemption must NOT rescue an entry skipped because of an
+        ancestor: in `Collect` a `node_modules/foo/package.json` is never
+        reached, so the two paths would otherwise disagree. Ancestor check first,
+        without the exemption; entry check second, with it.
+
+      Tests: a table of paths (`node_modules/x/index.js`, `venv/lib/x.py`,
+      `foo.egg-info/PKG-INFO`, `src/main.go`) matched by both `NewMatcher` and
+      `Collect` over an equivalent tree, asserting they agree — that equivalence
+      is the requirement, not the wrapper.
+
 ## Follow-ups (not this change)
 - `dist`/`build`/`target` are preserved as-is in `DependencyOnlySkippedDirs`.
   Neither scanoss.js nor scanoss.py skips them anywhere; whether a
