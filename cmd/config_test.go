@@ -188,7 +188,44 @@ func TestConfigSetRequiresURLScheme(t *testing.T) {
 	}
 }
 
-// The scheme rule is api-url's alone: an API key is opaque and must not be second-guessed.
+// A proxy without a scheme is worse than a bad endpoint: url.Parse reads "host:8080"
+// as a scheme with no host, and the run dies dialing port 0 rather than saying why.
+func TestConfigSetRequiresProxyScheme(t *testing.T) {
+	for _, value := range []string{"http://proxy.example.com:8080", "HTTP://proxy.example.com:8080"} {
+		t.Run("accepted/"+value, func(t *testing.T) {
+			configHome(t)
+			if err := runConfigSet(nil, []string{"proxy", value}); err != nil {
+				t.Errorf("config set proxy %q: %v", value, err)
+			}
+		})
+	}
+	for _, value := range []string{"proxy.example.com:8080", "proxy.example.com", "socks5://proxy.example.com:1080"} {
+		t.Run("rejected/"+value, func(t *testing.T) {
+			home := configHome(t)
+			err := runConfigSet(nil, []string{"proxy", value})
+			if err == nil {
+				t.Fatalf("config set proxy %q succeeded, want an error", value)
+			}
+			if !strings.Contains(err.Error(), "https:// or http://") {
+				t.Errorf("error %q does not name the accepted schemes", err)
+			}
+			if _, statErr := os.Stat(filepath.Join(home, ".scanoss")); !errors.Is(statErr, os.ErrNotExist) {
+				t.Error("a rejected proxy created the settings directory")
+			}
+		})
+	}
+}
+
+// ca-cert takes a path, not a URL: the scheme rule must not leak onto it.
+func TestConfigSetDoesNotValidateTheCACertPath(t *testing.T) {
+	configHome(t)
+	if err := runConfigSet(nil, []string{"ca-cert", "/etc/ssl/corp-ca.pem"}); err != nil {
+		t.Errorf("config set ca-cert: %v", err)
+	}
+}
+
+// The scheme rule belongs to the two URL keys: an API key is opaque and must not be
+// second-guessed.
 func TestConfigSetDoesNotValidateTheKey(t *testing.T) {
 	configHome(t)
 	if err := runConfigSet(nil, []string{"api-key", "scanoss.internal.example.com"}); err != nil {
@@ -204,13 +241,26 @@ func TestConfigSetRejectsUnrecognizedKey(t *testing.T) {
 	if !errors.As(err, &unknown) {
 		t.Fatalf("config set: error = %v, want *cliconfig.UnknownKeyError", err)
 	}
-	for _, key := range []string{"api-key", "api-url"} {
+	for _, key := range []string{"api-key", "api-url", "proxy", "ca-cert"} {
 		if !strings.Contains(err.Error(), key) {
 			t.Errorf("error %q does not list %q", err, key)
 		}
 	}
 	if _, statErr := os.Stat(filepath.Join(home, ".scanoss")); !errors.Is(statErr, os.ErrNotExist) {
 		t.Error("a rejected key created the settings directory")
+	}
+}
+
+// ignore-cert-errors travels with proxy and ca-cert on the command line, so it is the
+// key a user is most likely to try to store. Persisting "never verify certificates"
+// would outlive the reason for it, so it stays a per-run flag (FR-6).
+func TestConfigSetRejectsIgnoreCertErrors(t *testing.T) {
+	configHome(t)
+
+	err := runConfigSet(nil, []string{"ignore-cert-errors", "true"})
+	var unknown *cliconfig.UnknownKeyError
+	if !errors.As(err, &unknown) {
+		t.Fatalf("config set ignore-cert-errors: error = %v, want *cliconfig.UnknownKeyError", err)
 	}
 }
 
