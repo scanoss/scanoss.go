@@ -10,7 +10,7 @@
 - `make check` clean before presenting each commit.
 
 ## Phase 0 — One home for the API flags
-- [ ] **T000** `cmd/apicommon.go` (new): move `addAPIFlags` out of `purlcommon.go`, whose
+- [x] **T000** `cmd/apicommon.go` (new): move `addAPIFlags` out of `purlcommon.go`, whose
       name hid it from every command that is not a PURL one. Have `scan`, `enrich`,
       `attributions`, `dependencies` and `results` call it instead of declaring `api-url`,
       `api-key`, `ignore-cert-errors` and `output` by hand — `results` gains
@@ -20,7 +20,7 @@
       This is what turns T004 into two lines in one file.
 
 ## Phase 1 — The transport
-- [ ] **T001** `pkg/scanoss/httpclient.go` (new — `transport.go` is taken by the retry
+- [x] **T001** `pkg/scanoss/httpclient.go` (new — `transport.go` is taken by the retry
       transport): `TransportOptions{Proxy, CACertFile,
       Insecure}` and `NewHTTPClient(opts) (*http.Client, error)`, built by cloning
       `http.DefaultTransport`. Set only what was asked for: the proxy must start with
@@ -32,18 +32,18 @@
       a scheme-less proxy is rejected; an unreadable CA file and a certificate-free one
       both error with the path; **and the regression — with `HTTPS_PROXY` set,
       `Insecure: true` must still resolve a proxy.**
-- [ ] **T002** `pkg/scanoss/client.go`: `WithInsecureTLS` delegates to `NewHTTPClient`, so
+- [x] **T002** `pkg/scanoss/client.go`: `WithInsecureTLS` delegates to `NewHTTPClient`, so
       it stops dropping the proxy. (depends on T001)
 
 ## Phase 2 — CLI wiring
-- [ ] **T003** Delete `cmd/httpclient.go`. Its `newHTTPClient(insecure)` has one caller
+- [x] **T003** Delete `cmd/httpclient.go`. Its `newHTTPClient(insecure)` has one caller
       (`cmd/attributions.go:236`) and would otherwise become a wrapper that calls
       `scanoss.NewHTTPClient` — a second file with the same name whose only job is to
       forward. The caller builds its client the same way every other command will.
       (depends on T001)
-- [ ] **T004** Add `--proxy` and `--ca-cert` inside `addAPIFlags` — two lines in
+- [x] **T004** Add `--proxy` and `--ca-cert` inside `addAPIFlags` — two lines in
       `cmd/apicommon.go`, reaching all eleven commands. (depends on T000)
-- [ ] **T005** Read the three flags where `--ignore-cert-errors` is already read
+- [x] **T005** Read the three flags where `--ignore-cert-errors` is already read
       (`clientOptions`, `buildScanClient`, `runAttributions`, `runDependencies`,
       `runResults`) and pass them as one `NewHTTPClient` call injected with
       `WithHTTPClient`. Warn that `--ca-cert` has no effect when `--ignore-cert-errors` is
@@ -52,16 +52,28 @@
       (depends on T003, T004)
 
 ## Phase 3 — Bindings hook
-- [ ] **T006 [P]** `pkg/api/client.go`: add `SetHTTPClient(*http.Client)` and have
+- [x] **T006 [P]** `pkg/api/client.go`: add `SetHTTPClient(*http.Client)` and have
       `SetInsecureTLS` delegate to it, so `libscanoss` can be handed a configured client.
 
 ## Phase 4 — Docs & verification
-- [ ] **T007 [P]** `README.md`: `--proxy` and `--ca-cert`, that
+- [x] **T007 [P]** `README.md`: `--proxy` and `--ca-cert`, that
       `HTTP(S)_PROXY`/`NO_PROXY` work with no flags, that `--ca-cert` adds to the system
       pool with verification on, the SDK snippet, and a line on PAC not being supported.
-- [ ] **T008 [P]** `CHANGELOG.md`: `Added` for the flags and the SDK constructor;
+- [x] **T008 [P]** `CHANGELOG.md`: `Added` for the flags and the SDK constructor;
       **`Fixed`** for `--ignore-cert-errors` no longer bypassing the proxy.
-- [ ] **T009** End-to-end check: a local HTTPS server with a self-signed CA fails without
-      `--ca-cert` and succeeds with it; `HTTPS_PROXY` is honored with no flags and
-      `--proxy` overrides it; `--ignore-cert-errors` with `HTTPS_PROXY` now uses the proxy.
-      `make check` and `go test -race ./...` clean.
+- [x] **T009** End-to-end check, all against the built binary with an isolated environment
+      and a local HTTPS server signed by its own CA:
+      - **`--ca-cert`** — without it the handshake fails with
+        `x509: certificate signed by unknown authority`; with it the request lands (the
+        server logs `GET /v3/wfp/scan/abc` and the CLI complains about the *body*, not the
+        certificate). Verification stays on throughout.
+      - **the environment** — `HTTPS_PROXY` alone is honoured (`proxyconnect … lookup
+        envproxy.invalid`), and `--proxy` overrides it (`… lookup flagproxy.invalid`).
+      - **the regression** — `--ignore-cert-errors` with `HTTPS_PROXY` set now goes through
+        the proxy, on all three client paths: `results` (SDK), `licenses` (PURL) and
+        `attributions` (raw HTTP).
+      - **proven against `main`** — the same `licenses --ignore-cert-errors` command built
+        from `c3311ce` ignored the proxy and reached `api.scanoss.com` directly, returning a
+        real 401. It was not merely skipping the proxy: it egressed straight to the internet,
+        API key included, in a network where the proxy is meant to be the only way out.
+      - `make check` clean, `go test -race ./...` clean, 36 tests across the feature.
