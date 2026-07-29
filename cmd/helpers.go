@@ -48,3 +48,19 @@ func createCancellableContext() (context.Context, context.CancelFunc) {
 
 	return ctx, cancel
 }
+
+// validateSizeBounds checks the --min-size / --max-size pair before any file is
+// read. On either bound, 0 means "no bound" (no minimum / unlimited), so 0 is
+// always valid
+func validateSizeBounds(min, max int64) error {
+	if min < 0 {
+		return fmt.Errorf("--min-size must not be negative (got %d); use 0 for no minimum", min)
+	}
+	if max < 0 {
+		return fmt.Errorf("--max-size must not be negative (got %d); use 0 for unlimited", max)
+	}
+	if max > 0 && min > max {
+		return fmt.Errorf("--min-size (%d) must not exceed --max-size (%d): no file could match", min, max)
+	}
+	return nil
+}
