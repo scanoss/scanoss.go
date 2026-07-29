@@ -135,16 +135,24 @@ func DependencyOptions() Options {
 // manifest. The exemption applies to files only — directories are matched by the
 // base matcher unchanged (so skipped dirs like node_modules are not descended).
 type keepMatcher struct {
-	base              Matcher
+	base              Matcher // built-in rules: the exemption may override these
+	userRules         Matcher // scanoss.json: the exemption may not
 	preserveManifests bool
 }
 
 func (m *keepMatcher) Match(rel string, info os.FileInfo) bool {
+	// A rule the project wrote in scanoss.json is checked first and is final.
+	// The exemption exists so our own extension list does not swallow the
+	// manifests a dependency scan needs — it is not there to overrule someone
+	// who said, explicitly, not to look at a given file.
+	if m.userRules != nil && m.userRules.Match(rel, info) {
+		return true
+	}
 	if !m.base.Match(rel, info) {
 		return false
 	}
 	if m.preserveManifests && !info.IsDir() && manifests.Is(rel) {
-		return false // kept despite the skip rule
+		return false // kept despite the built-in rule
 	}
 	return true
 }
@@ -191,9 +199,6 @@ func Collect(root string, o Options) (*CollectResult, error) {
 	if sz := SizeSource(o.MinSize, o.MaxSize); sz != nil {
 		sources = append(sources, sz)
 	}
-	if o.Settings != nil {
-		sources = append(sources, SettingsSource(o.Settings))
-	}
 	if o.GitIgnore {
 		gi, err := GitIgnoreSource(root)
 		if err != nil {
@@ -203,7 +208,17 @@ func Collect(root string, o Options) (*CollectResult, error) {
 			sources = append(sources, gi)
 		}
 	}
-	skip := &keepMatcher{base: Build(sources...), preserveManifests: o.PreserveDependencyManifests}
+	var userRules Matcher
+	if o.Settings != nil {
+		if ms := SettingsSource(o.Settings); len(ms) > 0 {
+			userRules = Build(ms)
+		}
+	}
+	skip := &keepMatcher{
+		base:              Build(sources...),
+		userRules:         userRules,
+		preserveManifests: o.PreserveDependencyManifests,
+	}
 
 	res := &CollectResult{}
 	walkErr := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {

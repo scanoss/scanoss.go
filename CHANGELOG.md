@@ -10,86 +10,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.0] - 2026-07-29
 
 ### Added
-- **`config`** — store settings in `~/.scanoss/settings.json` instead of repeating flags:
-  `config set`, `get`, `list`, `unset`, `path`. Keys are `api-url`, `api-key`, `proxy` and
-  `ca-cert`; the file itself uses `snake_case`. The API key is never displayed.
-- Every setting resolves as **flag > `SCANOSS_<KEY>` > config file > built-in default**, so a
-  stored `proxy` or `ca-cert` also applies with no flag. `--ignore-cert-errors` is not storable.
+- **`config`** — store `api-url`, `api-key`, `proxy` and `ca-cert` in
+  `~/.scanoss/settings.json` instead of repeating flags: `config set`, `get`, `list`, `unset`,
+  `path`. The API key is never displayed. Every setting resolves as
+  **flag > `SCANOSS_<KEY>` > config file > default**.
 - **`--proxy` and `--ca-cert`** on every command that reaches the API. `--proxy` overrides
-  `HTTP_PROXY`/`HTTPS_PROXY` for one run and still honours `NO_PROXY`; `--ca-cert` trusts a PEM
-  file's certificates in addition to the system pool, with verification still on. PAC is not
-  supported.
-- **`scanoss.NewHTTPClient`** builds an `*http.Client` with the same proxy and CA settings, for use
-  with the existing `WithHTTPClient` option. `pkg/api` gained `SetHTTPClient`.
-- **`--min-size`** on `scan` and `wfp` — skip files below a size in bytes.
-- **`--max-size` on `wfp`**.
-- **`--default-filters`, `--gitignore` and `--settings` on `wfp`** — it now collects files exactly
-  the way `scan` does, so the two no longer disagree on which files they cover. `scanoss.json` is
-  read for the **fingerprinting** operation (`skip.patterns.fingerprinting`), not the scanning one.
-- **`settings.FingerprintFilter()`** alongside `ScanFilter()`, for SDK callers that fingerprint.
-- **`--all-hidden`** on `scan` and `wfp` — fingerprint dotfiles and dotted folders. `.git` stays
-  excluded either way.
-- **`--settings` on `dependencies`**, which had no way to point at a `scanoss.json`.
-- **`filter.FingerprintOptions`, `filter.DependencyOptions`, `filter.HiddenSource`** and
-  **`settings.DependencyFilter()`** — one collection profile per layer, and the hidden-entry rule
-  as a source like the others.
+  `HTTP_PROXY`/`HTTPS_PROXY` for one run and honours `NO_PROXY`; `--ca-cert` adds a PEM file's
+  certificates to the system pool, verification still on. PAC is not supported.
+- **`scanoss.NewHTTPClient`** builds an `*http.Client` with the same proxy and CA settings.
+- **`--min-size` / `--max-size`** on `scan` and `wfp`, and **`--all-hidden`** to include dotfiles
+  (version-control metadata stays excluded).
+- **`--default-filters`, `--gitignore` and `--settings` on `wfp`**, so it collects files exactly
+  the way `scan` does. **`--settings` on `dependencies`** likewise.
+- **SDK:** `filter.FingerprintOptions`, `filter.DependencyOptions`, `filter.HiddenSource`,
+  `settings.FingerprintFilter()`, `settings.DependencyFilter()`.
 
 ### Changed
-- Files under 100 bytes are no longer skipped
+- Files under 100 bytes are no longer skipped.
 - **`pkg/filter` is the single source of filtering rules**, applied once during collection. The
   fingerprint layer no longer filters, so `GenerateWFP` and `GenerateFingerprint` fingerprint
   whatever they are given — a caller passing a list that did not come from collection now gets
-  every file. This is the only change here that fails silently rather than at compile time; the
-  documented path (`scanner.CollectFiles*` first) is unaffected.
+  every file. **This is the only change here that fails silently rather than at compile time.**
 - **SDK, breaking** — removed: `wfp.ShouldSkipFile`, `filter.NewMatcher`,
-  `filter.DefaultSkippedDirs`, `filter.IngestOptions`, and the `MinSize`/`MaxSize` fields of
-  `filter.Defaults`. Replacements: compose rules with
-  `filter.Build(filter.DefaultSource(filter.StdDefaults()))` plus `manifests.Is`; use
-  `filter.CommonSkippedDirs`/`ScanOnlySkippedDirs`/`DependencyOnlySkippedDirs`,
-  `filter.DependencyOptions`, and `filter.Options.MinSize`/`MaxSize` or `filter.SizeSource`.
-  Callers that start from `DefaultOptions`/`ScanOptions` need no change.
+  `filter.DefaultSkippedDirs`, `filter.IngestOptions`, and `filter.Defaults`'
+  `MinSize`/`MaxSize`. Use `filter.Build(filter.DefaultSource(filter.StdDefaults()))` plus
+  `manifests.Is` to compose rules; `filter.CommonSkippedDirs` /`ScanOnlySkippedDirs`
+  /`DependencyOnlySkippedDirs`; `filter.DependencyOptions`; and `filter.Options.MinSize`/`MaxSize`.
+  Callers starting from `DefaultOptions`/`ScanOptions` need no change.
 
 ### Fixed
-- Zero-byte files and symbolic links are no longer fingerprinted. An empty file produced a WFP
-  entry with a zero hash and no lines, and a link reported the same content twice — its target is
-  collected on its own. Neither is configurable: they state a fact about the entry rather than a
-  policy about the scan.
-- `--max-size` (and the new `--min-size`) were silently ignored when combined with
-  `--default-filters=false`: the bounds were applied from inside the built-in default filters, so
-  switching those off discarded them. They are now applied independently.
-- `--default-filters=false` now really disables them. Files skipped only by extension were dropped
-  anyway, because the fingerprint layer kept its own copy of the extension list and re-applied it
-  after collection — without counting them as filtered.
-- `dependencies` honours `scanoss.json`. `skip.patterns.dependencies` is part of the published
-  schema and did nothing: the command walked the tree itself and never read the file. It now uses
-  the shared filter and reports what it skipped.
-- `scan --include deps` and `dependencies` no longer disagree: the first inherited the scanning
-  profile when collecting manifests, so it skipped `examples/` while the other did not.
-- Hidden *directories* were pruned before the filtered counter ran, so they never appeared in
-  "Filtered N files" while hidden files did.
-- `results` emitted the API response verbatim instead of the inventory `scan` produces, so a
-  resumed scan could not be rendered or converted (`sbom results.json --format cyclonedx` failed).
-  It now returns the same document and accepts `--format` and `--include`.
-- The raw format emitted `"components": null` when a scan matched nothing, instead of an empty
-  list. CycloneDX and SPDX were already correct.
-- **Version-control metadata is never collected.** `.git` (and `.svn`, `.hg`, `.bzr`) could be
-  fingerprinted and uploaded when the built-in filters and the hidden-entry rule were both turned
-  off — including `.git/config`, which can carry credentials in remote URLs. The rule no longer
-  depends on any option.
-- License identifiers from the API are validated against the SPDX list before being emitted.
-  A non-canonical id (`Zlib-acknowledgement`) is normalised; one SPDX does not recognise, or a
-  malformed expression, becomes a `LicenseRef` and is declared in `hasExtractedLicensingInfos`
-  instead of producing a document that fails validation. Expressions are parenthesised before
-  being joined, so precedence is preserved.
-- CycloneDX documents now carry a `serialNumber`, and the tool's version goes in its own field
-  instead of being appended to the name. SPDX keeps `Tool: name-version`, which is its convention.
-- SBOM packages were named after the full PURL (`pkg:github/madler/zlib`) instead of the component
-  name (`zlib`), in both CycloneDX and SPDX. The PURL is unchanged in its own field, and the SPDX
-  identifier still derives from it.
-- The `libscanoss` examples pointed at an endpoint this CLI does not support, and passed a full
-  URL where the API expects a base one — so the path was duplicated. They now use
-  `https://api.scanoss.com`.
-
+- **Version-control metadata is never collected.** `.git` could be fingerprinted and uploaded when
+  the built-in filters and the hidden rule were both off — including `.git/config`, which can carry
+  credentials.
+- **License identifiers are validated against the SPDX list.** A non-canonical id is normalised;
+  an unrecognised one, or a malformed expression, becomes a declared `LicenseRef` instead of
+  producing an SBOM that fails validation.
+- **SBOM packages carry the component name**, not the full PURL. CycloneDX gained a
+  `serialNumber`, and the tool version moved to its own field.
+- **`results` returns the same inventory as `scan`**, so a resumed scan can be rendered and
+  converted. It accepts `--format` and `--include`.
+- **`--default-filters=false` really disables them** — extension-skipped files were dropped anyway
+  by a second, uncounted filter in the fingerprint layer.
+- **`dependencies` honours `scanoss.json`** and reports what it filtered; `scan --include deps`
+  and `dependencies` no longer disagree over `examples/`. A `skip` rule now also overrules the
+  manifest exemption, so excluding a manifest by name works.
+- `--min-size`/`--max-size` were ignored together with `--default-filters=false`.
+- Zero-byte files and symbolic links are no longer fingerprinted, and the raw format emits
+  `"components": []` rather than `null` when nothing matched.
 
 ## [0.3.0] - 2026-07-28
 

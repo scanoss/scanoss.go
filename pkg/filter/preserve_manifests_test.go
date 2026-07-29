@@ -62,3 +62,42 @@ func TestCollectPreserveDependencyManifests(t *testing.T) {
 			"(root manifests kept; data.json/logo.png/node_modules pruned)", got, want)
 	}
 }
+
+// A rule the project wrote in scanoss.json overrules the manifest exemption.
+//
+// The exemption exists so the built-in extension list (.json, .mod, .xml) does
+// not swallow the manifests a dependency scan needs. It is not there to overrule
+// someone who said, explicitly, not to look at a given file — before this, a user
+// excluding "examples/go.mod" by name was ignored, and the only way through was
+// to prune the whole directory.
+func TestUserRulesOverrideTheManifestExemption(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "go.mod"), 200)
+	writeFile(t, filepath.Join(root, "examples", "go.mod"), 200)
+
+	opts := DependencyOptions()
+	opts.Settings = &Settings{Skip: Skip{Patterns: []string{"examples/go.mod"}}}
+
+	res, err := Collect(root, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range res.Files {
+		rel, _ := filepath.Rel(root, f)
+		if filepath.ToSlash(rel) == "examples/go.mod" {
+			t.Error("a manifest excluded by name in scanoss.json must not be collected")
+		}
+	}
+
+	// The built-in rules still yield to the exemption: go.mod survives the
+	// default extension list, which is what the exemption is for.
+	var found bool
+	for _, f := range res.Files {
+		if filepath.Base(f) == "go.mod" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("the root manifest must still be collected")
+	}
+}
