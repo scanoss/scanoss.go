@@ -44,7 +44,8 @@ func TestDefaultSource(t *testing.T) {
 
 	// Simple (single-dot) extensions fold into one map-backed matcher; compound
 	// endings (e.g. ".min.js") stay as individual suffix matchers. Everything
-	// else is one matcher per list entry, plus a single size matcher.
+	// else is one matcher per list entry. The defaults set neither size bound, so
+	// there is no size matcher.
 	var compound int
 	for _, ext := range d.Exts {
 		lower := strings.ToLower(ext)
@@ -52,7 +53,7 @@ func TestDefaultSource(t *testing.T) {
 			compound++
 		}
 	}
-	want := len(d.Dirs) + len(d.DirExts) + len(d.Files) + len(d.Endings) + compound + 1 /*extset*/ + 1 /*size*/
+	want := len(d.Dirs) + len(d.DirExts) + len(d.Files) + len(d.Endings) + compound + 1 /*extset*/
 	if len(ms) != want {
 		t.Fatalf("DefaultSource count = %d, want %d", len(ms), want)
 	}
@@ -60,7 +61,7 @@ func TestDefaultSource(t *testing.T) {
 	keys := keySet(ms)
 	for _, k := range []string{
 		"dir:vendor", "dir:node_modules", "dirsuffix:.egg-info",
-		"name:makefile", "ending:readme", "size:100:0",
+		"name:makefile", "ending:readme",
 	} {
 		if !keys[k] {
 			t.Errorf("DefaultSource missing matcher %q", k)
@@ -78,6 +79,16 @@ func TestDefaultSource(t *testing.T) {
 	}
 }
 
+// The built-in defaults carry no size bound at all: size is caller input, built
+// by SizeSource, so no default run stat-compares a file for size.
+func TestDefaultSourceHasNoSizeMatcher(t *testing.T) {
+	for _, m := range DefaultSource(StdDefaults()) {
+		if strings.HasPrefix(m.Key(), "size:") {
+			t.Errorf("DefaultSource built a size matcher %q, want none", m.Key())
+		}
+	}
+}
+
 func TestDefaultSourceNoSizeWhenUnset(t *testing.T) {
 	ms := DefaultSource(Defaults{Dirs: []string{"build"}})
 	if len(ms) != 1 {
@@ -88,8 +99,12 @@ func TestDefaultSourceNoSizeWhenUnset(t *testing.T) {
 	}
 }
 
-func TestDefaultSourceCustomSize(t *testing.T) {
-	ms := DefaultSource(Defaults{MaxSize: 1000})
+func TestSizeSource(t *testing.T) {
+	if ms := SizeSource(0, 0); ms != nil {
+		t.Fatalf("SizeSource(0, 0) = %v, want nil", keySet(ms))
+	}
+
+	ms := SizeSource(0, 1000)
 	if len(ms) != 1 || ms[0].Key() != "size:0:1000" {
 		t.Fatalf("matchers = %v, want one size:0:1000", keySet(ms))
 	}
@@ -98,6 +113,14 @@ func TestDefaultSourceCustomSize(t *testing.T) {
 	}
 	if ms[0].Match("ok", aFile("ok", 500)) {
 		t.Error("file within max should not be skipped")
+	}
+
+	ms = SizeSource(100, 0)
+	if len(ms) != 1 || ms[0].Key() != "size:100:0" {
+		t.Fatalf("matchers = %v, want one size:100:0", keySet(ms))
+	}
+	if !ms[0].Match("tiny", aFile("tiny", 40)) {
+		t.Error("file below min should be skipped")
 	}
 }
 

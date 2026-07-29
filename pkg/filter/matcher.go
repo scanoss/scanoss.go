@@ -174,6 +174,31 @@ func (m dirSuffixMatcher) Match(rel string, info os.FileInfo) bool {
 
 func (m dirSuffixMatcher) Key() string { return "dirsuffix:" + m.suffix }
 
+// symlinkMatcher skips symbolic links. The link's target, when it is inside the
+// tree, is collected on its own, so following the link would fingerprint the
+// same content twice under two names; when the target is outside the tree, or
+// broken, it is not ours to report. Requires an os.FileInfo from Lstat (which is
+// what filepath.Walk supplies); a Stat-derived one describes the target and
+// never reports a link.
+type symlinkMatcher struct{}
+
+func (symlinkMatcher) Match(rel string, info os.FileInfo) bool {
+	return info.Mode()&os.ModeSymlink != 0
+}
+
+func (symlinkMatcher) Key() string { return "symlink" }
+
+// emptyFileMatcher skips zero-byte files. Unlike sizeMatcher it carries no
+// configuration: there is no byte count to compare against, only the absence of
+// content. Directories are never matched.
+type emptyFileMatcher struct{}
+
+func (emptyFileMatcher) Match(rel string, info os.FileInfo) bool {
+	return !info.IsDir() && info.Size() == 0
+}
+
+func (emptyFileMatcher) Key() string { return "empty" }
+
 // sizeMatcher skips files outside a [min, max] byte range. A min of 0 disables
 // the lower bound; a max of 0 disables the upper bound (unlimited).
 type sizeMatcher struct {
