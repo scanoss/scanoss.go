@@ -235,7 +235,8 @@ func TestDependencySkipPatternsHonoured(t *testing.T) {
 	}
 }
 
-// What the extraction pre-filter keeps today (the shape earnie relies on).
+// What the extraction pre-filter keeps today — the shape an external SDK
+// consumer relies on when it filters archive entries before writing them out.
 func TestBaselineExtractionMatcher(t *testing.T) {
 	root := baselineTree(t)
 	// Composed the way an external consumer composes it, from the exported
@@ -267,7 +268,7 @@ func TestBaselineExtractionMatcher(t *testing.T) {
 	// Manifests survive the extension list thanks to the exemption. Note that
 	// node_modules/, venv/ and examples/ entries are kept: this matcher decides
 	// about the entry, not the path, so pruning directories is the caller's job
-	// (earnie does it with its own traversal), using the exported lists.
+	// (a consumer does it with its own traversal), using the exported lists.
 	assertSet(t, "extraction matcher", relNames(t, root, kept), []string{
 		"Gemfile",
 		"dist/package.json",
