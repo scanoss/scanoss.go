@@ -29,6 +29,7 @@ import (
 	"path/filepath"
 
 	"github.com/scanoss/scanoss.go/internal/config"
+	"github.com/scanoss/scanoss.go/pkg/filter"
 	"github.com/scanoss/scanoss.go/pkg/output"
 	"github.com/scanoss/scanoss.go/pkg/scanner"
 	"github.com/spf13/cobra"
@@ -55,6 +56,8 @@ func init() {
 	// Optional flags
 	wfpCmd.Flags().IntP("threads", "t", config.DefaultThreads, "Number of parallel threads")
 	wfpCmd.Flags().StringP("output", "o", "", "Output file (empty = stdout)")
+	wfpCmd.Flags().Int64("min-size", 0, "Minimum file size in bytes to scan (0 = no minimum)")
+	wfpCmd.Flags().Int64("max-size", 0, "Maximum file size in bytes to scan (0 = unlimited)")
 }
 
 func runWFP(cmd *cobra.Command, args []string) error {
@@ -72,10 +75,15 @@ func runWFP(cmd *cobra.Command, args []string) error {
 	// Get configuration from flags
 	threads, _ := cmd.Flags().GetInt("threads")
 	outputFile, _ := cmd.Flags().GetString("output")
+	minSize, _ := cmd.Flags().GetInt64("min-size")
+	maxSize, _ := cmd.Flags().GetInt64("max-size")
 
 	// Validate configuration
 	if threads < 1 {
 		threads = config.DefaultThreads
+	}
+	if err := validateSizeBounds(minSize, maxSize); err != nil {
+		return err
 	}
 
 	// Report WFP paths relative to the scanned root (a folder, or the file's
@@ -88,10 +96,20 @@ func runWFP(cmd *cobra.Command, args []string) error {
 		scanRoot = abs
 	}
 
-	// Collect files
-	files, err := scanner.CollectFiles(targetPath)
+	// Collect files. The same defaults `scan` applies, plus the size bounds, so
+	// a WFP generated here matches what a scan of the same tree would upload.
+	collectOpts := filter.ScanOptions()
+	collectOpts.MinSize = minSize
+	collectOpts.MaxSize = maxSize
+	res, err := scanner.CollectFilesWithOptions(targetPath, collectOpts)
 	if err != nil {
 		return fmt.Errorf("error collecting files: %w", err)
+	}
+	files := res.Files
+	// Say what was dropped, as `scan` does: a filtered file that goes unreported
+	// looks like a file that was never there.
+	if res.SkippedCount > 0 {
+		infof("Filtered %d files", res.SkippedCount)
 	}
 
 	if len(files) == 0 {
