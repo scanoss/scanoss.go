@@ -79,17 +79,10 @@ func TestDefaultSource(t *testing.T) {
 	}
 }
 
-// The built-in defaults impose no size bound: a scan that asks for neither builds
-// no size matcher at all, so no file is stat-compared for size.
-func TestStdDefaultsNoSizeBounds(t *testing.T) {
-	d := StdDefaults()
-	if d.MinSize != 0 {
-		t.Errorf("StdDefaults().MinSize = %d, want 0", d.MinSize)
-	}
-	if d.MaxSize != 0 {
-		t.Errorf("StdDefaults().MaxSize = %d, want 0", d.MaxSize)
-	}
-	for _, m := range DefaultSource(d) {
+// The built-in defaults carry no size bound at all: size is caller input, built
+// by SizeSource, so no default run stat-compares a file for size.
+func TestDefaultSourceHasNoSizeMatcher(t *testing.T) {
+	for _, m := range DefaultSource(StdDefaults()) {
 		if strings.HasPrefix(m.Key(), "size:") {
 			t.Errorf("DefaultSource built a size matcher %q, want none", m.Key())
 		}
@@ -106,8 +99,12 @@ func TestDefaultSourceNoSizeWhenUnset(t *testing.T) {
 	}
 }
 
-func TestDefaultSourceCustomSize(t *testing.T) {
-	ms := DefaultSource(Defaults{MaxSize: 1000})
+func TestSizeSource(t *testing.T) {
+	if ms := SizeSource(0, 0); ms != nil {
+		t.Fatalf("SizeSource(0, 0) = %v, want nil", keySet(ms))
+	}
+
+	ms := SizeSource(0, 1000)
 	if len(ms) != 1 || ms[0].Key() != "size:0:1000" {
 		t.Fatalf("matchers = %v, want one size:0:1000", keySet(ms))
 	}
@@ -116,6 +113,14 @@ func TestDefaultSourceCustomSize(t *testing.T) {
 	}
 	if ms[0].Match("ok", aFile("ok", 500)) {
 		t.Error("file within max should not be skipped")
+	}
+
+	ms = SizeSource(100, 0)
+	if len(ms) != 1 || ms[0].Key() != "size:100:0" {
+		t.Fatalf("matchers = %v, want one size:100:0", keySet(ms))
+	}
+	if !ms[0].Match("tiny", aFile("tiny", 40)) {
+		t.Error("file below min should be skipped")
 	}
 }
 

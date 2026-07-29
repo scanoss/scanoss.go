@@ -48,8 +48,13 @@ type Options struct {
 	SkipFiles      []string
 	SkipExtensions []string
 
-	MinSize int64 // minimum file size; 0 means no minimum (DefaultMinFileSize)
-	MaxSize int64 // maximum file size; 0 uses DefaultMaxFileSize (unlimited)
+	// Size bounds. The built-in values are DefaultMinFileSize/DefaultMaxFileSize,
+	// set by DefaultOptions/ScanOptions/IngestOptions; assign these fields to
+	// override them. They are applied as their own source, so turning Defaults
+	// off keeps a bound the caller asked for. A zero-valued Options (built
+	// literally, without a constructor) means no bound on either side.
+	MinSize int64 // minimum file size in bytes; 0 imposes no minimum
+	MaxSize int64 // maximum file size in bytes; 0 imposes no maximum (unlimited)
 
 	Defaults  bool // apply the built-in default skip lists
 	GitIgnore bool // honor .gitignore
@@ -72,21 +77,37 @@ type Options struct {
 // DefaultOptions returns the common-case Options: the built-in default skip
 // lists and .gitignore are applied, with no scanoss.json.
 func DefaultOptions() Options {
-	return Options{Defaults: true, GitIgnore: true}
+	return Options{
+		Defaults:  true,
+		GitIgnore: true,
+		MinSize:   DefaultMinFileSize,
+		MaxSize:   DefaultMaxFileSize,
+	}
 }
 
 // ScanOptions returns the options for fingerprint scanning: the built-in
 // defaults and .gitignore, with dependency manifests skipped (they are not
 // useful for matching). Alias of DefaultOptions, named for intent.
 func ScanOptions() Options {
-	return Options{Defaults: true, GitIgnore: true}
+	return Options{
+		Defaults:  true,
+		GitIgnore: true,
+		MinSize:   DefaultMinFileSize,
+		MaxSize:   DefaultMaxFileSize,
+	}
 }
 
 // IngestOptions returns the options for materialising files a later stage
 // consumes (extraction/upload feeding the dependency parser): the same prune as
 // ScanOptions, but dependency manifests are preserved.
 func IngestOptions() Options {
-	return Options{Defaults: true, GitIgnore: true, PreserveDependencyManifests: true}
+	return Options{
+		Defaults:                    true,
+		GitIgnore:                   true,
+		MinSize:                     DefaultMinFileSize,
+		MaxSize:                     DefaultMaxFileSize,
+		PreserveDependencyManifests: true,
+	}
 }
 
 // keepMatcher wraps a base skip matcher with the PreserveDependencyManifests
@@ -122,6 +143,9 @@ func NewMatcher(o Options) Matcher {
 	if o.Defaults {
 		sources = append(sources, DefaultSource(o.defaults()))
 	}
+	if sz := SizeSource(o.MinSize, o.MaxSize); sz != nil {
+		sources = append(sources, sz)
+	}
 	if o.Settings != nil {
 		sources = append(sources, SettingsSource(o.Settings))
 	}
@@ -147,12 +171,6 @@ func (o Options) defaults() Defaults {
 	if o.SkipExtensions != nil {
 		d.Exts = o.SkipExtensions
 	}
-	if o.MinSize != 0 {
-		d.MinSize = o.MinSize
-	}
-	if o.MaxSize != 0 {
-		d.MaxSize = o.MaxSize
-	}
 	return d
 }
 
@@ -165,6 +183,9 @@ func Collect(root string, o Options) (*CollectResult, error) {
 	var sources [][]Matcher
 	if o.Defaults {
 		sources = append(sources, DefaultSource(o.defaults()))
+	}
+	if sz := SizeSource(o.MinSize, o.MaxSize); sz != nil {
+		sources = append(sources, sz)
 	}
 	if o.Settings != nil {
 		sources = append(sources, SettingsSource(o.Settings))

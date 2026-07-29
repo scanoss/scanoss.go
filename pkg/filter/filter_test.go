@@ -155,6 +155,92 @@ func TestCollectDefaults(t *testing.T) {
 	}
 }
 
+// The size bounds are the caller's input, not part of the built-in lists, so
+// switching the defaults off must not discard them.
+func TestCollectSizeBoundsIndependentOfDefaults(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "tiny.go"), 40)
+	writeFile(t, filepath.Join(root, "big.go"), 200)
+
+	for _, useDefaults := range []bool{true, false} {
+		res, err := Collect(root, Options{Defaults: useDefaults, MinSize: 100})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := baseNames(res.Files); !equalStrings(got, []string{"big.go"}) {
+			t.Errorf("Defaults=%v: kept %v, want [big.go]", useDefaults, got)
+		}
+		if res.SkippedCount != 1 {
+			t.Errorf("Defaults=%v: SkippedCount = %d, want 1", useDefaults, res.SkippedCount)
+		}
+	}
+}
+
+// NewMatcher (the streaming path) must agree with Collect on the same Options.
+func TestNewMatcherSizeBoundsIndependentOfDefaults(t *testing.T) {
+	for _, useDefaults := range []bool{true, false} {
+		m := NewMatcher(Options{Defaults: useDefaults, MinSize: 100})
+		if !m.Match("tiny.go", aFile("tiny.go", 40)) {
+			t.Errorf("Defaults=%v: a 40-byte file should be skipped by MinSize=100", useDefaults)
+		}
+		if m.Match("big.go", aFile("big.go", 200)) {
+			t.Errorf("Defaults=%v: a 200-byte file should not be skipped", useDefaults)
+		}
+	}
+}
+
+// Options carries the bounds as plain int64, so a zero field is indistinguishable
+// from a deliberate 0. That is harmless only while the built-in default *is* 0:
+// an Options built literally then behaves exactly like one from a constructor.
+//
+// If this fails, someone gave the package a non-zero default bound, and the two
+// construction paths have silently diverged — a literal Options{} would impose no
+// bound while ScanOptions() imposes one. Fix it by making the fields *int64 (so
+// "unset" and "zero" are distinct) rather than by relaxing this test.
+func TestZeroOptionsMatchDefaultBounds(t *testing.T) {
+	if DefaultMinFileSize != 0 {
+		t.Errorf("DefaultMinFileSize = %d: a non-zero default needs *int64 fields, see the comment above",
+			DefaultMinFileSize)
+	}
+	if DefaultMaxFileSize != 0 {
+		t.Errorf("DefaultMaxFileSize = %d: a non-zero default needs *int64 fields, see the comment above",
+			DefaultMaxFileSize)
+	}
+
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "tiny.go"), 40)
+
+	viaLiteral, err := Collect(root, Options{Defaults: true, GitIgnore: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	viaConstructor, err := Collect(root, ScanOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !equalStrings(baseNames(viaLiteral.Files), baseNames(viaConstructor.Files)) {
+		t.Fatalf("literal Options kept %v, ScanOptions kept %v: the two paths must agree",
+			baseNames(viaLiteral.Files), baseNames(viaConstructor.Files))
+	}
+}
+
+// The constructors carry the built-in bounds, so an SDK caller that starts from
+// one gets the documented default rather than an implicit zero.
+func TestOptionConstructorsCarryDefaultBounds(t *testing.T) {
+	for name, o := range map[string]Options{
+		"DefaultOptions": DefaultOptions(),
+		"ScanOptions":    ScanOptions(),
+		"IngestOptions":  IngestOptions(),
+	} {
+		if o.MinSize != DefaultMinFileSize {
+			t.Errorf("%s().MinSize = %d, want DefaultMinFileSize (%d)", name, o.MinSize, DefaultMinFileSize)
+		}
+		if o.MaxSize != DefaultMaxFileSize {
+			t.Errorf("%s().MaxSize = %d, want DefaultMaxFileSize (%d)", name, o.MaxSize, DefaultMaxFileSize)
+		}
+	}
+}
+
 // The default collection imposes no lower size bound; MinSize opts back into one.
 func TestCollectMinSize(t *testing.T) {
 	root := t.TempDir()

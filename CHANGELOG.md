@@ -24,6 +24,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 
 ### Changed
 - Files under 100 bytes are no longer skipped
+- **SDK, breaking** — `filter.Defaults` no longer carries `MinSize`/`MaxSize`, and neither does
+  `filter.StdDefaults()`. Size is caller input, not a built-in skip list: set
+  `filter.Options.MinSize`/`MaxSize`, or build the matcher directly with the new
+  `filter.SizeSource(min, max)`. `filter.DefaultOptions`/`ScanOptions`/`IngestOptions` carry the
+  built-in bounds, so callers that start from a constructor need no change.
+
+### Fixed
+- `--max-size` (and the new `--min-size`) were silently ignored when combined with
+  `--default-filters=false`: the bounds were applied from inside the built-in default filters, so
+  switching those off discarded them. They are now applied independently, in both the directory
+  walk and the streaming-extraction path.
 
 
 ## [0.3.0] - 2026-07-28
