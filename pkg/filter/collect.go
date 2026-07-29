@@ -97,9 +97,42 @@ func ScanOptions() Options {
 	}
 }
 
+// FingerprintOptions returns the options for the fingerprint-only path (the wfp
+// command). Identical to ScanOptions today — the two differ only in which
+// scanoss.json section the caller supplies — but named separately so each layer
+// states which profile it uses, and so the two can diverge without a caller
+// silently inheriting the wrong one.
+func FingerprintOptions() Options {
+	return ScanOptions()
+}
+
+// DependencyOptions returns the options for collecting dependency manifests.
+// Three things differ from ScanOptions, and all three are deliberate:
+//
+//   - the directory list is DependencyDefaults' (see DependencyOnlySkippedDirs);
+//   - manifests are preserved, since they live behind skipped extensions;
+//   - .gitignore is NOT applied. It answers "should this be versioned", not "is
+//     this a dependency": a lock file excluded from git still declares what the
+//     project uses, and losing a declaration is worse than analysing one extra.
+func DependencyOptions() Options {
+	return Options{
+		Defaults:                    true,
+		GitIgnore:                   false,
+		MinSize:                     DefaultMinFileSize,
+		MaxSize:                     DefaultMaxFileSize,
+		SkipDirs:                    DependencyDefaults().Dirs,
+		PreserveDependencyManifests: true,
+	}
+}
+
 // IngestOptions returns the options for materialising files a later stage
 // consumes (extraction/upload feeding the dependency parser): the same prune as
 // ScanOptions, but dependency manifests are preserved.
+//
+// This is not DependencyOptions: it is used inside a scan, where the manifest
+// collection must see the same tree the scan does, so it keeps the scanning
+// directory list and .gitignore. DependencyOptions is for the standalone
+// dependency command, which answers only to its own operation.
 func IngestOptions() Options {
 	return Options{
 		Defaults:                    true,

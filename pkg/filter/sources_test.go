@@ -306,3 +306,64 @@ func TestWhlIsSkipped(t *testing.T) {
 		t.Error(".whl should be skipped")
 	}
 }
+
+// Each layer's profile, asserted on the fields that define it. The point is not
+// that the numbers match, but that the three deliberate differences of the
+// dependency profile are pinned: its own directory list, manifests preserved,
+// and .gitignore off.
+func TestLayerProfiles(t *testing.T) {
+	scan := ScanOptions()
+	if !scan.Defaults || !scan.GitIgnore || scan.PreserveDependencyManifests {
+		t.Errorf("ScanOptions = %+v", scan)
+	}
+	if scan.SkipDirs != nil {
+		t.Error("ScanOptions must not override the directory list; it uses StdDefaults")
+	}
+
+	fp := FingerprintOptions()
+	if fp.Defaults != scan.Defaults || fp.GitIgnore != scan.GitIgnore ||
+		fp.MinSize != scan.MinSize || fp.MaxSize != scan.MaxSize ||
+		fp.PreserveDependencyManifests != scan.PreserveDependencyManifests ||
+		fp.SkipDirs != nil {
+		t.Errorf("FingerprintOptions = %+v, want the same as ScanOptions %+v", fp, scan)
+	}
+
+	dep := DependencyOptions()
+	if !dep.Defaults {
+		t.Error("DependencyOptions must apply the built-in lists")
+	}
+	if dep.GitIgnore {
+		t.Error("DependencyOptions must not apply .gitignore: it does not decide what is a dependency")
+	}
+	if !dep.PreserveDependencyManifests {
+		t.Error("DependencyOptions must preserve manifests; they live behind skipped extensions")
+	}
+	if dep.SkipDirs == nil {
+		t.Fatal("DependencyOptions must carry its own directory list")
+	}
+	for _, d := range dep.SkipDirs {
+		if d == "example" || d == "examples" {
+			t.Errorf("dependency collection must look inside %q: a manifest there declares real dependencies", d)
+		}
+	}
+}
+
+// The dependency profile finds a manifest that scanning discards by extension,
+// and still prunes what both operations agree on.
+func TestDependencyOptionsKeepManifests(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "package.json"), 200)           // manifest behind .json
+	writeFile(t, filepath.Join(root, "examples", "go.mod"), 200)     // manifest scanning would prune
+	writeFile(t, filepath.Join(root, "node_modules", "p.json"), 200) // pruned by the shared list
+	writeFile(t, filepath.Join(root, "dist", "package.json"), 200)   // pruned by the dependency list
+	writeFile(t, filepath.Join(root, "notes.txt"), 200)              // not a manifest
+
+	res, err := Collect(root, DependencyOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := baseNames(res.Files)
+	if !equalStrings(got, []string{"go.mod", "package.json"}) {
+		t.Fatalf("kept %v, want [go.mod package.json]", got)
+	}
+}
