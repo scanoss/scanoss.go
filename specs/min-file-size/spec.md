@@ -62,10 +62,22 @@ noise rather than signal.
    small file *outside* that pattern is collected with no `--min-size`, **then** it
    is kept. A project that scopes a minimum to one file type has decided the bound
    does not apply elsewhere, and nothing built-in may override that.
+9. **Given** a tree holding an empty file and a symbolic link, **when** I scan it
+   with any combination of flags, **then** neither is fingerprinted and both are
+   counted as filtered.
 
 ### Edge cases
-- Zero-byte files are collected when there is no minimum. They produce no snippets;
-  that is the engine's concern, not the filter's.
+- Zero-byte files are **never** collected, whatever the bounds say. An empty file
+  has no content to match, so fingerprinting it produces a WFP entry with a zero
+  hash and no lines — bytes uploaded that no scan can act on. Measured on a
+  12 000-entry tree: 65 such entries. This is not a bound a caller can set to 0;
+  it is the absence of content, so it is not configurable.
+- Symbolic links are **never** collected either, for the same reason stated
+  differently: a link has no content of its own. Its target is collected on its
+  own when it is inside the tree, so following the link would report the same
+  bytes twice under two names; when the target is outside the tree, or broken, it
+  is not this scan's to report. Symlinked *directories* are already not descended
+  into, and stay that way.
 - `--min-size 0` is indistinguishable from omitting the flag. That is intended: `0`
   means "no minimum", the same convention `--max-size 0` already uses for
   "unlimited".
@@ -85,6 +97,10 @@ noise rather than signal.
   meaning "no minimum" rather than "use the built-in 100".
 - **FR-6** The count reported by `OnCollect` ("Filtered N files") continues to
   include files dropped by the size bound.
+- **FR-7** `wfp` collects files exactly the way `scan` does: it accepts the same
+  `--default-filters`, `--gitignore` and `--settings` flags, and honours
+  `scanoss.json`. A command whose purpose is to show what would be fingerprinted
+  must not filter differently from the command that fingerprints.
 - **FR-8** The size bounds keep a built-in default *and* an override, and the two
   are separate concerns:
   - the default is `DefaultMinFileSize`/`DefaultMaxFileSize`, carried by
@@ -94,10 +110,11 @@ noise rather than signal.
   - the override is `Options.MinSize`/`MaxSize` (the `--min-size`/`--max-size`
     flags), and it is applied as its own source, so `--default-filters=false`
     does not discard it.
-- **FR-7** `wfp` collects files exactly the way `scan` does: it accepts the same
-  `--default-filters`, `--gitignore` and `--settings` flags, and honours
-  `scanoss.json`. A command whose purpose is to show what would be fingerprinted
-  must not filter differently from the command that fingerprints.
+- **FR-9** Entries there is no point fingerprinting — zero-byte files and
+  symbolic links — are never collected, on every path (`Collect` and
+  `NewMatcher`), independently of the defaults, the size bounds and anything else
+  a caller can switch off. They are not configurable: excluding them states a
+  fact about the entry rather than a policy about the scan.
 - **NFR-1** No new dependencies. No change to `scanoss.json`'s format — `skip.sizes`
   keeps its current meaning and composes with the flag.
 - **NFR-2** A scan with no size bounds must not get slower: with both bounds at 0 no

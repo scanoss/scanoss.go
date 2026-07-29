@@ -151,6 +151,37 @@ debugging, and generating WFPs for offline processing.
       Docs: extend the `wfp` flag list in `CLIENT_HELP.md` (T006) and add an
       **Added** line to `CHANGELOG.md`. (depends on T005)
 
+## Phase 6 — Entries there is no point fingerprinting
+
+Found by re-running the comparison after T008: removing the floor closed the gap
+from 2 515 files to 110, but opened a 66-file gap the other way — files this CLI
+fingerprints and the other clients do not.
+
+- [x] **T011** `pkg/filter`: add `UnscannableSource()`, applied in both `Collect`
+      and `NewMatcher`, always — independent of `Defaults`, of the size bounds and
+      of anything a caller can switch off. These are not policy choices, so they
+      are deliberately not configurable:
+
+      - **zero-byte files** (65 of the 66). Fingerprinting one yields
+        `file=0000000000000000,0,<path>` — a zero hash and no lines, bytes
+        uploaded that no scan can act on.
+      - **symbolic links** (the 66th, `libs/eszip/testdata/source/a.ts -> b.ts`).
+        The target is collected on its own when it is inside the tree, so
+        following the link reports the same content twice under two names.
+
+      Both are what the other clients already do: scanoss.js drops empty files
+      (`DefaultFilterForScanning.ts:8`) and links (`Tree.ts:39`), and scanoss.py
+      drops links explicitly (`file_filters.py:377`). Symlinked *directories* need
+      no change — none of the three descend into them.
+
+      Note `symlinkMatcher` needs an `os.FileInfo` from `Lstat`, which is what
+      `filepath.Walk` supplies; a `Stat`-derived one describes the target and
+      never reports a link.
+
+      Tests: an empty file is skipped with `Defaults` on, off, with a zero-valued
+      `Options` and with an explicit `MinSize`; a real symlink is skipped by
+      `Collect` and counted; `NewMatcher` agrees on both.
+
 ## Follow-ups (not this change)
 - The remaining built-in skip lists: skipped directory names, directory suffixes,
   extensions and file-name endings — none of them documented or overridable from the
