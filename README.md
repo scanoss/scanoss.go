@@ -5,6 +5,9 @@ platform. It fingerprints a project with WFP (Winnowing FingerPrint), uploads th
 fingerprints to the SCANOSS v3 API, and can decorate results with vulnerabilities,
 licenses, cryptography, geoprovenance, copyright, dependency, and component data.
 
+> [!IMPORTANT]
+> This CLI is not compatible with OSSKB.org.
+
 See [CHANGELOG.md](CHANGELOG.md) for release notes and the
 [releases page](https://github.com/scanoss/scanoss.go/releases) for the latest
 version.
