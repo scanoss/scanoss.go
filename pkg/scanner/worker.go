@@ -87,10 +87,6 @@ func (wp *WorkerPool) worker(id int) {
 			continue
 		}
 
-		if fingerprint.ShouldSkipFile(filePath) {
-			continue
-		}
-
 		fp, err := fingerprint.GenerateFingerprint(filePath, wp.root)
 		if err != nil {
 			wp.errors <- err
