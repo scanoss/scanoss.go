@@ -11,7 +11,7 @@
 
 ## Phase 0 — A net before touching anything
 
-- [ ] **T001** A characterisation test that records what each operation collects
+- [x] **T001** A characterisation test that records what each operation collects
       today, so any later drift is visible rather than argued about.
       Fixture: a tree with `venv/x.go`, `examples/go.mod`, `examples/main.go`,
       `dist/package.json`, `node_modules/y.js`, `a.png`, `main.go`, `go.mod`,
@@ -24,7 +24,7 @@
 
 ## Phase 1 — One source of rules
 
-- [ ] **T002** `pkg/filter/defaults.go`: split the directory list into
+- [x] **T002** `pkg/filter/defaults.go`: split the directory list into
       `CommonSkippedDirs`, `ScanOnlySkippedDirs` and `DependencyOnlySkippedDirs`,
       with `DefaultSkippedDirs` composed from the first two.
       Add `.whl` to `DefaultSkippedExts` — the one extension `wfp.filteredExt`
@@ -37,14 +37,14 @@
       against a hardcoded list — it is public contract, read directly by
       consumers to build their own prune sets; the three lists are disjoint.
 
-- [ ] **T003** `pkg/filter/collect.go`: `Operation`, `OptionsFor(op)` and
+- [x] **T003** `pkg/filter/collect.go`: `Operation`, `OptionsFor(op)` and
       `DependencyDefaults()`. `OpScan`/`OpFingerprint` give today's scanning
       profile; `OpDependencies` gives `GitIgnore: false`,
       `PreserveDependencyManifests: true` and the dependency directory set.
       Tests: each profile's fields; `OptionsFor(OpScan)` collects the same set as
       today's `ScanOptions()`. (depends on T002)
 
-- [ ] **T004 [P]** `pkg/settings/settings.go`: `DependencyFilter()`, the missing
+- [x] **T004 [P]** `pkg/settings/settings.go`: `DependencyFilter()`, the missing
       sibling of `ScanFilter`/`FingerprintFilter`. `filterFor` already handles
       `OperationDependencies`; only the exported wrapper is absent.
       Tests: reads `skip.patterns.dependencies` and **not** the scanning or
@@ -99,7 +99,7 @@ searched by one and not the other.
 The pipeline already runs two collections; what is missing is that the second
 one uses the profile of its **stage** rather than the profile of the command.
 
-- [ ] **T012** `pkg/scanpipeline`: build the dependency collection from
+- [x] **T012** `pkg/scanpipeline`: build the dependency collection from
       `filter.DependencyOptions()` instead of inheriting `opts.Filter`, carrying
       over only what comes from the user (size bounds, `--default-filters`,
       `--gitignore`) and the dependencies section of `scanoss.json`.
