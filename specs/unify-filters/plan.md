@@ -71,8 +71,8 @@ difference — dependencies must see manifests that scanning discards by extensi
 (`.json`, `.mod`, `.toml`, `.xml`, `.lock`, …) — is already solved by
 `PreserveDependencyManifests`, which exempts the 13 names `pkg/manifests`
 recognises. That is strictly more precise than reopening whole extensions:
-scanoss.js takes the latter route and ends up walking every `.json` in the
-project to find one `package.json`.
+reopening `.json` wholesale means walking every `.json` in the project to find
+one `package.json`.
 
 Verified manifest by manifest: all 13 are either covered by a skipped extension
 and rescued by the exemption, or have no extension at all (`Gemfile`). So a

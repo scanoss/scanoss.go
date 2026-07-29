@@ -160,8 +160,8 @@ right for everyone.
 
 Found while sizing an `--all-hidden` flag: the hidden-entry check was written in
 four places — twice inline in `Collect`, once in `pkg/scanner/worker.go`, and
-again in earnie's extractor. The same shape as the extension list, in the line
-next to the one this SDD had already cleaned.
+again in an external SDK consumer that composes the rules itself. The same shape
+as the extension list, in the line next to the one this SDD had already cleaned.
 
 - [x] **T013** `pkg/filter`: make it a source (`HiddenSource`, `hiddenMatcher`)
       with `Options.IncludeHidden` to switch it off, drop the two inline checks
@@ -185,11 +185,10 @@ next to the one this SDD had already cleaned.
 
 ## Follow-ups (not this change)
 - `dist`/`build`/`target` are preserved as-is in `DependencyOnlySkippedDirs`.
-  Neither scanoss.js nor scanoss.py skips them anywhere; whether a
-  `dist/package.json` is a declaration or build output deserves its own
-  decision, with evidence.
+  Whether a `dist/package.json` is a declaration or build output deserves its
+  own decision, with evidence.
 - The hidden-file check is written in three places and is not configurable in
-  any of them. scanoss.py exposes `--all-hidden`.
+  any of them; an opt-out flag would be the natural fix.
 - `filter.Options.Settings` still has to be filled by the caller, because
   `pkg/filter` cannot import `pkg/settings`. A helper that pairs an `Operation`
   with the right settings section would remove the last hand-wiring.
