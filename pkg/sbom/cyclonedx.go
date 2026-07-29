@@ -92,7 +92,7 @@ func cycloneDXComponent(comp Component) cdx.Component {
 	c := cdx.Component{
 		BOMRef:     purl,
 		Type:       cdx.ComponentTypeLibrary,
-		Name:       comp.Purl,
+		Name:       comp.DisplayName(),
 		Version:    version,
 		Publisher:  supplier(comp),
 		PackageURL: purl,

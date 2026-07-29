@@ -103,7 +103,7 @@ func spdxPackage(comp Component) *v2_3.Package {
 	}
 
 	pkg := &v2_3.Package{
-		PackageName:               comp.Purl,
+		PackageName:               comp.DisplayName(),
 		PackageSPDXIdentifier:     common.ElementID(md5Hash(comp.Purl + "@" + comp.Version)),
 		PackageVersion:            versionInfo,
 		PackageSupplier:           spdxSupplier(comp),

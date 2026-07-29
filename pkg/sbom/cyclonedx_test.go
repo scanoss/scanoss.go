@@ -156,8 +156,10 @@ func TestCycloneDX_Components(t *testing.T) {
 	if c.Type != cdx.ComponentTypeLibrary {
 		t.Errorf("type = %q, want library", c.Type)
 	}
-	if c.Name != "pkg:github/scanoss/engine" {
-		t.Errorf("name = %q", c.Name)
+	// The name field holds a package name, not a PURL: the PURL has its own field
+	// right below, and a consumer renders this one to a human.
+	if c.Name != "engine" {
+		t.Errorf("name = %q, want the component name", c.Name)
 	}
 	if c.PackageURL != "pkg:github/scanoss/engine@5.4.1" {
 		t.Errorf("purl = %q, want @version appended", c.PackageURL)

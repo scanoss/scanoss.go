@@ -72,6 +72,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   It now returns the same document and accepts `--format` and `--include`.
 - The raw format emitted `"components": null` when a scan matched nothing, instead of an empty
   list. CycloneDX and SPDX were already correct.
+- SBOM packages were named after the full PURL (`pkg:github/madler/zlib`) instead of the component
+  name (`zlib`), in both CycloneDX and SPDX. The PURL is unchanged in its own field, and the SPDX
+  identifier still derives from it.
 - The `libscanoss` examples pointed at an endpoint this CLI does not support, and passed a full
   URL where the API expects a base one — so the path was duplicated. They now use
   `https://api.scanoss.com`.
