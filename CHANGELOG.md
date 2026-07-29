@@ -72,6 +72,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   It now returns the same document and accepts `--format` and `--include`.
 - The raw format emitted `"components": null` when a scan matched nothing, instead of an empty
   list. CycloneDX and SPDX were already correct.
+- **Version-control metadata is never collected.** `.git` (and `.svn`, `.hg`, `.bzr`) could be
+  fingerprinted and uploaded when the built-in filters and the hidden-entry rule were both turned
+  off — including `.git/config`, which can carry credentials in remote URLs. The rule no longer
+  depends on any option.
+- License identifiers from the API are validated against the SPDX list before being emitted.
+  A non-canonical id (`Zlib-acknowledgement`) is normalised; one SPDX does not recognise, or a
+  malformed expression, becomes a `LicenseRef` and is declared in `hasExtractedLicensingInfos`
+  instead of producing a document that fails validation. Expressions are parenthesised before
+  being joined, so precedence is preserved.
+- CycloneDX documents now carry a `serialNumber`, and the tool's version goes in its own field
+  instead of being appended to the name. SPDX keeps `Tool: name-version`, which is its convention.
 - SBOM packages were named after the full PURL (`pkg:github/madler/zlib`) instead of the component
   name (`zlib`), in both CycloneDX and SPDX. The PURL is unchanged in its own field, and the SPDX
   identifier still derives from it.
