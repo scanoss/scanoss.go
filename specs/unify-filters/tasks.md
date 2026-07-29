@@ -19,30 +19,30 @@
       `scanoss.json`.
       Assert the exact file set for: `scan`/`wfp` collection, dependency
       collection (via the current `collectFilesRecursively`), and extraction
-      (`filter.NewMatcher` with `PreserveDependencyManifests`).
+      (the rules composed the way an external consumer composes them).
       This test must pass **unchanged** through T002–T006.
 
 ## Phase 1 — One source of rules
 
 - [x] **T002** `pkg/filter/defaults.go`: split the directory list into
       `CommonSkippedDirs`, `ScanOnlySkippedDirs` and `DependencyOnlySkippedDirs`,
-      with `DefaultSkippedDirs` composed from the first two.
+      `StdDefaults` composes the first two; `DefaultSkippedDirs` is removed.
       Add `.whl` to `DefaultSkippedExts` — the one extension `wfp.filteredExt`
       has and the collection does not — so T005 removes nothing that was being
       skipped.
       Names, extensions and endings stay as single shared lists: the only
       per-operation difference is the manifests, already handled by
       `PreserveDependencyManifests` (see the plan).
-      Tests: `DefaultSkippedDirs` equals its current 14 literals, asserted
-      against a hardcoded list — it is public contract, read directly by
-      consumers to build their own prune sets; the three lists are disjoint.
+      Tests: the scanning set equals its current 14 entries, asserted against a
+      hardcoded list rather than recomposed from the same lists the code uses;
+      the three lists are disjoint.
 
-- [x] **T003** `pkg/filter/collect.go`: `Operation`, `OptionsFor(op)` and
-      `DependencyDefaults()`. `OpScan`/`OpFingerprint` give today's scanning
-      profile; `OpDependencies` gives `GitIgnore: false`,
-      `PreserveDependencyManifests: true` and the dependency directory set.
-      Tests: each profile's fields; `OptionsFor(OpScan)` collects the same set as
-      today's `ScanOptions()`. (depends on T002)
+- [x] **T003** `pkg/filter/collect.go`: `FingerprintOptions()`,
+      `DependencyOptions()` and `DependencyDefaults()`. The dependency profile
+      sets `GitIgnore: false`, `PreserveDependencyManifests: true` and its own
+      directory list.
+      Tests: each profile's fields, including that only the directory list may
+      differ between them. (depends on T002)
 
 - [x] **T004 [P]** `pkg/settings/settings.go`: `DependencyFilter()`, the missing
       sibling of `ScanFilter`/`FingerprintFilter`. `filterFor` already handles
@@ -65,7 +65,7 @@ relied on it its own filter. Landing T005 without T006 changes `libscanoss`.
       excluded those files).
 
 - [ ] **T006** `libscanoss/core/libscanoss.go`: apply
-      `filter.NewMatcher(filter.ScanOptions())` before fingerprinting, in both
+      the rules it composes itself before fingerprinting, in both
       `GenerateWFP` and `GenerateWFPJSON`. It is the only caller that reaches
       `GenerateFingerprint` without collecting, so this preserves its behaviour.
       Tests: a `.png` path returns empty, as it does today. (depends on T005)
@@ -74,7 +74,7 @@ relied on it its own filter. Landing T005 without T006 changes `libscanoss`.
 
 - [ ] **T007** `cmd/dependencies.go`: replace `collectFilesRecursively` (38
       lines of `filepath.Walk` with an embedded directory list) with
-      `filter.Collect` using `OptionsFor(OpDependencies)` and
+      `filter.Collect` using `DependencyOptions()` and
       `settings.Resolve` + `DependencyFilter()`.
       This is the task that deliberately changes behaviour, in two ways only:
       `scanoss.json`'s `skip.patterns.dependencies` starts being honoured, and
@@ -84,7 +84,7 @@ relied on it its own filter. Landing T005 without T006 changes `libscanoss`.
       applied. (depends on T003, T004)
 
 - [ ] **T008 [P]** `cmd/scan.go` and `cmd/wfp.go`: build their options from
-      `OptionsFor(OpScan)` / `OptionsFor(OpFingerprint)`, overriding only what
+      `ScanOptions()` / `FingerprintOptions()`, overriding only what
       comes from flags, instead of assembling the literal by hand.
       Tests: both still collect T001's baseline set. (depends on T003)
 
@@ -131,34 +131,30 @@ one uses the profile of its **stage** rather than the profile of the command.
       `grep -rn "ShouldSkipFile\|filteredExt"` returns nothing outside the
       CHANGELOG. `make check` and `go test -race ./...` clean.
 
-## Phase 5 — Close the other half of the filter
+## Phase 5 — Draw the boundary
 
-`NewMatcher` is the entry point for callers that cannot walk a tree — archive
-extraction, streaming. It applies extension, name and ending rules correctly,
-and silently ignores directory rules: those only inspect `info`, and for a file
-inside `node_modules/` the `info` is the file. Verified:
+`NewMatcher` existed for callers that cannot walk a tree. It applied entry-level
+rules (extension, name, ending, size) and silently ignored directory rules,
+because those need a traversal it does not have: given
+`node_modules/left-pad/index.js` the info describes index.js, so nothing
+matches and the answer is "keep".
 
-    NewMatcher(ScanOptions()).Match("node_modules/left-pad/index.js", fileInfo)
-    → false
+The first attempt completed it, walking rel's ancestors. It worked, and it was
+the wrong call: extracting an archive is not scanoss.go's problem, and guessing
+how a caller's input arrives is how a package ends up with an API that is half
+right for everyone.
 
-`Collect` never hits this because it prunes with `SkipDir` while walking, so the
-question is never asked. The gap is only visible from outside a walk — which is
-why a consumer ends up reimplementing exactly the missing half.
+- [x] **T011** Remove `NewMatcher`. Export what a caller actually needs — the
+      skip lists, `DefaultSource`/`SizeSource`/`UnscannableSource`/`Build`, and
+      `manifests.Is` for the manifest exemption — so it composes the rules and
+      applies them with its own traversal.
 
-- [ ] **T011** `pkg/filter`: make `NewMatcher` apply directory rules to every
-      ancestor segment of `rel`, so it answers the same as `Collect` for the same
-      entry.
-      - An `ancestorMatcher` wrapper, applied **only** in `NewMatcher` —
-        `Collect` already prunes while walking and would just re-evaluate.
-      - The manifest exemption must NOT rescue an entry skipped because of an
-        ancestor: in `Collect` a `node_modules/foo/package.json` is never
-        reached, so the two paths would otherwise disagree. Ancestor check first,
-        without the exemption; entry check second, with it.
+      `libscanoss` becomes the first such consumer: it fingerprints single files
+      and now composes `Build(DefaultSource(StdDefaults()))` explicitly.
 
-      Tests: a table of paths (`node_modules/x/index.js`, `venv/lib/x.py`,
-      `foo.egg-info/PKG-INFO`, `src/main.go`) matched by both `NewMatcher` and
-      `Collect` over an equivalent tree, asserting they agree — that equivalence
-      is the requirement, not the wrapper.
+      Tests: the characterisation test composes the same way an external
+      consumer would, which is also how it verifies the exported pieces are
+      sufficient — if something is missing, that test cannot be written.
 
 ## Follow-ups (not this change)
 - `dist`/`build`/`target` are preserved as-is in `DependencyOnlySkippedDirs`.

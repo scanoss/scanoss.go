@@ -8,9 +8,11 @@
   *"the canonical Go source"*) and is standalone by design — it imports no other
   scanoss package, so every other package may depend on it. `pkg/scanner`
   already does.
-- `filter.NewMatcher` exists and is documented for *"callers that evaluate
-  entries one at a time … instead of walking a tree"* — exactly `libscanoss`'s
-  case. It has never been used from there.
+- `filter.NewMatcher` exists for *"callers that evaluate entries one at a time
+  … instead of walking a tree"*, but only half-answers that: it applies
+  entry-level rules and silently ignores directory ones, which need a traversal
+  it does not have. It is removed (T011); such callers compose the rules from
+  the exported sources and apply them with their own traversal.
 - `settings.filterFor(operation)` already handles all three operations
   (`settings.go:145`, with `case OperationDependencies` at lines 115 and 128).
   Only the exported wrapper is missing.
@@ -115,7 +117,7 @@ behaviour unchanged.
 ### 5. `cmd/dependencies.go` collects like everyone else
 
 `collectFilesRecursively` (38 lines of `filepath.Walk` with an embedded list)
-becomes a `filter.Collect` call with `OptionsFor(OpDependencies)` plus
+becomes a `filter.Collect` call with `DependencyOptions()` plus
 `settings.DependencyFilter()`.
 
 Its file set is unchanged: today it collects everything and lets
@@ -131,7 +133,8 @@ which is why a test pins the outcome rather than the mechanism.
 - `pkg/scanner/worker.go` — drop the extension check.
 - `pkg/fingerprint/wfp/wfp.go` — delete `filteredExt` and `ShouldSkipFile`.
 - `libscanoss/core/libscanoss.go` — explicit matcher.
-- `cmd/scan.go`, `cmd/wfp.go`, `cmd/dependencies.go` — consume `OptionsFor`.
+- `cmd/scan.go`, `cmd/wfp.go`, `cmd/dependencies.go` — each builds from its
+  own profile constructor.
 - `CHANGELOG.md`.
 
 ## Testing strategy

@@ -66,7 +66,9 @@ want a flag that says "do not filter" to actually not filter.
   collection now gets every file fingerprinted. That is the contract change; see
   FR-7.
 - `libscanoss` fingerprints single files without collecting. It keeps its
-  current behaviour by applying `filter.NewMatcher` explicitly.
+  current behaviour by composing the rules itself, from the exported sources
+  (`Build(DefaultSource(StdDefaults()))`) — the first consumer of the boundary
+  FR-9 draws.
 - Symlinked directories are still not descended into. Unchanged.
 
 ## Requirements
@@ -78,8 +80,12 @@ want a flag that says "do not filter" to actually not filter.
   directory exclusions (`node_modules`, `vendor`, `__pycache__`, `dist`,
   `build`, `target`) are preserved, and it keeps looking inside `venv`, `eggs`,
   `wheels`, `__pypackages__`, `examples` and the rest.
-- **FR-3** `filter.DefaultSkippedDirs` keeps its exact current value. It is
-  public and read directly by consumers, so it is part of the contract.
+- **FR-3** The effective skip set of each operation does not change. The lists
+  are exposed split by operation (`CommonSkippedDirs`, `ScanOnlySkippedDirs`,
+  `DependencyOnlySkippedDirs`); `DefaultSkippedDirs` is removed, because with
+  three lists "default" names none of them. What is guaranteed is the resulting
+  set, asserted against literals by the characterisation tests — not the name of
+  any one variable.
 - **FR-4** `.gitignore` stays applied to scanning and fingerprinting, and stays
   **not** applied to dependencies. `.gitignore` answers "should this be
   versioned", not "is this a dependency" — a lock file excluded from git still
@@ -91,19 +97,22 @@ want a flag that says "do not filter" to actually not filter.
   holds a skip list.
 - **FR-6** Filtering happens **once** per file, at collection. No layer below
   re-applies a rule.
-- **FR-7** Every layer states which profile it uses, through
-  `filter.OptionsFor(op)` rather than assembling an `Options` literal by hand.
+- **FR-7** Every layer states which profile it uses — `ScanOptions`,
+  `FingerprintOptions`, `DependencyOptions` — and overrides only what comes from
+  the user's flags, rather than restating what the profile is. One named
+  constructor per layer, not an enum and a dispatcher: each caller knows at
+  compile time which one it is.
 - **FR-8** Differences between operations are expressed as named deltas over a
   shared list, so the difference is visible in one place and inherits future
   additions.
-- **FR-9** `NewMatcher` applies **every** rule kind, directory rules included.
-  Today it answers correctly for extensions, names and endings — which need only
-  the entry's name — and silently answers "keep" for a path inside a skipped
-  directory, because those rules only inspect `info`. `Collect` does not have
-  the problem: it prunes while walking. The consequence is that a caller outside
-  a tree walk gets half a filter and has to rebuild the other half by hand, with
-  no way to tell which half is missing. For the same `(rel, info)`, `NewMatcher`
-  and `Collect` must agree.
+- **FR-9** Filtering a tree is scanoss.go's job; filtering something that is not
+  a tree is not. `Collect` owns the traversal and applies every rule. A caller
+  whose input is not a directory — an archive being extracted, a stream, a
+  single file — owns its own traversal, and this package's job is to give it the
+  rules: the skip lists, the sources and the profiles are exported so it can
+  apply them the way its input requires. `NewMatcher` is removed rather than
+  completed: it half-answered that need, and the half it left out was the one
+  that depends on a traversal it cannot see.
 - **NFR-1** No new dependencies. No change to `scanoss.json`'s format.
 
 ## Out of scope
