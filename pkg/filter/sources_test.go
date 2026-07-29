@@ -247,7 +247,7 @@ func TestScanningDirSetUnchanged(t *testing.T) {
 
 // Dependency collection keeps the common list and adds only its own.
 func TestDependencyDirSet(t *testing.T) {
-	got := append([]string(nil), DependencyDefaults().Dirs...)
+	got := append([]string(nil), DependencyOptions().SkipDirs...)
 	sort.Strings(got)
 
 	want := []string{".git", "__pycache__", "build", "dist", "node_modules", "target", "vendor"}
@@ -263,10 +263,10 @@ func TestDependencyDirSet(t *testing.T) {
 	// Everything except the directory list is shared with scanning: the one
 	// difference that would matter (manifests behind skipped extensions) is
 	// handled by PreserveDependencyManifests, not by a separate list.
-	std := StdDefaults()
-	dep := DependencyDefaults()
-	if len(dep.Exts) != len(std.Exts) || len(dep.Files) != len(std.Files) ||
-		len(dep.Endings) != len(std.Endings) || len(dep.DirExts) != len(std.DirExts) {
+	// Only the directory list may differ: the dependency profile overrides
+	// SkipDirs and nothing else, so every other list stays shared.
+	dep := DependencyOptions()
+	if dep.SkipFiles != nil || dep.SkipExtensions != nil {
 		t.Error("only the directory list may differ between the two profiles")
 	}
 }

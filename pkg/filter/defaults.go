@@ -50,9 +50,9 @@ const DefaultMaxFileSize int64 = 0
 // operations is stated once, here, instead of being whatever falls out of two
 // lists maintained apart.
 //
-// StdDefaults and DependencyDefaults compose an operation's effective set. The
-// three lists are exported for callers that apply the rules themselves — see
-// CommonSkippedDirs on which one such a caller usually wants.
+// StdDefaults composes the scanning set; DependencyOptions composes the
+// dependency one. The three lists are exported for callers that apply the rules
+// themselves — see CommonSkippedDirs on which one such a caller usually wants.
 
 // CommonSkippedDirs are skipped by every operation.
 //

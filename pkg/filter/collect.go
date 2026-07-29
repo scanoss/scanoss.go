@@ -115,7 +115,7 @@ func FingerprintOptions() Options {
 // DependencyOptions returns the options for collecting dependency manifests.
 // Three things differ from ScanOptions, and all three are deliberate:
 //
-//   - the directory list is DependencyDefaults' (see DependencyOnlySkippedDirs);
+//   - the directory list adds DependencyOnlySkippedDirs instead of the scanning ones;
 //   - manifests are preserved, since they live behind skipped extensions;
 //   - .gitignore is NOT applied. It answers "should this be versioned", not "is
 //     this a dependency": a lock file excluded from git still declares what the
@@ -126,7 +126,7 @@ func DependencyOptions() Options {
 		GitIgnore:                   false,
 		MinSize:                     DefaultMinFileSize,
 		MaxSize:                     DefaultMaxFileSize,
-		SkipDirs:                    DependencyDefaults().Dirs,
+		SkipDirs:                    skippedDirs(DependencyOnlySkippedDirs),
 		PreserveDependencyManifests: true,
 	}
 }

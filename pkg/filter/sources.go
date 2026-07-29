@@ -55,18 +55,6 @@ func StdDefaults() Defaults {
 	}
 }
 
-// DependencyDefaults returns the built-in skip lists for dependency collection.
-// It differs from StdDefaults in the directory list only: the file, extension
-// and ending lists are shared, because the one difference that matters there —
-// manifests live behind skipped extensions like .json and .mod — is handled by
-// Options.PreserveDependencyManifests, which exempts the known manifest names
-// rather than reopening whole extensions.
-func DependencyDefaults() Defaults {
-	d := StdDefaults()
-	d.Dirs = skippedDirs(DependencyOnlySkippedDirs)
-	return d
-}
-
 // DefaultSource turns the default skip lists and size bounds into matchers.
 func DefaultSource(d Defaults) []Matcher {
 	var ms []Matcher
