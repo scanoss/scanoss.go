@@ -123,8 +123,9 @@ func TestSPDXLite_Package(t *testing.T) {
 	}
 
 	pkg := doc.Packages[0]
-	if pkg.PackageName != "pkg:github/scanoss/engine" {
-		t.Errorf("name = %q", pkg.PackageName)
+	// A package name, not a PURL: the PURL travels in externalRefs.
+	if pkg.PackageName != "engine" {
+		t.Errorf("name = %q, want the component name", pkg.PackageName)
 	}
 	if pkg.PackageVersion != "5.4.1" {
 		t.Errorf("versionInfo = %q", pkg.PackageVersion)

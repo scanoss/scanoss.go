@@ -59,9 +59,10 @@ func TestGenerateWFPKeepsSmallFiles(t *testing.T) {
 	}
 }
 
-// Hidden files stay excluded — that check has no configurable counterpart and is
-// deliberately kept in the worker.
-func TestGenerateWFPSkipsHiddenFiles(t *testing.T) {
+// Hidden files are decided during collection, not here: the worker applies no
+// policy of its own. Handing it a dotfile fingerprints it, which is what makes
+// --all-hidden possible at all.
+func TestGenerateWFPDoesNotDecideOnHiddenFiles(t *testing.T) {
 	root := t.TempDir()
 	hidden := filepath.Join(root, ".secret.go")
 	visible := filepath.Join(root, "main.go")
@@ -72,10 +73,49 @@ func TestGenerateWFPSkipsHiddenFiles(t *testing.T) {
 	if len(errs) > 0 {
 		t.Fatalf("GenerateWFP errors = %v", errs)
 	}
-	if strings.Contains(string(wfp), ".secret.go") {
-		t.Errorf("WFP should not contain the hidden file; got:\n%s", wfp)
+	if !strings.Contains(string(wfp), ".secret.go") {
+		t.Errorf("WFP should contain the hidden file when handed in directly; got:\n%s", wfp)
 	}
 	if !strings.Contains(string(wfp), "main.go") {
 		t.Errorf("WFP missing main.go; got:\n%s", wfp)
+	}
+}
+
+// The fingerprint layer applies no filtering of its own: what is worth
+// fingerprinting is decided once, during collection. Handing it a file the
+// default lists would have excluded fingerprints it, because the caller asked.
+//
+// This is the contract change of the unification: the layer stops second-
+// guessing its input. Callers that want the rules apply them first, via
+// scanner.CollectFiles, or compose one from filter's exported sources.
+func TestGenerateWFPDoesNotFilter(t *testing.T) {
+	root := t.TempDir()
+	png := filepath.Join(root, "logo.png")
+	writeSized(t, png, 400)
+
+	wfp, errs := GenerateWFP([]string{png}, 1, root, nil)
+	if len(errs) > 0 {
+		t.Fatalf("GenerateWFP errors = %v", errs)
+	}
+	if !strings.Contains(string(wfp), "logo.png") {
+		t.Errorf("logo.png should be fingerprinted when handed in directly; got:\n%s", wfp)
+	}
+}
+
+// And the collection still excludes it, so the CLI paths are unchanged: the
+// file never reaches the worker in the first place.
+func TestCollectionStillExcludesWhatTheLayerNoLongerDoes(t *testing.T) {
+	root := t.TempDir()
+	writeSized(t, filepath.Join(root, "logo.png"), 400)
+	writeSized(t, filepath.Join(root, "main.go"), 400)
+
+	files, err := CollectFiles(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		if filepath.Base(f) == "logo.png" {
+			t.Error("collection must still exclude logo.png")
+		}
 	}
 }

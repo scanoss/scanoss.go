@@ -10,42 +10,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.0] - 2026-07-29
 
 ### Added
-- **`config`** — store settings in `~/.scanoss/settings.json` instead of repeating flags:
-  `config set`, `get`, `list`, `unset`, `path`. Keys are `api-url`, `api-key`, `proxy` and
-  `ca-cert`; the file itself uses `snake_case`. The API key is never displayed.
-- Every setting resolves as **flag > `SCANOSS_<KEY>` > config file > built-in default**, so a
-  stored `proxy` or `ca-cert` also applies with no flag. `--ignore-cert-errors` is not storable.
+- **`config`** — store `api-url`, `api-key`, `proxy` and `ca-cert` in
+  `~/.scanoss/settings.json` instead of repeating flags: `config set`, `get`, `list`, `unset`,
+  `path`. The API key is never displayed. Every setting resolves as
+  **flag > `SCANOSS_<KEY>` > config file > default**.
 - **`--proxy` and `--ca-cert`** on every command that reaches the API. `--proxy` overrides
-  `HTTP_PROXY`/`HTTPS_PROXY` for one run and still honours `NO_PROXY`; `--ca-cert` trusts a PEM
-  file's certificates in addition to the system pool, with verification still on. PAC is not
-  supported.
-- **`scanoss.NewHTTPClient`** builds an `*http.Client` with the same proxy and CA settings, for use
-  with the existing `WithHTTPClient` option. `pkg/api` gained `SetHTTPClient`.
-- **`--min-size`** on `scan` and `wfp` — skip files below a size in bytes.
-- **`--max-size` on `wfp`**.
-- **`--default-filters`, `--gitignore` and `--settings` on `wfp`** — it now collects files exactly
-  the way `scan` does, so the two no longer disagree on which files they cover. `scanoss.json` is
-  read for the **fingerprinting** operation (`skip.patterns.fingerprinting`), not the scanning one.
-- **`settings.FingerprintFilter()`** alongside `ScanFilter()`, for SDK callers that fingerprint.
+  `HTTP_PROXY`/`HTTPS_PROXY` for one run and honours `NO_PROXY`; `--ca-cert` adds a PEM file's
+  certificates to the system pool, verification still on. PAC is not supported.
+- **`scanoss.NewHTTPClient`** builds an `*http.Client` with the same proxy and CA settings.
+- **`--min-size` / `--max-size`** on `scan` and `wfp`, and **`--all-hidden`** to include dotfiles
+  (version-control metadata stays excluded).
+- **`--default-filters`, `--gitignore` and `--settings` on `wfp`**, so it collects files exactly
+  the way `scan` does. **`--settings` on `dependencies`** likewise.
+- **SDK:** `filter.FingerprintOptions`, `filter.DependencyOptions`, `filter.HiddenSource`,
+  `settings.FingerprintFilter()`, `settings.DependencyFilter()`.
 
 ### Changed
-- Files under 100 bytes are no longer skipped
-- **SDK, breaking** — `filter.Defaults` no longer carries `MinSize`/`MaxSize`, and neither does
-  `filter.StdDefaults()`. Size is caller input, not a built-in skip list: set
-  `filter.Options.MinSize`/`MaxSize`, or build the matcher directly with the new
-  `filter.SizeSource(min, max)`. `filter.DefaultOptions`/`ScanOptions`/`IngestOptions` carry the
-  built-in bounds, so callers that start from a constructor need no change.
+- Files under 100 bytes are no longer skipped.
+- **`pkg/filter` is the single source of filtering rules**, applied once during collection. The
+  fingerprint layer no longer filters, so `GenerateWFP` and `GenerateFingerprint` fingerprint
+  whatever they are given — a caller passing a list that did not come from collection now gets
+  every file. **This is the only change here that fails silently rather than at compile time.**
+- **SDK, breaking** — removed: `wfp.ShouldSkipFile`, `filter.NewMatcher`,
+  `filter.DefaultSkippedDirs`, `filter.IngestOptions`, and `filter.Defaults`'
+  `MinSize`/`MaxSize`. Use `filter.Build(filter.DefaultSource(filter.StdDefaults()))` plus
+  `manifests.Is` to compose rules; `filter.CommonSkippedDirs` /`ScanOnlySkippedDirs`
+  /`DependencyOnlySkippedDirs`; `filter.DependencyOptions`; and `filter.Options.MinSize`/`MaxSize`.
+  Callers starting from `DefaultOptions`/`ScanOptions` need no change.
 
 ### Fixed
-- Zero-byte files and symbolic links are no longer fingerprinted. An empty file produced a WFP
-  entry with a zero hash and no lines, and a link reported the same content twice — its target is
-  collected on its own. Neither is configurable: they are not policy, and both match what the
-  Python and JS clients already do.
-- `--max-size` (and the new `--min-size`) were silently ignored when combined with
-  `--default-filters=false`: the bounds were applied from inside the built-in default filters, so
-  switching those off discarded them. They are now applied independently, in both the directory
-  walk and the streaming-extraction path.
-
+- **Version-control metadata is never collected.** `.git` could be fingerprinted and uploaded when
+  the built-in filters and the hidden rule were both off — including `.git/config`, which can carry
+  credentials.
+- **License identifiers are validated against the SPDX list.** A non-canonical id is normalised;
+  an unrecognised one, or a malformed expression, becomes a declared `LicenseRef` instead of
+  producing an SBOM that fails validation.
+- **SBOM packages carry the component name**, not the full PURL. CycloneDX gained a
+  `serialNumber`, and the tool version moved to its own field.
+- **`results` returns the same inventory as `scan`**, so a resumed scan can be rendered and
+  converted. It accepts `--format` and `--include`.
+- **`--default-filters=false` really disables them** — extension-skipped files were dropped anyway
+  by a second, uncounted filter in the fingerprint layer.
+- **`dependencies` honours `scanoss.json`** and reports what it filtered; `scan --include deps`
+  and `dependencies` no longer disagree over `examples/`. A `skip` rule now also overrules the
+  manifest exemption, so excluding a manifest by name works.
+- `--min-size`/`--max-size` were ignored together with `--default-filters=false`.
+- Zero-byte files and symbolic links are no longer fingerprinted, and the raw format emits
+  `"components": []` rather than `null` when nothing matched.
 
 ## [0.3.0] - 2026-07-28
 

@@ -61,38 +61,6 @@ func appendHex8(dst []byte, v uint32) []byte {
 		hexDigits[(v>>4)&0xf], hexDigits[v&0xf])
 }
 
-// File extensions that should be completely ignored
-var filteredExt = map[string]bool{
-	".1": true, ".2": true, ".3": true, ".4": true, ".5": true, ".6": true,
-	".7": true, ".8": true, ".9": true, ".ac": true, ".adoc": true, ".am": true,
-	".asciidoc": true, ".bmp": true, ".build": true, ".cfg": true, ".chm": true,
-	".class": true, ".cmake": true, ".cnf": true, ".conf": true, ".config": true,
-	".contributors": true, ".copying": true, ".crt": true, ".csproj": true,
-	".css": true, ".csv": true, ".dat": true, ".data": true, ".doc": true,
-	".docx": true, ".dtd": true, ".dts": true, ".iws": true, ".c9": true,
-	".c9revisions": true, ".dtsi": true, ".dump": true, ".eot": true, ".eps": true,
-	".geojson": true, ".gdoc": true, ".gif": true, ".glif": true, ".gmo": true,
-	".gradle": true, ".guess": true, ".hex": true, ".htm": true, ".html": true,
-	".ico": true, ".iml": true, ".in": true, ".inc": true, ".info": true,
-	".ini": true, ".ipynb": true, ".jpeg": true, ".jpg": true, ".json": true,
-	".jsonld": true, ".lock": true, ".log": true, ".m4": true, ".map": true,
-	".markdown": true, ".md": true, ".md5": true, ".meta": true, ".mk": true,
-	".mxml": true, ".o": true, ".otf": true, ".out": true, ".pbtxt": true,
-	".pdf": true, ".pem": true, ".phtml": true, ".plist": true, ".png": true,
-	".po": true, ".ppt": true, ".prefs": true, ".properties": true, ".pyc": true,
-	".qdoc": true, ".result": true, ".rgb": true, ".rst": true, ".scss": true,
-	".sha": true, ".sha1": true, ".sha2": true, ".sha256": true, ".sln": true,
-	".spec": true, ".sql": true, ".sub": true, ".svg": true, ".svn-base": true,
-	".tab": true, ".template": true, ".test": true, ".tex": true, ".tiff": true,
-	".toml": true, ".ttf": true, ".txt": true, ".utf-8": true, ".vim": true,
-	".wav": true, ".whl": true, ".woff": true, ".xht": true, ".xhtml": true,
-	".xls": true, ".xlsx": true, ".xml": true, ".xpm": true, ".xsd": true,
-	".xul": true, ".yaml": true, ".yml": true, ".wfp": true, ".editorconfig": true,
-	".dotcover": true, ".pid": true, ".lcov": true, ".egg": true, ".manifest": true,
-	".cache": true, ".coverage": true, ".cover": true, ".gem": true, ".lst": true,
-	".pickle": true, ".pdb": true, ".gml": true, ".pot": true, ".plt": true,
-}
-
 // normalize normalizes a byte according to winnowing rules
 func normalize(b byte) byte {
 	if b < '0' {
@@ -124,22 +92,14 @@ func minHash(hashes []uint32) uint32 {
 	return hashes[indexMin]
 }
 
-// ShouldSkipFile determines if a file should be skipped
-func ShouldSkipFile(filePath string) bool {
-	ext := filepath.Ext(filePath)
-	return filteredExt[ext]
-}
-
 // GenerateFingerprint generates the WFP fingerprint of a file. The file is read from
 // filePath; root, when non-empty, makes the WFP "file=" label relative to it (so the
 // scan result reports paths relative to the scanned folder, not absolute local paths).
 func GenerateFingerprint(filePath string, root string) (*models.FileFingerprint, error) {
-	// Check if file should be skipped
-	if ShouldSkipFile(filePath) {
-		return nil, fmt.Errorf("file extension filtered")
-	}
-
-	// Read file
+	// No filtering here: which files are worth fingerprinting is decided once,
+	// during collection (pkg/filter), which is the only stage that reports what
+	// it skipped. Deciding again at this depth would drop files the caller has
+	// already counted as collected.
 	f, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("error reading file: %w", err)

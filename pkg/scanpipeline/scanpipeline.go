@@ -97,15 +97,20 @@ func ParseLayers(values []string) (Set, error) {
 // (keyed by Service); the two steps that happen locally before the API — fingerprinting and
 // dependency-manifest parsing — report through OnFingerprint and OnDependencies.
 type Options struct {
-	Client         *scanoss.Client       // required
-	Layers         Set                   // requested output layers
-	SourcePath     string                // file or directory to scan (required)
-	Threads        int                   // fingerprint workers (<1 => 1)
-	Filter         filter.Options        // file-collection filters (directory scans)
-	ScanOptions    []scanoss.ScanOption  // per-scan tuning (chunk size, poll interval, BOM, ...)
-	OnCollect      func(skipped int)     // optional: called once after collection with the filtered count
-	OnFingerprint  func(done, total int) // optional fingerprinting progress
-	OnDependencies func(done, total int) // optional dependency-manifest parsing progress
+	Client     *scanoss.Client // required
+	Layers     Set             // requested output layers
+	SourcePath string          // file or directory to scan (required)
+	Threads    int             // fingerprint workers (<1 => 1)
+	Filter     filter.Options  // file-collection filters (directory scans)
+	// DependencySettings is the scanoss.json skip rules for the dependencies
+	// operation. The manifest collection is a stage of its own, with its own
+	// profile, so it cannot reuse Filter.Settings (which holds the scanning
+	// section). Nil when there is no scanoss.json.
+	DependencySettings *filter.Settings
+	ScanOptions        []scanoss.ScanOption  // per-scan tuning (chunk size, poll interval, BOM, ...)
+	OnCollect          func(skipped int)     // optional: called once after collection with the filtered count
+	OnFingerprint      func(done, total int) // optional fingerprinting progress
+	OnDependencies     func(done, total int) // optional dependency-manifest parsing progress
 }
 
 // Result is the outcome of Run: the gathered inventory, the generated WFP (for --save-wfp), and
@@ -144,8 +149,15 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 		files, skipped = cr.Files, cr.SkippedCount
 
 		if opts.Layers.Has(LayerDeps) {
-			depFilter := opts.Filter
-			depFilter.PreserveDependencyManifests = true
+			// Collecting manifests is its own stage, so it uses the dependency
+			// profile rather than inheriting the scan's. Only what the user asked
+			// for carries over; the profile decides the rest, which is what keeps
+			// this in step with the standalone `dependencies` command.
+			depFilter := filter.DependencyOptions()
+			depFilter.MinSize = opts.Filter.MinSize
+			depFilter.MaxSize = opts.Filter.MaxSize
+			depFilter.Defaults = opts.Filter.Defaults
+			depFilter.Settings = opts.DependencySettings
 			dcr, depErr := scanner.CollectFilesWithOptions(opts.SourcePath, depFilter)
 			if depErr != nil {
 				return Result{}, fmt.Errorf("collecting dependency manifests: %w", depErr)

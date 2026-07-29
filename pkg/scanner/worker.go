@@ -79,18 +79,6 @@ func (wp *WorkerPool) worker(id int) {
 			continue
 		}
 
-		// Skip hidden files. Size bounds are not applied here: they belong to
-		// collection (pkg/filter), which is the only place that reports what it
-		// skipped. A second, silent size check here would drop files the caller
-		// has already counted as collected.
-		if stat.Name()[0] == '.' {
-			continue
-		}
-
-		if fingerprint.ShouldSkipFile(filePath) {
-			continue
-		}
-
 		fp, err := fingerprint.GenerateFingerprint(filePath, wp.root)
 		if err != nil {
 			wp.errors <- err

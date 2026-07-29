@@ -47,7 +47,7 @@ def main():
     print("⏳ Sending to SCANOSS API...")
     results = lib.scan(
         path="/tmp/express.js",
-        api_url="https://api.osskb.org/scan/direct",
+        api_url="https://api.scanoss.com",
         api_key="",
         threads=10,
         post_size=65536

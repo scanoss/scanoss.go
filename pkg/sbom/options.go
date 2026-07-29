@@ -36,6 +36,7 @@ const defaultProjectName = "scanoss-project"
 type options struct {
 	projectName string
 	toolName    string    // recorded as the generating tool in document metadata
+	toolVersion string    // its version, kept apart: CycloneDX has a field for it
 	author      string    // recorded as the author / organization in document metadata
 	timestamp   time.Time // document creation timestamp; zero => resolved to now at render
 }
@@ -55,12 +56,37 @@ func WithProjectName(name string) Option {
 
 // WithTool sets the generating tool recorded in the document metadata. Empty values are
 // ignored (default: "<app>-<version>").
+// WithTool sets the generating tool recorded in the document metadata. The value
+// is taken literally: a caller passing "my-tool-1.4.0" gets exactly that, with no
+// version appended. Pass WithToolVersion as well to have CycloneDX record the
+// version in its own field.
 func WithTool(name string) Option {
 	return func(o *options) {
 		if name != "" {
 			o.toolName = name
+			o.toolVersion = "" // the caller owns the identifier now
 		}
 	}
+}
+
+// WithToolVersion sets the version recorded alongside the tool name. Empty leaves
+// the default. CycloneDX records it in its own field; SPDX has no such field, so
+// there the two are joined as "name-version", which is that format's convention.
+func WithToolVersion(version string) Option {
+	return func(o *options) {
+		if version != "" {
+			o.toolVersion = version
+		}
+	}
+}
+
+// toolIdentifier is the SPDX "Tool:" creator string, where name and version are
+// one value by convention.
+func (o options) toolIdentifier() string {
+	if o.toolVersion == "" {
+		return o.toolName
+	}
+	return o.toolName + "-" + o.toolVersion
 }
 
 // WithAuthor sets the author / organization recorded in the document metadata. Empty
@@ -87,7 +113,8 @@ func WithTimestamp(t time.Time) Option {
 func newOptions(opts ...Option) options {
 	o := options{
 		projectName: defaultProjectName,
-		toolName:    config.AppName + "-" + config.AppVersion,
+		toolName:    config.AppName,
+		toolVersion: config.AppVersion,
 		author:      config.OrganizationName,
 	}
 	for _, opt := range opts {

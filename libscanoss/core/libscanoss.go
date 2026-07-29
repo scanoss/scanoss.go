@@ -26,20 +26,41 @@ package main
 import "C"
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 
 	"github.com/scanoss/scanoss.go/internal/version"
 	"github.com/scanoss/scanoss.go/pkg/api"
 	"github.com/scanoss/scanoss.go/pkg/batch"
+	"github.com/scanoss/scanoss.go/pkg/filter"
 	wfpPkg "github.com/scanoss/scanoss.go/pkg/fingerprint/wfp"
 	"github.com/scanoss/scanoss.go/pkg/output"
 	"github.com/scanoss/scanoss.go/pkg/scanner"
 )
+
+// skipFile applies the scanning rules to a single path. These entry points
+// fingerprint one file at a time without collecting a tree, so they are the one
+// caller that has to ask for the rules explicitly — pkg/fingerprint no longer
+// applies any of its own.
+var skipFile = func() func(string) bool {
+	m := filter.Build(filter.DefaultSource(filter.StdDefaults()))
+	return func(path string) bool {
+		info, err := os.Stat(path)
+		if err != nil {
+			return false // let the fingerprinter report the real error
+		}
+		return m.Match(filepath.Base(path), info)
+	}
+}()
 
 // GenerateWFP generates a WFP fingerprint for a single file
 //
 //export GenerateWFP
 func GenerateWFP(filePath *C.char) *C.char {
 	goFilePath := C.GoString(filePath)
+	if skipFile(goFilePath) {
+		return C.CString("")
+	}
 
 	fp, err := wfpPkg.GenerateFingerprint(goFilePath, "")
 	if err != nil {
@@ -54,6 +75,10 @@ func GenerateWFP(filePath *C.char) *C.char {
 //export GenerateWFPJSON
 func GenerateWFPJSON(filePath *C.char) *C.char {
 	goFilePath := C.GoString(filePath)
+	if skipFile(goFilePath) {
+		errJSON, _ := json.Marshal(map[string]string{"error": "file extension filtered"})
+		return C.CString(string(errJSON))
+	}
 
 	fp, err := wfpPkg.GenerateFingerprint(goFilePath, "")
 	if err != nil {

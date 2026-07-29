@@ -24,12 +24,12 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/scanoss/scanoss.go/internal/cliconfig"
-	"github.com/scanoss/scanoss.go/pkg/output"
+	"github.com/scanoss/scanoss.go/internal/config"
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
+	"github.com/scanoss/scanoss.go/pkg/scanpipeline"
 	"github.com/spf13/cobra"
 )
 
@@ -57,6 +57,8 @@ func init() {
 
 	addAPIFlags(resultsCmd)
 	resultsCmd.Flags().Duration("poll-interval", scanoss.DefaultScanPollInterval, "How often to poll for scan status")
+	resultsCmd.Flags().StringP("format", "f", config.DefaultFormat, "Result output format: raw, spdx, cyclonedx")
+	resultsCmd.Flags().StringSlice("include", nil, "Output layers to gather (comma-separated): vulns, licenses, crypto, geo")
 }
 
 func runResults(cmd *cobra.Command, args []string) error {
@@ -73,14 +75,18 @@ func runResults(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	outputFile, _ := cmd.Flags().GetString("output")
 	pollInterval, _ := cmd.Flags().GetDuration("poll-interval")
 
-	writer, err := output.NewWriter(outputFile)
+	layers, err := scanLayers(cmd)
 	if err != nil {
-		return fmt.Errorf("error creating output writer: %w", err)
+		return err
 	}
-	defer func() { _ = writer.Close() }()
+	if layers.Has(scanpipeline.LayerDeps) {
+		warnf("the deps layer needs a source tree; ignored when resuming a scan by id")
+	}
+	outputFormat, _ := cmd.Flags().GetString("format")
+	reportSkippedLayers(outputFormat, layers)
+	layers = effectiveLayers(outputFormat, layers) // don't gather what this format can't render
 
 	httpClient, err := newHTTPClient(cmd)
 	if err != nil {
@@ -108,12 +114,14 @@ func runResults(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("scan completed without a result")
 	}
 
-	out, err := json.MarshalIndent(res.Result, "", "  ")
+	// Assemble the same inventory `scan` produces, so a resumed scan reaches the
+	// same deliverable: the raw envelope carries schema_version and metadata, and
+	// the SBOM formats are convertible by `sbom`. Emitting the API response
+	// verbatim made a resumed scan a dead end.
+	inv, err := scanpipeline.Build(ctx, client, res.Result, layers, nil)
 	if err != nil {
-		return fmt.Errorf("error encoding results: %w", err)
+		return renderAPIError(err)
 	}
-	if err := writer.Write(string(out)); err != nil {
-		return fmt.Errorf("error writing results: %w", err)
-	}
-	return nil
+	// No source path here — the sbom module applies its default project name.
+	return emitInventory(cmd, inv, "")
 }

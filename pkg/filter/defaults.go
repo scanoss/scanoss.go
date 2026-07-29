@@ -45,13 +45,37 @@ const DefaultMinFileSize int64 = 0
 // matching scanoss.py's default.
 const DefaultMaxFileSize int64 = 0
 
-// DefaultSkippedDirs are directory names that are skipped wholesale (the whole
-// subtree is pruned).
-var DefaultSkippedDirs = []string{
+// Directory names are skipped wholesale (the whole subtree is pruned). The
+// lists are split by which operations they apply to, so the difference between
+// operations is stated once, here, instead of being whatever falls out of two
+// lists maintained apart.
+//
+// StdDefaults composes the scanning set; DependencyOptions composes the
+// dependency one. The three lists are exported for callers that apply the rules
+// themselves — see CommonSkippedDirs on which one such a caller usually wants.
+
+// CommonSkippedDirs are skipped by every operation.
+//
+// This is also the most a pre-filter can safely prune when it does not yet know
+// which operation will consume the result — an archive extractor feeding both a
+// scan and a dependency analysis. Pruning beyond this is irreversible: the files
+// never reach disk.
+var CommonSkippedDirs = []string{
+	"__pycache__",
+	// SBOM-Workbench parity:
+	"node_modules",
+	"vendor",
+}
+
+// ScanOnlySkippedDirs are skipped when scanning or fingerprinting, on top of
+// CommonSkippedDirs. Example code is not the product, so its matches are noise;
+// virtualenvs, eggs and wheels hold installed packages whose code is not the
+// project's. Dependency collection does NOT inherit these: a manifest declares
+// real dependencies wherever it lives, examples/ included.
+var ScanOnlySkippedDirs = []string{
 	"nbproject",
 	"nbbuild",
 	"nbdist",
-	"__pycache__",
 	"venv",
 	"_yardoc",
 	"eggs",
@@ -60,9 +84,24 @@ var DefaultSkippedDirs = []string{
 	"__pypackages__",
 	"example",
 	"examples",
-	// SBOM-Workbench parity:
-	"node_modules",
-	"vendor",
+}
+
+// DependencyOnlySkippedDirs are skipped when collecting dependencies, on top of
+// CommonSkippedDirs: generated trees, whose manifests are build output rather
+// than declarations. Scanning does not inherit these — the sources under a
+// build tree are still code that can match.
+var DependencyOnlySkippedDirs = []string{
+	"dist",
+	"build",
+	"target",
+}
+
+// skippedDirs joins the shared list with an operation's own. It returns a fresh
+// slice so the package-level lists are never aliased or appended to.
+func skippedDirs(extra []string) []string {
+	out := make([]string, 0, len(CommonSkippedDirs)+len(extra))
+	out = append(out, CommonSkippedDirs...)
+	return append(out, extra...)
 }
 
 // DefaultSkippedDirExts are directory-name suffixes that are skipped (e.g. a
@@ -110,6 +149,8 @@ var DefaultSkippedExts = []string{
 	".coverage", ".cover", ".gem", ".lst", ".pickle", ".pdb", ".gml", ".pot",
 	".plt", ".whml", ".pom", ".smtml", ".min.js", ".mf", ".base64", ".s", ".diff",
 	".patch", ".rules",
+	// Present in the fingerprint layer's own list before it was removed:
+	".whl",
 	// SBOM-Workbench parity:
 	".mod", ".sum",
 }

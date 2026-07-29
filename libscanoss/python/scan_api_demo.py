@@ -41,7 +41,7 @@ class ScanossAPIScanner:
         print(f"📦 SCANOSS API Scanner v{self.lib.get_version()}")
         print()
 
-    def scan_and_submit(self, path, api_url="https://api.osskb.org/scan/direct",
+    def scan_and_submit(self, path, api_url="https://api.scanoss.com",
                         api_key="", threads=10, post_size=65536):
         """
         Scan a project and send to SCANOSS API
@@ -166,7 +166,7 @@ def main():
 
     results = scanner.scan_and_submit(
         path="../cmd",
-        api_url="https://api.osskb.org/scan/direct",
+        api_url="https://api.scanoss.com",
         api_key="",  # Empty for public API
         threads=10,
         post_size=65536

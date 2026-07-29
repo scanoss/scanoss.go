@@ -53,6 +53,15 @@ type RawMetadata struct {
 // NewRawDocument wraps inv in a raw envelope stamped with the current schema version and the given
 // metadata.
 func NewRawDocument(inv Inventory, meta RawMetadata) RawDocument {
+	// A scan that matched nothing must still emit `"components": []`, not null:
+	// a nil slice marshals to null, and a consumer then has to special-case it
+	// before ranging over the field. "No components" is an empty list, not the
+	// absence of an answer.
+	// (Vulnerabilities needs no such guard: it is omitempty, so nil and empty
+	// both disappear from the output.)
+	if inv.Components == nil {
+		inv.Components = []Component{}
+	}
 	return RawDocument{SchemaVersion: RawSchemaVersion, Metadata: meta, Inventory: inv}
 }
 

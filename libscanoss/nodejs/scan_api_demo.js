@@ -39,7 +39,7 @@ class ScanossAPIScanner {
 
     async scanAndSubmit(path, options = {}) {
         const {
-            apiUrl = 'https://api.osskb.org/scan/direct',
+            apiUrl = 'https://api.scanoss.com',
             apiKey = '',
             threads = 10,
             postSize = 65536
@@ -148,7 +148,7 @@ async function main() {
     const scanner = new ScanossAPIScanner();
 
     const results = await scanner.scanAndSubmit('../cmd', {
-        apiUrl: 'https://api.osskb.org/scan/direct',
+        apiUrl: 'https://api.scanoss.com',
         apiKey: '',
         threads: 10,
         postSize: 65536

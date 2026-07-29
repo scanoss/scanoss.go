@@ -124,7 +124,7 @@ Perform complete scan: collect files, generate fingerprints, send to API.
 
 **Parameters:**
 - `path` (str): Path to file or directory
-- `api_url` (str): SCANOSS API URL (default: "https://api.osskb.org/scan/direct")
+- `api_url` (str): SCANOSS API URL (default: "https://api.scanoss.com")
 - `api_key` (str): API key (default: "")
 - `threads` (int): Number of parallel threads (default: 10)
 - `post_size` (int): Maximum POST size in bytes (default: 65536)
@@ -135,7 +135,7 @@ Perform complete scan: collect files, generate fingerprints, send to API.
 ```python
 results = lib.scan(
     path="./my-project",
-    api_url="https://api.osskb.org/scan/direct",
+    api_url="https://api.scanoss.com",
     api_key="",
     threads=10,
     post_size=65536
@@ -221,7 +221,7 @@ lib = ScanossLib()
 print("Scanning project...")
 results = lib.scan(
     path="./my-project",
-    api_url="https://api.osskb.org/scan/direct",
+    api_url="https://api.scanoss.com",
     threads=15
 )
 
