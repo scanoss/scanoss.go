@@ -151,5 +151,5 @@ partial-failure path is out of scope (spec).
 - `go build ./... && go vet ./... && gofmt -l . && go test ./...` clean.
 - `grep -rni osskb .` returns only (if any) approved historical CHANGELOG lines.
 - Manual: `scanoss scan ./x` (no flags) → banner, non-zero, no request;
-  `scanoss scan ./x --api-url https://elgato.scanoss.com` → proceeds keyless;
+  `scanoss scan ./x --api-url https://scanoss.internal.example.com` → proceeds keyless;
   `--api-key bad` against default → clear `Unauthorized`.

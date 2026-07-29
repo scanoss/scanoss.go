@@ -44,8 +44,8 @@ func TestRequireKeyForDefaultEndpoint(t *testing.T) {
 		{"default endpoint, trailing slash, no key", scanoss.DefaultAPIURL + "/", "", true},
 		{"default endpoint, surrounding space, no key", "  " + scanoss.DefaultAPIURL + "  ", "", true},
 		{"default endpoint, with key", scanoss.DefaultAPIURL, "secret", false},
-		{"custom endpoint, no key", "https://elgato.scanoss.com", "", false},
-		{"custom endpoint, with key", "https://elgato.scanoss.com", "secret", false},
+		{"custom endpoint, no key", "https://scanoss.internal.example.com", "", false},
+		{"custom endpoint, with key", "https://scanoss.internal.example.com", "secret", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
