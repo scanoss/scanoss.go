@@ -123,13 +123,13 @@ class ScanossLib {
      * Perform a complete scan: collect files, generate fingerprints, and send to API
      *
      * @param {string} path - Path to file or directory to scan
-     * @param {string} apiUrl - SCANOSS API URL (default: https://api.osskb.org/scan/direct)
+     * @param {string} apiUrl - SCANOSS API URL (default: https://api.scanoss.com)
      * @param {string} apiKey - API key for authentication (default: empty)
      * @param {number} threads - Number of parallel threads (default: 10)
      * @param {number} postSize - Maximum POST size in bytes (default: 65536)
      * @returns {Object} Dictionary with API scan results
      */
-    scan(path, apiUrl = 'https://api.osskb.org/scan/direct', apiKey = '',
+    scan(path, apiUrl = 'https://api.scanoss.com', apiKey = '',
          threads = 10, postSize = 65536) {
         const jsonStr = this.lib.Scan(
             path,

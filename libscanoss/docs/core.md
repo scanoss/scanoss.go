@@ -108,7 +108,7 @@ Performs a complete scan: collects files, generates fingerprints, and sends to A
 **Returns:** JSON string with API scan results
 
 ```python
-results = lib.scan("/path/to/project", "https://api.osskb.org/scan/direct", "", 10, 65536)
+results = lib.scan("/path/to/project", "https://api.scanoss.com", "", 10, 65536)
 # {"file1.go": [{"component": "...", "license": "..."}], ...}
 ```
 

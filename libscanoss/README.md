@@ -190,7 +190,7 @@ from scanoss_lib import ScanossLib
 lib = ScanossLib()
 results = lib.scan(
     path="./my-project",
-    api_url="https://api.osskb.org/scan/direct",
+    api_url="https://api.scanoss.com",
     threads=10
 )
 
@@ -209,7 +209,7 @@ const ScanossLib = require('./scanoss_lib');
 const lib = new ScanossLib();
 const results = lib.scan(
     './my-project',
-    'https://api.osskb.org/scan/direct'
+    'https://api.scanoss.com'
 );
 
 // Results include detected components, licenses, vulnerabilities
