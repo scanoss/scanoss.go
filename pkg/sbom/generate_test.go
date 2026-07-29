@@ -53,3 +53,53 @@ func TestGenerate_UnknownFormat(t *testing.T) {
 		t.Error("expected error for unknown format")
 	}
 }
+
+// Every CycloneDX BOM carries a serial number, and the tool's version goes in its
+// own field — CycloneDX has one. SPDX does not, so there the two stay joined as
+// "name-version", which is that format's convention for the Tool creator.
+func TestToolIdentityPerFormat(t *testing.T) {
+	inv := Inventory{Components: []Component{{Purl: "pkg:npm/x", Name: "x", Version: "1"}}}
+
+	cdxDoc, err := Generate(inv, FormatCycloneDX, WithTool("scanoss"), WithToolVersion("9.9.9"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(cdxDoc, `"serialNumber": "urn:uuid:`) {
+		t.Error("CycloneDX must carry a serial number")
+	}
+	if !strings.Contains(cdxDoc, `"name": "scanoss"`) || !strings.Contains(cdxDoc, `"version": "9.9.9"`) {
+		t.Errorf("tool name and version must be separate fields:\n%s", cdxDoc)
+	}
+	if strings.Contains(cdxDoc, `"scanoss-9.9.9"`) {
+		t.Error("the version must not be baked into the tool name")
+	}
+
+	spdxDoc, err := Generate(inv, FormatSPDX, WithTool("scanoss"), WithToolVersion("9.9.9"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(spdxDoc, "Tool: scanoss-9.9.9") {
+		t.Errorf("SPDX joins them by convention, it has no version field:\n%s", spdxDoc)
+	}
+}
+
+// Two renders of the same inventory get different serial numbers: the field
+// identifies the document, not its content.
+func TestSerialNumberIsPerDocument(t *testing.T) {
+	inv := Inventory{Components: []Component{{Purl: "pkg:npm/x", Name: "x"}}}
+	a, _ := Generate(inv, FormatCycloneDX)
+	b, _ := Generate(inv, FormatCycloneDX)
+	if serialOf(a) == serialOf(b) {
+		t.Error("each rendered document needs its own serial number")
+	}
+}
+
+func serialOf(doc string) string {
+	const key = `"serialNumber": "`
+	i := strings.Index(doc, key)
+	if i < 0 {
+		return ""
+	}
+	rest := doc[i+len(key):]
+	return rest[:strings.Index(rest, `"`)]
+}
