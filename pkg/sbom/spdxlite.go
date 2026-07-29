@@ -55,7 +55,7 @@ func buildSPDXLite(inv Inventory, o options) (string, error) {
 		DocumentNamespace: spdxNamespace(o.projectName, inv.Components),
 		CreationInfo: &v2_3.CreationInfo{
 			Creators: []common.Creator{
-				{CreatorType: "Tool", Creator: o.toolName},
+				{CreatorType: "Tool", Creator: o.toolIdentifier()},
 				{CreatorType: "Organization", Creator: o.author},
 			},
 			Created: o.resolvedTimestamp().Format(spdxTimeFormat),
@@ -174,7 +174,23 @@ func joinLicenseIDs(licenses []License, ack LicenseAcknowledgement) string {
 			continue
 		}
 		seen[l.ID] = true
-		ids = append(ids, l.ID)
+
+		// Only identifiers SPDX recognises may appear bare; anything else becomes
+		// a LicenseRef, declared alongside in hasExtractedLicensingInfos. Passing
+		// an unrecognised identifier through produces an invalid document.
+		term, ok := normalizeLicense(l.ID)
+		if !ok {
+			if ref := licenseRef(l.ID); ref != "" {
+				ids = append(ids, ref)
+			}
+			continue
+		}
+		// An expression must be parenthesised before being joined: "A OR B" AND "C"
+		// does not mean the same as "A OR (B AND C)".
+		if isCompound(term) {
+			term = "(" + term + ")"
+		}
+		ids = append(ids, term)
 	}
 	if len(ids) == 0 {
 		return noAssertion
@@ -193,30 +209,52 @@ func effectiveAck(ack LicenseAcknowledgement) LicenseAcknowledgement {
 // licenseRefPattern matches LicenseRef-* identifiers.
 var licenseRefPattern = regexp.MustCompile(`^LicenseRef-(scancode-|scanoss-|)(\S+)$`)
 
-// extractedLicenses maps a component's LicenseRef-* licenses to SPDX
-// hasExtractedLicensingInfos, skipping ids already recorded in seen.
+// extractedLicenses declares every LicenseRef the document will mention, which
+// SPDX requires: a ref used in licenseDeclared but absent from
+// hasExtractedLicensingInfos makes the document invalid.
+//
+// Refs come from three places, and all three have to be covered: an identifier
+// that is itself a ref, refs nested inside an expression, and the ones minted
+// here for identifiers SPDX does not recognise. seen carries across components so
+// each ref is declared once per document.
 func extractedLicenses(licenses []License, seen map[string]bool) []*v2_3.OtherLicense {
 	var infos []*v2_3.OtherLicense
 	for _, l := range licenses {
-		matches := licenseRefPattern.FindStringSubmatch(l.ID)
-		if matches == nil || seen[l.ID] {
-			continue
+		refs := licenseRefsIn(l.ID)
+		if _, ok := normalizeLicense(l.ID); !ok {
+			if ref := licenseRef(l.ID); ref != "" {
+				refs = append(refs, ref)
+			}
 		}
-		seen[l.ID] = true
-
-		source := strings.TrimSuffix(matches[1], "-")
-		sourceText := "."
-		if source != "" {
-			sourceText = " by " + source + "."
+		for _, ref := range refs {
+			if seen[ref] {
+				continue
+			}
+			seen[ref] = true
+			infos = append(infos, otherLicense(ref))
 		}
-		infos = append(infos, &v2_3.OtherLicense{
-			LicenseIdentifier: l.ID,
-			LicenseName:       strings.ReplaceAll(matches[2], "-", " "),
-			ExtractedText:     "Detected license, please review component source code.",
-			LicenseComment:    "Detected license" + sourceText,
-		})
 	}
 	return infos
+}
+
+// otherLicense builds the declaration for a single ref. A ref minted from a
+// scanner's own vocabulary ("LicenseRef-scancode-foo") carries that source in the
+// comment; the readable name is the idstring with its hyphens turned back into
+// spaces.
+func otherLicense(ref string) *v2_3.OtherLicense {
+	name, sourceText := ref, "."
+	if m := licenseRefPattern.FindStringSubmatch(ref); m != nil {
+		name = strings.ReplaceAll(m[2], "-", " ")
+		if source := strings.TrimSuffix(m[1], "-"); source != "" {
+			sourceText = " by " + source + "."
+		}
+	}
+	return &v2_3.OtherLicense{
+		LicenseIdentifier: ref,
+		LicenseName:       name,
+		ExtractedText:     "Detected license, please review component source code.",
+		LicenseComment:    "Detected license" + sourceText,
+	}
 }
 
 func md5Hash(s string) string {

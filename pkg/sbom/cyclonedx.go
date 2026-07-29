@@ -26,6 +26,7 @@ package sbom
 import (
 	"bytes"
 	"fmt"
+	"github.com/google/uuid"
 	"strconv"
 	"strings"
 	"time"
@@ -42,11 +43,18 @@ const scanossURLHashProp = "scanoss:url_hash"
 // schema-valid.
 func buildCycloneDX(inv Inventory, o options) (string, error) {
 	bom := cdx.NewBOM()
+	// Every BOM should carry a serial number: it is what lets consumers tell two
+	// documents apart, and tell a re-render of the same scan from a new one.
+	bom.SerialNumber = "urn:uuid:" + uuid.NewString()
 	bom.Metadata = &cdx.Metadata{
 		Timestamp: o.resolvedTimestamp().Format(time.RFC3339),
 		Authors:   &[]cdx.OrganizationalContact{{Name: o.author}},
 		Tools: &cdx.ToolsChoice{
-			Components: &[]cdx.Component{{Type: cdx.ComponentTypeApplication, Name: o.toolName}},
+			Components: &[]cdx.Component{{
+				Type:    cdx.ComponentTypeApplication,
+				Name:    o.toolName,
+				Version: o.toolVersion,
+			}},
 		},
 		Component: &cdx.Component{
 			Type:    cdx.ComponentTypeApplication,
@@ -160,14 +168,22 @@ func purlIdentities(comp Component) []cdx.EvidenceIdentity {
 	return ids
 }
 
-// cycloneDXLicense emits a license with its acknowledgement: a standard SPDX id via
-// "id", a LicenseRef-* (or other non-SPDX identifier) via "name".
+// cycloneDXLicense emits a license with its acknowledgement. The "id" field is an
+// enum of the SPDX list in the schema, so only an identifier SPDX recognises may
+// go there; anything else — a LicenseRef, a non-canonical id, an expression the
+// API sent verbatim — goes to "name", which is free text. Putting an unrecognised
+// value in "id" is what makes a document fail validation.
 func cycloneDXLicense(l License) cdx.License {
 	lic := cdx.License{Acknowledgement: cdxAcknowledgement(l.Acknowledgement)}
-	if strings.HasPrefix(l.ID, "LicenseRef-") {
-		lic.Name = l.ID
-	} else {
-		lic.ID = l.ID
+	canonical, ok := normalizeLicense(l.ID)
+	switch {
+	case ok && !isCompound(canonical) && !strings.HasPrefix(canonical, "LicenseRef-"):
+		lic.ID = canonical
+	case ok:
+		// A valid expression, or a LicenseRef: both are legal here, but not in "id".
+		lic.Name = canonical
+	default:
+		lic.Name = l.ID // unrecognised: keep what we were told, as free text
 	}
 	return lic
 }
