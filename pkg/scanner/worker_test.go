@@ -86,7 +86,7 @@ func TestGenerateWFPSkipsHiddenFiles(t *testing.T) {
 //
 // This is the contract change of the unification: the layer stops second-
 // guessing its input. Callers that want the rules apply them first, via
-// scanner.CollectFiles or filter.NewMatcher.
+// scanner.CollectFiles, or compose one from filter's exported sources.
 func TestGenerateWFPDoesNotFilter(t *testing.T) {
 	root := t.TempDir()
 	png := filepath.Join(root, "logo.png")

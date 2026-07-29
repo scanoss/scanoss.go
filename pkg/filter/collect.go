@@ -146,28 +146,6 @@ func (m *keepMatcher) Match(rel string, info os.FileInfo) bool {
 
 func (m *keepMatcher) Key() string { return "keep:" + m.base.Key() }
 
-// NewMatcher builds a per-path skip Matcher from o, for callers that evaluate
-// entries one at a time (e.g. a streaming archive extractor) instead of walking
-// a tree with Collect. It applies the default and scanoss.json (Settings) rules
-// and honors PreserveDependencyManifests, so a caller filters exactly the way
-// Collect does — from the same Options. It does NOT apply .gitignore (that needs
-// the whole tree; use Collect). Match returns true when the entry should be
-// skipped.
-func NewMatcher(o Options) Matcher {
-	var sources [][]Matcher
-	sources = append(sources, UnscannableSource())
-	if o.Defaults {
-		sources = append(sources, DefaultSource(o.defaults()))
-	}
-	if sz := SizeSource(o.MinSize, o.MaxSize); sz != nil {
-		sources = append(sources, sz)
-	}
-	if o.Settings != nil {
-		sources = append(sources, SettingsSource(o.Settings))
-	}
-	return &keepMatcher{base: Build(sources...), preserveManifests: o.PreserveDependencyManifests}
-}
-
 // CollectResult is the outcome of a Collect: the absolute paths to scan and how
 // many files were skipped. The skipped files themselves are not retained.
 type CollectResult struct {

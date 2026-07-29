@@ -44,6 +44,7 @@ import (
 
 	"github.com/scanoss/scanoss.go/pkg/dependencies"
 	"github.com/scanoss/scanoss.go/pkg/filter"
+	"github.com/scanoss/scanoss.go/pkg/manifests"
 	"github.com/scanoss/scanoss.go/pkg/scanner"
 	"github.com/scanoss/scanoss.go/pkg/settings"
 )
@@ -237,10 +238,14 @@ func TestDependencySkipPatternsHonoured(t *testing.T) {
 // What the extraction pre-filter keeps today (the shape earnie relies on).
 func TestBaselineExtractionMatcher(t *testing.T) {
 	root := baselineTree(t)
-	m := filter.NewMatcher(filter.Options{
-		Defaults:                    true,
-		PreserveDependencyManifests: true,
-	})
+	// Composed the way an external consumer composes it, from the exported
+	// pieces: the default sources, plus manifests.Is for the exemption that
+	// Options.PreserveDependencyManifests applies inside Collect. scanoss.go no
+	// longer ships a ready-made matcher for callers that do not walk a tree.
+	base := filter.Build(filter.DefaultSource(filter.StdDefaults()))
+	skip := func(rel string, info os.FileInfo) bool {
+		return base.Match(rel, info) && !manifests.Is(rel)
+	}
 
 	var kept []string
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
@@ -251,7 +256,7 @@ func TestBaselineExtractionMatcher(t *testing.T) {
 			return nil
 		}
 		rel, _ := filepath.Rel(root, path)
-		if !m.Match(filepath.ToSlash(rel), info) {
+		if !skip(filepath.ToSlash(rel), info) {
 			kept = append(kept, path)
 		}
 		return nil
@@ -259,9 +264,10 @@ func TestBaselineExtractionMatcher(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Manifests survive the extension list thanks to the exemption; note
-	// dist/package.json and examples/go.mod are kept because this matcher does
-	// not prune directories (inSkippedDir does that, on the caller's side).
+	// Manifests survive the extension list thanks to the exemption. Note that
+	// node_modules/, venv/ and examples/ entries are kept: this matcher decides
+	// about the entry, not the path, so pruning directories is the caller's job
+	// (earnie does it with its own traversal), using the exported lists.
 	assertSet(t, "extraction matcher", relNames(t, root, kept), []string{
 		"Gemfile",
 		"dist/package.json",

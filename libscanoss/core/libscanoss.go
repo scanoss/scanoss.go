@@ -43,7 +43,7 @@ import (
 // caller that has to ask for the rules explicitly — pkg/fingerprint no longer
 // applies any of its own.
 var skipFile = func() func(string) bool {
-	m := filter.NewMatcher(filter.ScanOptions())
+	m := filter.Build(filter.DefaultSource(filter.StdDefaults()))
 	return func(path string) bool {
 		info, err := os.Stat(path)
 		if err != nil {
