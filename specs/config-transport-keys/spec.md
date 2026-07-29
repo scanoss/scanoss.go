@@ -44,8 +44,10 @@ so that every command works without repeating two flags.
   same error the flag produces, naming the path.
 - A stored `ca-cert` is ignored, with the existing warning, when
   `--ignore-cert-errors` is passed.
-- `HTTP_PROXY`/`HTTPS_PROXY` keep working and keep taking precedence over the config
-  file, so an existing setup is unaffected by storing a value.
+- `HTTP_PROXY`/`HTTPS_PROXY` keep working when no `proxy` is configured, but a stored one
+  overrides them: they are not a rung of the ladder, only Go's fallback when the ladder
+  yields nothing. `NO_PROXY` likewise applies only to that fallback — a configured proxy
+  is used for every request. Both were already true of `--proxy`.
 
 ## Requirements
 - **FR-1** `proxy` and `ca_cert` are recognized keys, set as `config set proxy <url>`
