@@ -79,6 +79,36 @@ silently by the worker, with no filtered count. That is worse than today.
       flags — that is what proves the floor is gone from both enforcement points.
       `make check` and `go test -race ./...` clean.
 
+## Phase 4 — Close the `wfp` gap
+
+T005 leaves `wfp` half-configurable: it honours the two size bounds but still
+cannot turn off the built-in filters or `.gitignore`, and ignores `scanoss.json`
+entirely. A `wfp` run and a `scan` run over the same tree can therefore disagree
+on which files they cover, which defeats the command's stated purpose —
+debugging, and generating WFPs for offline processing.
+
+- [ ] **T009** `cmd/wfp.go`: add the remaining collection flags, so `wfp` filters
+      exactly the way `scan` does.
+      - `--default-filters` (default true) and `--gitignore` (default true), same
+        spellings, defaults and help text as `scan`.
+      - `--settings <path>`, resolved with `settings.Resolve(settingsFlag,
+        targetPath)` as `scan` does, feeding `filter.Options.Settings`.
+      - Use the **fingerprinting** operation, not scanning: `scanoss.json`
+        separates `skip.patterns.fingerprinting` from `skip.patterns.scanning`,
+        and `wfp` is the fingerprinting path. `pkg/settings` exports only
+        `ScanFilter()` today — add the `FingerprintFilter()` sibling beside it
+        (`filterFor` already takes the operation).
+      - Replace the `filter.ScanOptions()` base from T005 with an `Options`
+        literal built from all five inputs, mirroring `cmd/scan.go`.
+
+      Tests: each flag reaches the collection options; `--default-filters=false`
+      keeps a file the defaults would drop; a `scanoss.json`
+      `skip.patterns.fingerprinting` rule is honoured by `wfp` and a
+      `skip.patterns.scanning` rule is **not** (that is what proves the operation
+      is right); `pkg/settings` gains a `FingerprintFilter` unit test.
+      Docs: extend the `wfp` flag list in `CLIENT_HELP.md` (T006) and add an
+      **Added** line to `CHANGELOG.md`. (depends on T005)
+
 ## Follow-ups (not this change)
 - The remaining built-in skip lists: skipped directory names, directory suffixes,
   extensions and file-name endings — none of them documented or overridable from the

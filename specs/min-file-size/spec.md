@@ -48,6 +48,9 @@ noise rather than signal.
    files within `[100, 1048576]` are collected.
 4. **When** I run `wfp --min-size 100`, **then** the same threshold applies to the
    fingerprint-only path.
+4a. **Given** any tree and any combination of collection flags, **when** I run
+   `wfp` and `scan --save-wfp` with the same flags, **then** both emit the same
+   set of `file=` entries.
 5. **When** I pass a negative `--min-size`, **then** the run fails with a message
    naming the flag, before any file is read.
 6. **When** `--min-size` exceeds a non-zero `--max-size`, **then** the run fails
@@ -82,6 +85,10 @@ noise rather than signal.
   meaning "no minimum" rather than "use the built-in 100".
 - **FR-6** The count reported by `OnCollect` ("Filtered N files") continues to
   include files dropped by the size bound.
+- **FR-7** `wfp` collects files exactly the way `scan` does: it accepts the same
+  `--default-filters`, `--gitignore` and `--settings` flags, and honours
+  `scanoss.json`. A command whose purpose is to show what would be fingerprinted
+  must not filter differently from the command that fingerprints.
 - **NFR-1** No new dependencies. No change to `scanoss.json`'s format — `skip.sizes`
   keeps its current meaning and composes with the flag.
 - **NFR-2** A scan with no size bounds must not get slower: with both bounds at 0 no

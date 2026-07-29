@@ -115,13 +115,28 @@ Filter: filter.Options{
 `scanner.CollectFilesWithOptions(targetPath, o)` built from
 `filter.ScanOptions()` plus the two bounds. `CollectFiles` stays for compatibility.
 
+### 6. Closing the `wfp` gap (T009)
+
+The two size bounds alone leave `wfp` filtering differently from `scan` whenever
+`--default-filters`, `--gitignore` or a `scanoss.json` is in play, so T009 gives it
+the remaining inputs and drops the `filter.ScanOptions()` base for the same
+`Options` literal `cmd/scan.go` builds.
+
+One asymmetry to get right: `scan` passes `scanSettings.ScanFilter()`, but
+`scanoss.json` distinguishes `skip.patterns.scanning` from
+`skip.patterns.fingerprinting`, and `wfp` is the fingerprinting path.
+`filterFor(operation)` already handles both; only the `ScanFilter()` wrapper is
+exported, so `pkg/settings` needs a `FingerprintFilter()` sibling.
+
 ## Key changes
 - `pkg/filter/defaults.go` — `DefaultMinFileSize` 100 → 0, comment corrected.
 - `pkg/filter/collect.go` — doc comment on `Options.MinSize` (`0` = no minimum).
 - `internal/config/config.go` — `MinFileSize` deleted.
 - `pkg/scanner/worker.go` — size clause dropped from the worker.
 - `cmd/scan.go` — `--min-size` flag, validation, one field in `filter.Options`.
-- `cmd/wfp.go` — `--min-size`/`--max-size`, validation, options-based collection.
+- `cmd/wfp.go` — `--min-size`/`--max-size`, validation, options-based collection;
+  then `--default-filters`/`--gitignore`/`--settings` (T009).
+- `pkg/settings/settings.go` — `FingerprintFilter()` beside `ScanFilter()` (T009).
 - `cmd/helpers.go` — `validateSizeBounds`.
 - `CLIENT_HELP.md`, `CHANGELOG.md`.
 
