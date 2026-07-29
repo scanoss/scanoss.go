@@ -32,6 +32,7 @@ import (
 	"github.com/scanoss/scanoss.go/pkg/filter"
 	"github.com/scanoss/scanoss.go/pkg/output"
 	"github.com/scanoss/scanoss.go/pkg/scanner"
+	"github.com/scanoss/scanoss.go/pkg/settings"
 	"github.com/spf13/cobra"
 )
 
@@ -58,6 +59,9 @@ func init() {
 	wfpCmd.Flags().StringP("output", "o", "", "Output file (empty = stdout)")
 	wfpCmd.Flags().Int64("min-size", filter.DefaultMinFileSize, "Minimum file size in bytes to scan")
 	wfpCmd.Flags().Int64("max-size", filter.DefaultMaxFileSize, "Maximum file size in bytes to scan (0 = unlimited)")
+	wfpCmd.Flags().String("settings", "", "Path to settings file (scanoss.json/settings.json)")
+	wfpCmd.Flags().Bool("default-filters", true, "Apply the built-in default file filters")
+	wfpCmd.Flags().Bool("gitignore", true, "Honor .gitignore files when collecting files")
 }
 
 func runWFP(cmd *cobra.Command, args []string) error {
@@ -77,6 +81,9 @@ func runWFP(cmd *cobra.Command, args []string) error {
 	outputFile, _ := cmd.Flags().GetString("output")
 	minSize, _ := cmd.Flags().GetInt64("min-size")
 	maxSize, _ := cmd.Flags().GetInt64("max-size")
+	settingsFlag, _ := cmd.Flags().GetString("settings")
+	applyDefaultFilters, _ := cmd.Flags().GetBool("default-filters")
+	applyGitignore, _ := cmd.Flags().GetBool("gitignore")
 
 	// Validate configuration
 	if threads < 1 {
@@ -84,6 +91,13 @@ func runWFP(cmd *cobra.Command, args []string) error {
 	}
 	if err := validateSizeBounds(minSize, maxSize); err != nil {
 		return err
+	}
+
+	// Fingerprinting rules, not scanning ones: scanoss.json keeps the two
+	// operations apart, and this command only fingerprints.
+	wfpSettings, err := settings.Resolve(settingsFlag, targetPath)
+	if err != nil {
+		return fmt.Errorf("error loading settings: %w", err)
 	}
 
 	// Report WFP paths relative to the scanned root (a folder, or the file's
@@ -96,12 +110,15 @@ func runWFP(cmd *cobra.Command, args []string) error {
 		scanRoot = abs
 	}
 
-	// Collect files. The same defaults `scan` applies, plus the size bounds, so
-	// a WFP generated here matches what a scan of the same tree would upload.
-	collectOpts := filter.ScanOptions()
-	collectOpts.MinSize = minSize
-	collectOpts.MaxSize = maxSize
-	res, err := scanner.CollectFilesWithOptions(targetPath, collectOpts)
+	// Collect files with the same inputs `scan` uses, so a WFP generated here
+	// covers exactly the files a scan of the same tree would upload.
+	res, err := scanner.CollectFilesWithOptions(targetPath, filter.Options{
+		MinSize:   minSize,
+		MaxSize:   maxSize,
+		Defaults:  applyDefaultFilters,
+		GitIgnore: applyGitignore,
+		Settings:  wfpSettings.FingerprintFilter(),
+	})
 	if err != nil {
 		return fmt.Errorf("error collecting files: %w", err)
 	}

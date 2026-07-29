@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with the existing `WithHTTPClient` option. `pkg/api` gained `SetHTTPClient`.
 - **`--min-size`** on `scan` and `wfp` — skip files below a size in bytes.
 - **`--max-size` on `wfp`**.
+- **`--default-filters`, `--gitignore` and `--settings` on `wfp`** — it now collects files exactly
+  the way `scan` does, so the two no longer disagree on which files they cover. `scanoss.json` is
+  read for the **fingerprinting** operation (`skip.patterns.fingerprinting`), not the scanning one.
+- **`settings.FingerprintFilter()`** alongside `ScanFilter()`, for SDK callers that fingerprint.
 
 ### Changed
 - Files under 100 bytes are no longer skipped
