@@ -24,6 +24,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a configured user. The API key is never displayed: `config list` and `config get` render it as
   `********`, with no flag to reveal it, and `--verbose` logs which source won without the value.
 
+- **`--proxy` and `--ca-cert`** on every command that reaches the API. `--proxy <url>` overrides
+  `HTTP_PROXY`/`HTTPS_PROXY` for one run and requires an `https://` or `http://` scheme;
+  `--ca-cert <path>` trusts the certificates in a PEM file **in addition to** the system pool, so
+  an internal endpoint and the public API both keep verifying. Verification stays on, which makes
+  it the alternative to `--ignore-cert-errors` rather than a variation of it. Proxy
+  auto-configuration (PAC) is not supported.
+- **`scanoss.NewHTTPClient`** in the SDK builds an `*http.Client` from the same settings, for use
+  with the existing `WithHTTPClient` option. `pkg/api` gained `SetHTTPClient` so the C, Python and
+  Node bindings can be handed a configured client.
+
+### Fixed
+
+- `--ignore-cert-errors` no longer disables proxy support. The client it built came from a
+  hand-made `http.Transport`, whose nil `Proxy` bypassed `HTTP_PROXY`/`HTTPS_PROXY` entirely — so
+  anyone behind a proxy who used the flag to get past a certificate error had been silently going
+  direct. The transport is now cloned from `http.DefaultTransport`, which keeps Go's proxy
+  handling along with its timeouts and connection pooling. The same fix applies to the SDK's
+  `WithInsecureTLS` and to `pkg/api`.
+
 ### Changed
 
 - **BREAKING** — the raw inventory format now reports matched line ranges as structured objects
