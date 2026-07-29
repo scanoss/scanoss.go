@@ -35,9 +35,11 @@ package filter
 // (src/scanoss/file_filters.py) and cross-checked against SBOM-Workbench's
 // defaultBannedList. They always apply unless an SDK caller overrides them.
 
-// DefaultMinFileSize is the minimum file size (bytes) to scan. Files smaller than
-// this are skipped. Mirrors scanoss's historical 100-byte minimum.
-const DefaultMinFileSize int64 = 100
+// DefaultMinFileSize is the minimum file size (bytes) to scan. 0 means no
+// minimum: a file is collected however small it is, unless another rule skips
+// it. Raise it per run with --min-size, or per pattern with a scanoss.json
+// skip.sizes rule.
+const DefaultMinFileSize int64 = 0
 
 // DefaultMaxFileSize is the maximum file size (bytes) to scan. 0 means unlimited,
 // matching scanoss.py's default.

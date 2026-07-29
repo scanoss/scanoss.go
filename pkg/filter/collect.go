@@ -48,7 +48,7 @@ type Options struct {
 	SkipFiles      []string
 	SkipExtensions []string
 
-	MinSize int64 // minimum file size; 0 uses DefaultMinFileSize
+	MinSize int64 // minimum file size; 0 means no minimum (DefaultMinFileSize)
 	MaxSize int64 // maximum file size; 0 uses DefaultMaxFileSize (unlimited)
 
 	Defaults  bool // apply the built-in default skip lists

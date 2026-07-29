@@ -44,7 +44,8 @@ func TestDefaultSource(t *testing.T) {
 
 	// Simple (single-dot) extensions fold into one map-backed matcher; compound
 	// endings (e.g. ".min.js") stay as individual suffix matchers. Everything
-	// else is one matcher per list entry, plus a single size matcher.
+	// else is one matcher per list entry. The defaults set neither size bound, so
+	// there is no size matcher.
 	var compound int
 	for _, ext := range d.Exts {
 		lower := strings.ToLower(ext)
@@ -52,7 +53,7 @@ func TestDefaultSource(t *testing.T) {
 			compound++
 		}
 	}
-	want := len(d.Dirs) + len(d.DirExts) + len(d.Files) + len(d.Endings) + compound + 1 /*extset*/ + 1 /*size*/
+	want := len(d.Dirs) + len(d.DirExts) + len(d.Files) + len(d.Endings) + compound + 1 /*extset*/
 	if len(ms) != want {
 		t.Fatalf("DefaultSource count = %d, want %d", len(ms), want)
 	}
@@ -60,7 +61,7 @@ func TestDefaultSource(t *testing.T) {
 	keys := keySet(ms)
 	for _, k := range []string{
 		"dir:vendor", "dir:node_modules", "dirsuffix:.egg-info",
-		"name:makefile", "ending:readme", "size:100:0",
+		"name:makefile", "ending:readme",
 	} {
 		if !keys[k] {
 			t.Errorf("DefaultSource missing matcher %q", k)
@@ -75,6 +76,23 @@ func TestDefaultSource(t *testing.T) {
 	}
 	if !c.Match("app.min.js", aFile("app.min.js", 200)) {
 		t.Error("app.min.js should be skipped (compound suffix)")
+	}
+}
+
+// The built-in defaults impose no size bound: a scan that asks for neither builds
+// no size matcher at all, so no file is stat-compared for size.
+func TestStdDefaultsNoSizeBounds(t *testing.T) {
+	d := StdDefaults()
+	if d.MinSize != 0 {
+		t.Errorf("StdDefaults().MinSize = %d, want 0", d.MinSize)
+	}
+	if d.MaxSize != 0 {
+		t.Errorf("StdDefaults().MaxSize = %d, want 0", d.MaxSize)
+	}
+	for _, m := range DefaultSource(d) {
+		if strings.HasPrefix(m.Key(), "size:") {
+			t.Errorf("DefaultSource built a size matcher %q, want none", m.Key())
+		}
 	}
 }
 

@@ -132,7 +132,7 @@ func TestCollectDefaults(t *testing.T) {
 	writeFile(t, filepath.Join(root, "main.go"), 200)              // keep
 	writeFile(t, filepath.Join(root, "a.png"), 200)                // skip: ext
 	writeFile(t, filepath.Join(root, "b.md"), 200)                 // skip: ext
-	writeFile(t, filepath.Join(root, "small.go"), 50)              // skip: min size
+	writeFile(t, filepath.Join(root, "small.go"), 50)              // keep: no minimum by default
 	writeFile(t, filepath.Join(root, "README"), 200)               // skip: ending
 	writeFile(t, filepath.Join(root, "Makefile"), 200)             // skip: name
 	writeFile(t, filepath.Join(root, "node_modules", "x.js"), 200) // skip: dir
@@ -144,14 +144,44 @@ func TestCollectDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := baseNames(res.Files)
-	want := []string{"main.go"}
+	want := []string{"main.go", "small.go"}
 	if !equalStrings(got, want) {
 		t.Fatalf("kept files = %v, want %v", got, want)
 	}
-	// a.png, b.md, small.go, README, Makefile were visited and skipped (dir
-	// contents are pruned, not counted).
-	if res.SkippedCount != 5 {
-		t.Fatalf("SkippedCount = %d, want 5", res.SkippedCount)
+	// a.png, b.md, README, Makefile were visited and skipped (dir contents are
+	// pruned, not counted).
+	if res.SkippedCount != 4 {
+		t.Fatalf("SkippedCount = %d, want 4", res.SkippedCount)
+	}
+}
+
+// The default collection imposes no lower size bound; MinSize opts back into one.
+func TestCollectMinSize(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "tiny.go"), 40)
+	writeFile(t, filepath.Join(root, "big.go"), 200)
+
+	res, err := Collect(root, DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := baseNames(res.Files); !equalStrings(got, []string{"big.go", "tiny.go"}) {
+		t.Fatalf("default kept files = %v, want [big.go tiny.go]", got)
+	}
+	if res.SkippedCount != 0 {
+		t.Fatalf("default SkippedCount = %d, want 0", res.SkippedCount)
+	}
+
+	res, err = Collect(root, Options{Defaults: true, MinSize: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := baseNames(res.Files); !equalStrings(got, []string{"big.go"}) {
+		t.Fatalf("MinSize=100 kept files = %v, want [big.go]", got)
+	}
+	// The dropped file is reported, not silently discarded.
+	if res.SkippedCount != 1 {
+		t.Fatalf("MinSize=100 SkippedCount = %d, want 1", res.SkippedCount)
 	}
 }
 
