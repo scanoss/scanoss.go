@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`--default-filters=false` now really disables the default filters.** Files skipped only by
+  extension (`.png`, `.md`, …) were dropped anyway: the flag did switch them off during
+  collection, but the fingerprint layer kept its own copy of the extension list and discarded them
+  again afterwards — without counting them as filtered.
+- **`dependencies` honours `scanoss.json`.** `skip.patterns.dependencies` is part of the published
+  settings schema and did nothing: the command walked the tree itself and never read the file. It
+  also honours the shared skip lists now, and reports what it filtered.
+- **`scan --include deps` and `dependencies` no longer disagree.** The first inherited the scanning
+  profile when collecting manifests, so it skipped `examples/` while the standalone command did
+  not. Manifest collection is its own stage with its own profile, and both find the same set.
+
+### Changed
+- **SDK, breaking** — `pkg/filter` is now the only place that holds filtering rules, and filtering
+  happens once, during collection:
+  - `wfp.ShouldSkipFile` and its extension list are **removed**. `GenerateWFP` and
+    `GenerateFingerprint` no longer filter: a caller passing a list that did not come from
+    collection now gets every file fingerprinted. The documented path — `scanner.CollectFiles*`
+    first — is unaffected. **This is the only change that fails silently rather than at compile
+    time.**
+  - `filter.NewMatcher` is **removed**. It only ever answered for the entry, not the path, so a
+    caller outside a tree walk got half a filter and had to rebuild the other half. Filtering a
+    tree is this package's job (`filter.Collect`); filtering an archive being extracted is the
+    caller's. Compose the rules from the exported pieces —
+    `filter.Build(filter.DefaultSource(filter.StdDefaults()))`, plus `manifests.Is` for the
+    manifest exemption — and apply them with your own traversal.
+  - `filter.DefaultSkippedDirs` is **removed**, replaced by `CommonSkippedDirs`,
+    `ScanOnlySkippedDirs` and `DependencyOnlySkippedDirs`. With three lists, "default" named none
+    of them. `CommonSkippedDirs` is what a pre-filter can safely prune before it knows which
+    operation will consume the result.
+  - `filter.IngestOptions` is **removed**, replaced by `filter.DependencyOptions`. Two dependency
+    profiles were an artefact of two entry points.
+
+### Added
+- **`--all-hidden`** on `scan` and `wfp` — fingerprint dotfiles and dotted folders, which were
+  excluded with no way to opt in. `.git` stays excluded either way: on a working checkout it is
+  usually larger than the project and holds compressed objects nothing can match.
+- **`filter.HiddenSource` and `filter.Options.IncludeHidden`** — the hidden-entry rule is a source
+  like the others instead of a check buried in the walk, so a caller applying the rules itself can
+  apply this one too. It also closes a hole in the reported count: hidden *directories* were pruned
+  before the counter, so they were never included in "Filtered N files".
+- **`filter.FingerprintOptions` and `filter.DependencyOptions`** — one collection profile per
+  layer, so each states which rules it uses instead of restating what they are.
+- **`settings.DependencyFilter()`** alongside `ScanFilter` and `FingerprintFilter`.
+- **`--settings` on `dependencies`**, which had no way to point at a `scanoss.json`.
+
 ## [0.4.0] - 2026-07-29
 
 ### Added
