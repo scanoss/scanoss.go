@@ -188,6 +188,16 @@ func (symlinkMatcher) Match(rel string, info os.FileInfo) bool {
 
 func (symlinkMatcher) Key() string { return "symlink" }
 
+// hiddenMatcher skips entries whose name begins with a dot. It matches
+// directories too, so a walk can prune the whole subtree.
+type hiddenMatcher struct{}
+
+func (hiddenMatcher) Match(rel string, info os.FileInfo) bool {
+	return strings.HasPrefix(info.Name(), ".")
+}
+
+func (hiddenMatcher) Key() string { return "hidden" }
+
 // emptyFileMatcher skips zero-byte files. Unlike sizeMatcher it carries no
 // configuration: there is no byte count to compare against, only the absence of
 // content. Directories are never matched.

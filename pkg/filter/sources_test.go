@@ -227,8 +227,11 @@ func TestScanningDirSetUnchanged(t *testing.T) {
 	got := append([]string(nil), StdDefaults().Dirs...)
 	sort.Strings(got)
 
+	// .git joined the shared list when the hidden-entry rule became a source:
+	// with IncludeHidden it would otherwise be walked, and on a real checkout it
+	// is usually larger than the project itself.
 	want := []string{
-		"__pycache__", "__pypackages__", "_yardoc", "eggs", "example",
+		".git", "__pycache__", "__pypackages__", "_yardoc", "eggs", "example",
 		"examples", "htmlcov", "nbbuild", "nbdist", "nbproject",
 		"node_modules", "vendor", "venv", "wheels",
 	}
@@ -247,7 +250,7 @@ func TestDependencyDirSet(t *testing.T) {
 	got := append([]string(nil), DependencyDefaults().Dirs...)
 	sort.Strings(got)
 
-	want := []string{"__pycache__", "build", "dist", "node_modules", "target", "vendor"}
+	want := []string{".git", "__pycache__", "build", "dist", "node_modules", "target", "vendor"}
 	if len(got) != len(want) {
 		t.Fatalf("dependency dirs = %v, want %v", got, want)
 	}

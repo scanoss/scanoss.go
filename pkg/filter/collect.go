@@ -26,7 +26,6 @@ package filter
 import (
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/scanoss/scanoss.go/pkg/manifests"
 )
@@ -58,6 +57,13 @@ type Options struct {
 
 	Defaults  bool // apply the built-in default skip lists
 	GitIgnore bool // honor .gitignore
+
+	// IncludeHidden collects entries whose name begins with a dot. They are
+	// excluded by default: a scan wants the project's source, not its tooling.
+	// Note that .git stays excluded either way — it is in CommonSkippedDirs,
+	// because on a working checkout it is usually larger than the project and
+	// holds compressed objects nothing can match.
+	IncludeHidden bool
 
 	// Settings is the scanoss.json skip/folders rules, already resolved to a
 	// single operation. Nil when there is no scanoss.json.
@@ -170,13 +176,16 @@ func (o Options) defaults() Defaults {
 
 // Collect walks root once, returning the files to scan and a count of those
 // skipped. Rules are loaded from the enabled sources (defaults, scanoss.json,
-// .gitignore), deduplicated, and applied as a single composite. Hidden files and
-// directories (names beginning with ".") are always skipped, preserving prior
-// behavior, as are zero-byte files and symbolic links (see UnscannableSource).
+// .gitignore), deduplicated, and applied as a single composite — including the
+// hidden-entry rule, unless Options.IncludeHidden says otherwise. Zero-byte
+// files and symbolic links are always skipped (see UnscannableSource).
 // Symlinked directories are not followed. Returned paths are absolute.
 func Collect(root string, o Options) (*CollectResult, error) {
 	var sources [][]Matcher
 	sources = append(sources, UnscannableSource())
+	if !o.IncludeHidden {
+		sources = append(sources, HiddenSource())
+	}
 	if o.Defaults {
 		sources = append(sources, DefaultSource(o.defaults()))
 	}
@@ -211,19 +220,12 @@ func Collect(root string, o Options) (*CollectResult, error) {
 			if path == root {
 				return nil
 			}
-			if strings.HasPrefix(info.Name(), ".") {
-				return filepath.SkipDir
-			}
 			if skip.Match(rel, info) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
 
-		if strings.HasPrefix(info.Name(), ".") {
-			res.SkippedCount++
-			return nil
-		}
 		if skip.Match(rel, info) {
 			res.SkippedCount++
 			return nil

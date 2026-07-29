@@ -61,6 +61,9 @@ const DefaultMaxFileSize int64 = 0
 // scan and a dependency analysis. Pruning beyond this is irreversible: the files
 // never reach disk.
 var CommonSkippedDirs = []string{
+	// Excluded even with IncludeHidden: on a working checkout .git is usually
+	// larger than the project, and holds compressed objects nothing can match.
+	".git",
 	"__pycache__",
 	// SBOM-Workbench parity:
 	"node_modules",

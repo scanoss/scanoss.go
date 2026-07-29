@@ -118,6 +118,17 @@ func UnscannableSource() []Matcher {
 	return []Matcher{emptyFileMatcher{}, symlinkMatcher{}}
 }
 
+// HiddenSource skips entries whose name begins with a dot.
+//
+// Not part of UnscannableSource: a dotfile has perfectly good content, so this
+// is a policy choice about what belongs to a project, not a statement about the
+// entry. That is why it can be switched off (Options.IncludeHidden) and why it
+// is a source like any other rather than a check buried in the walk — a caller
+// that cannot walk a tree needs to apply it too.
+func HiddenSource() []Matcher {
+	return []Matcher{hiddenMatcher{}}
+}
+
 // SizeSource turns a [min, max] byte range into a matcher. It is a source of its
 // own — not part of DefaultSource — because the bounds come from the caller
 // (--min-size/--max-size), not from the built-in lists: switching the defaults

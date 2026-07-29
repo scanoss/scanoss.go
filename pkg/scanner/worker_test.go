@@ -59,9 +59,10 @@ func TestGenerateWFPKeepsSmallFiles(t *testing.T) {
 	}
 }
 
-// Hidden files stay excluded — that check has no configurable counterpart and is
-// deliberately kept in the worker.
-func TestGenerateWFPSkipsHiddenFiles(t *testing.T) {
+// Hidden files are decided during collection, not here: the worker applies no
+// policy of its own. Handing it a dotfile fingerprints it, which is what makes
+// --all-hidden possible at all.
+func TestGenerateWFPDoesNotDecideOnHiddenFiles(t *testing.T) {
 	root := t.TempDir()
 	hidden := filepath.Join(root, ".secret.go")
 	visible := filepath.Join(root, "main.go")
@@ -72,8 +73,8 @@ func TestGenerateWFPSkipsHiddenFiles(t *testing.T) {
 	if len(errs) > 0 {
 		t.Fatalf("GenerateWFP errors = %v", errs)
 	}
-	if strings.Contains(string(wfp), ".secret.go") {
-		t.Errorf("WFP should not contain the hidden file; got:\n%s", wfp)
+	if !strings.Contains(string(wfp), ".secret.go") {
+		t.Errorf("WFP should contain the hidden file when handed in directly; got:\n%s", wfp)
 	}
 	if !strings.Contains(string(wfp), "main.go") {
 		t.Errorf("WFP missing main.go; got:\n%s", wfp)
