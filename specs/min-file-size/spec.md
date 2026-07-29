@@ -85,6 +85,15 @@ noise rather than signal.
   meaning "no minimum" rather than "use the built-in 100".
 - **FR-6** The count reported by `OnCollect` ("Filtered N files") continues to
   include files dropped by the size bound.
+- **FR-8** The size bounds keep a built-in default *and* an override, and the two
+  are separate concerns:
+  - the default is `DefaultMinFileSize`/`DefaultMaxFileSize`, carried by
+    `DefaultOptions`/`ScanOptions`/`IngestOptions` so an SDK caller that starts
+    from a constructor gets a documented value, and by the CLI flag defaults so
+    there is one source of truth rather than a repeated literal;
+  - the override is `Options.MinSize`/`MaxSize` (the `--min-size`/`--max-size`
+    flags), and it is applied as its own source, so `--default-filters=false`
+    does not discard it.
 - **FR-7** `wfp` collects files exactly the way `scan` does: it accepts the same
   `--default-filters`, `--gitignore` and `--settings` flags, and honours
   `scanoss.json`. A command whose purpose is to show what would be fingerprinted

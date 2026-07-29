@@ -79,7 +79,49 @@ silently by the worker, with no filtered count. That is worse than today.
       flags — that is what proves the floor is gone from both enforcement points.
       `make check` and `go test -race ./...` clean.
 
-## Phase 4 — Close the `wfp` gap
+## Phase 4 — Decouple the bounds from `--default-filters`
+
+Runs **before T006**, so the docs never describe a limitation that is about to
+disappear.
+
+- [ ] **T010** `pkg/filter`: give the size bounds their own source instead of
+      housing them in `Defaults`.
+
+      Today `Options.MinSize`/`MaxSize` are folded into the defaults struct by
+      `o.defaults()` (`collect.go:150-155`), and that struct is only consulted
+      under `if o.Defaults` — so `--default-filters=false` silently discards both
+      bounds. Verified: `scan --min-size 100` reports `Filtered 1 files`, while
+      `scan --min-size 100 --default-filters=false` filters nothing.
+
+      The justification died with T001. `DefaultMinFileSize` and
+      `DefaultMaxFileSize` are now both 0, so `StdDefaults()` contributes no size
+      bound at all; a size matcher exists only because a user passed a flag, and
+      `Defaults` is merely a pass-through for that input.
+
+      Keep a default **and** an override — they are separate concerns, and the
+      bug was conflating them:
+      - Remove `MinSize`/`MaxSize` from `Defaults`, `StdDefaults` and
+        `o.defaults()`; drop the size branch from `DefaultSource`.
+      - Add `SizeSource(min, max int64) []Matcher`, a sibling of `DefaultSource` /
+        `SettingsSource` / `GitIgnoreSource`, and append it in **both** `Collect`
+        and `NewMatcher` (`collect.go:120-128`, the streaming-extraction path) —
+        otherwise the two entry points disagree.
+      - Carry the default in `DefaultOptions`/`ScanOptions`/`IngestOptions`
+        (`MinSize: DefaultMinFileSize`, `MaxSize: DefaultMaxFileSize`) so an SDK
+        caller starting from a constructor gets a documented value instead of an
+        implicit zero — without this the two constants have no remaining use.
+      - Have the CLI flag defaults read the same constants rather than repeating
+        `0`, so there is one source of truth.
+
+      Tests: `Options{MinSize: 100, Defaults: false}` drops a 40-byte file (the
+      case that fails today); the bounds still apply with `Defaults: true`;
+      `NewMatcher` honours them with `Defaults` both on and off; each constructor
+      carries `DefaultMinFileSize`/`DefaultMaxFileSize`.
+      `CHANGELOG.md`: a **Fixed** line for the flags, and a **Changed** line for
+      the removed `filter.Defaults` fields — `pkg/filter` is public, so this
+      breaks any external caller that set them.
+
+## Phase 5 — Close the `wfp` gap
 
 T005 leaves `wfp` half-configurable: it honours the two size bounds but still
 cannot turn off the built-in filters or `.gitignore`, and ignores `scanoss.json`
