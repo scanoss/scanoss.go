@@ -56,8 +56,8 @@ func init() {
 	// Optional flags
 	wfpCmd.Flags().IntP("threads", "t", config.DefaultThreads, "Number of parallel threads")
 	wfpCmd.Flags().StringP("output", "o", "", "Output file (empty = stdout)")
-	wfpCmd.Flags().Int64("min-size", 0, "Minimum file size in bytes to scan (0 = no minimum)")
-	wfpCmd.Flags().Int64("max-size", 0, "Maximum file size in bytes to scan (0 = unlimited)")
+	wfpCmd.Flags().Int64("min-size", filter.DefaultMinFileSize, "Minimum file size in bytes to scan")
+	wfpCmd.Flags().Int64("max-size", filter.DefaultMaxFileSize, "Maximum file size in bytes to scan (0 = unlimited)")
 }
 
 func runWFP(cmd *cobra.Command, args []string) error {

@@ -330,8 +330,8 @@ func init() {
 	// Fingerprinting flags (apply to `scan <path>` only).
 	scanCmd.Flags().IntP("threads", "t", config.DefaultThreads, "Number of parallel fingerprint workers")
 	scanCmd.Flags().String("save-wfp", "", "Save WFP fingerprints to file before sending to API")
-	scanCmd.Flags().Int64("min-size", 0, "Minimum file size in bytes to scan (0 = no minimum)")
-	scanCmd.Flags().Int64("max-size", 0, "Maximum file size in bytes to scan (0 = unlimited)")
+	scanCmd.Flags().Int64("min-size", filter.DefaultMinFileSize, "Minimum file size in bytes to scan")
+	scanCmd.Flags().Int64("max-size", filter.DefaultMaxFileSize, "Maximum file size in bytes to scan (0 = unlimited)")
 	scanCmd.Flags().Bool("default-filters", true, "Apply the built-in default file filters")
 	scanCmd.Flags().Bool("gitignore", true, "Honor .gitignore files when collecting files")
 }

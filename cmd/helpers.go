@@ -54,7 +54,7 @@ func createCancellableContext() (context.Context, context.CancelFunc) {
 // always valid
 func validateSizeBounds(min, max int64) error {
 	if min < 0 {
-		return fmt.Errorf("--min-size must not be negative (got %d); use 0 for no minimum", min)
+		return fmt.Errorf("--min-size must not be negative (got %d); the default 0 admits every file", min)
 	}
 	if max < 0 {
 		return fmt.Errorf("--max-size must not be negative (got %d); use 0 for unlimited", max)

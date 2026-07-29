@@ -49,8 +49,13 @@ func TestScanSizeFlags(t *testing.T) {
 			t.Errorf("scan --%s default = %q, want 0", name, f.DefValue)
 		}
 	}
-	if u := sc.Flags().Lookup("min-size").Usage; !strings.Contains(u, "no minimum") {
-		t.Errorf("--min-size usage %q should say what 0 means", u)
+	// --min-size is literal (a minimum of 0 bytes admits everything), so its help
+	// must not imply 0 is a sentinel the way --max-size 0 genuinely is.
+	if u := sc.Flags().Lookup("min-size").Usage; strings.Contains(u, "0 =") {
+		t.Errorf("--min-size usage %q should not present 0 as a sentinel", u)
+	}
+	if u := sc.Flags().Lookup("max-size").Usage; !strings.Contains(u, "unlimited") {
+		t.Errorf("--max-size usage %q should say that 0 means unlimited", u)
 	}
 }
 
