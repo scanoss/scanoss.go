@@ -7,52 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-- **`--default-filters=false` now really disables the default filters.** Files skipped only by
-  extension (`.png`, `.md`, …) were dropped anyway: the flag did switch them off during
-  collection, but the fingerprint layer kept its own copy of the extension list and discarded them
-  again afterwards — without counting them as filtered.
-- **`dependencies` honours `scanoss.json`.** `skip.patterns.dependencies` is part of the published
-  settings schema and did nothing: the command walked the tree itself and never read the file. It
-  also honours the shared skip lists now, and reports what it filtered.
-- **`scan --include deps` and `dependencies` no longer disagree.** The first inherited the scanning
-  profile when collecting manifests, so it skipped `examples/` while the standalone command did
-  not. Manifest collection is its own stage with its own profile, and both find the same set.
-
-### Changed
-- **SDK, breaking** — `pkg/filter` is now the only place that holds filtering rules, and filtering
-  happens once, during collection:
-  - `wfp.ShouldSkipFile` and its extension list are **removed**. `GenerateWFP` and
-    `GenerateFingerprint` no longer filter: a caller passing a list that did not come from
-    collection now gets every file fingerprinted. The documented path — `scanner.CollectFiles*`
-    first — is unaffected. **This is the only change that fails silently rather than at compile
-    time.**
-  - `filter.NewMatcher` is **removed**. It only ever answered for the entry, not the path, so a
-    caller outside a tree walk got half a filter and had to rebuild the other half. Filtering a
-    tree is this package's job (`filter.Collect`); filtering an archive being extracted is the
-    caller's. Compose the rules from the exported pieces —
-    `filter.Build(filter.DefaultSource(filter.StdDefaults()))`, plus `manifests.Is` for the
-    manifest exemption — and apply them with your own traversal.
-  - `filter.DefaultSkippedDirs` is **removed**, replaced by `CommonSkippedDirs`,
-    `ScanOnlySkippedDirs` and `DependencyOnlySkippedDirs`. With three lists, "default" named none
-    of them. `CommonSkippedDirs` is what a pre-filter can safely prune before it knows which
-    operation will consume the result.
-  - `filter.IngestOptions` is **removed**, replaced by `filter.DependencyOptions`. Two dependency
-    profiles were an artefact of two entry points.
-
-### Added
-- **`--all-hidden`** on `scan` and `wfp` — fingerprint dotfiles and dotted folders, which were
-  excluded with no way to opt in. `.git` stays excluded either way: on a working checkout it is
-  usually larger than the project and holds compressed objects nothing can match.
-- **`filter.HiddenSource` and `filter.Options.IncludeHidden`** — the hidden-entry rule is a source
-  like the others instead of a check buried in the walk, so a caller applying the rules itself can
-  apply this one too. It also closes a hole in the reported count: hidden *directories* were pruned
-  before the counter, so they were never included in "Filtered N files".
-- **`filter.FingerprintOptions` and `filter.DependencyOptions`** — one collection profile per
-  layer, so each states which rules it uses instead of restating what they are.
-- **`settings.DependencyFilter()`** alongside `ScanFilter` and `FingerprintFilter`.
-- **`--settings` on `dependencies`**, which had no way to point at a `scanoss.json`.
-
 ## [0.4.0] - 2026-07-29
 
 ### Added
@@ -73,24 +27,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the way `scan` does, so the two no longer disagree on which files they cover. `scanoss.json` is
   read for the **fingerprinting** operation (`skip.patterns.fingerprinting`), not the scanning one.
 - **`settings.FingerprintFilter()`** alongside `ScanFilter()`, for SDK callers that fingerprint.
+- **`--all-hidden`** on `scan` and `wfp` — fingerprint dotfiles and dotted folders. `.git` stays
+  excluded either way.
+- **`--settings` on `dependencies`**, which had no way to point at a `scanoss.json`.
+- **`filter.FingerprintOptions`, `filter.DependencyOptions`, `filter.HiddenSource`** and
+  **`settings.DependencyFilter()`** — one collection profile per layer, and the hidden-entry rule
+  as a source like the others.
 
 ### Changed
 - Files under 100 bytes are no longer skipped
-- **SDK, breaking** — `filter.Defaults` no longer carries `MinSize`/`MaxSize`, and neither does
-  `filter.StdDefaults()`. Size is caller input, not a built-in skip list: set
-  `filter.Options.MinSize`/`MaxSize`, or build the matcher directly with the new
-  `filter.SizeSource(min, max)`. `filter.DefaultOptions`/`ScanOptions`/`IngestOptions` carry the
-  built-in bounds, so callers that start from a constructor need no change.
+- **`pkg/filter` is the single source of filtering rules**, applied once during collection. The
+  fingerprint layer no longer filters, so `GenerateWFP` and `GenerateFingerprint` fingerprint
+  whatever they are given — a caller passing a list that did not come from collection now gets
+  every file. This is the only change here that fails silently rather than at compile time; the
+  documented path (`scanner.CollectFiles*` first) is unaffected.
+- **SDK, breaking** — removed: `wfp.ShouldSkipFile`, `filter.NewMatcher`,
+  `filter.DefaultSkippedDirs`, `filter.IngestOptions`, and the `MinSize`/`MaxSize` fields of
+  `filter.Defaults`. Replacements: compose rules with
+  `filter.Build(filter.DefaultSource(filter.StdDefaults()))` plus `manifests.Is`; use
+  `filter.CommonSkippedDirs`/`ScanOnlySkippedDirs`/`DependencyOnlySkippedDirs`,
+  `filter.DependencyOptions`, and `filter.Options.MinSize`/`MaxSize` or `filter.SizeSource`.
+  Callers that start from `DefaultOptions`/`ScanOptions` need no change.
 
 ### Fixed
 - Zero-byte files and symbolic links are no longer fingerprinted. An empty file produced a WFP
   entry with a zero hash and no lines, and a link reported the same content twice — its target is
-  collected on its own. Neither is configurable: they are not policy, and both match what the
-  Python and JS clients already do.
+  collected on its own. Neither is configurable: they state a fact about the entry rather than a
+  policy about the scan.
 - `--max-size` (and the new `--min-size`) were silently ignored when combined with
   `--default-filters=false`: the bounds were applied from inside the built-in default filters, so
-  switching those off discarded them. They are now applied independently, in both the directory
-  walk and the streaming-extraction path.
+  switching those off discarded them. They are now applied independently.
+- `--default-filters=false` now really disables them. Files skipped only by extension were dropped
+  anyway, because the fingerprint layer kept its own copy of the extension list and re-applied it
+  after collection — without counting them as filtered.
+- `dependencies` honours `scanoss.json`. `skip.patterns.dependencies` is part of the published
+  schema and did nothing: the command walked the tree itself and never read the file. It now uses
+  the shared filter and reports what it skipped.
+- `scan --include deps` and `dependencies` no longer disagree: the first inherited the scanning
+  profile when collecting manifests, so it skipped `examples/` while the other did not.
+- Hidden *directories* were pruned before the filtered counter ran, so they never appeared in
+  "Filtered N files" while hidden files did.
+- `results` emitted the API response verbatim instead of the inventory `scan` produces, so a
+  resumed scan could not be rendered or converted (`sbom results.json --format cyclonedx` failed).
+  It now returns the same document and accepts `--format` and `--include`.
+- The raw format emitted `"components": null` when a scan matched nothing, instead of an empty
+  list. CycloneDX and SPDX were already correct.
+- The `libscanoss` examples pointed at an endpoint this CLI does not support, and passed a full
+  URL where the API expects a base one — so the path was duplicated. They now use
+  `https://api.scanoss.com`.
 
 
 ## [0.3.0] - 2026-07-28
