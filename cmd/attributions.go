@@ -35,8 +35,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/scanoss/scanoss.go/internal/cliconfig"
 	"github.com/spf13/cobra"
+
+	"github.com/scanoss/scanoss.go/internal/cliconfig"
+	"github.com/scanoss/scanoss.go/pkg/scanoss"
 )
 
 var attributionsCmd = &cobra.Command{
@@ -111,6 +113,10 @@ func runAttributions(cmd *cobra.Command, args []string) error {
 	if ignoreCertErrors {
 		slog.Warn("ignoring TLS certificate errors (insecure)")
 	}
+	httpClient, err := scanoss.NewHTTPClient(scanoss.HTTPClientOptions{Insecure: ignoreCertErrors})
+	if err != nil {
+		return err
+	}
 
 	var sbomFilePath string
 	var tempFile bool
@@ -135,7 +141,7 @@ func runAttributions(cmd *cobra.Command, args []string) error {
 	}
 
 	// Send SBOM file to API
-	attributionText, err := sendSBOMForAttributions(api.URL, api.Key, sbomFilePath, ignoreCertErrors)
+	attributionText, err := sendSBOMForAttributions(httpClient, api.URL, api.Key, sbomFilePath)
 	if err != nil {
 		if tempFile {
 			// Clean up temp file before returning error
@@ -182,8 +188,11 @@ func createTempSBOMFromPURL(purl string) (string, error) {
 	return tempFile.Name(), nil
 }
 
-// sendSBOMForAttributions sends the SBOM file to the API and returns attribution text
-func sendSBOMForAttributions(apiURL, apiKey, sbomFilePath string, insecure bool) (string, error) {
+// sendSBOMForAttributions sends the SBOM file to the API and returns attribution
+// text. It takes the client rather than building one: this is the only command
+// that still speaks raw HTTP, and its transport has to be configured the same way
+// as every other command's.
+func sendSBOMForAttributions(client *http.Client, apiURL, apiKey, sbomFilePath string) (string, error) {
 	// Clean up URL to avoid double slashes
 	apiURL = strings.TrimSuffix(apiURL, "/")
 	endpoint := apiURL + "/sbom/attribution"
@@ -227,7 +236,6 @@ func sendSBOMForAttributions(apiURL, apiKey, sbomFilePath string, insecure bool)
 	}
 
 	// Make request
-	client := newHTTPClient(insecure)
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("error making request: %w", err)
