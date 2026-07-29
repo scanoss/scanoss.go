@@ -55,7 +55,7 @@
 Ordering matters: T005 removes the duplicate, T006 gives the one caller that
 relied on it its own filter. Landing T005 without T006 changes `libscanoss`.
 
-- [ ] **T005** Delete `filteredExt` and `ShouldSkipFile` from
+- [x] **T005** Delete `filteredExt` and `ShouldSkipFile` from
       `pkg/fingerprint/wfp`, and the call at `pkg/scanner/worker.go:90`. Both
       call sites must go: leaving the one inside `GenerateFingerprint` keeps the
       worker filtering by proxy.
@@ -64,7 +64,7 @@ relied on it its own filter. Landing T005 without T006 changes `libscanoss`.
       (the CLI paths collect the same set, because the collection already
       excluded those files).
 
-- [ ] **T006** `libscanoss/core/libscanoss.go`: apply
+- [x] **T006** `libscanoss/core/libscanoss.go`: apply
       the rules it composes itself before fingerprinting, in both
       `GenerateWFP` and `GenerateWFPJSON`. It is the only caller that reaches
       `GenerateFingerprint` without collecting, so this preserves its behaviour.
@@ -72,7 +72,7 @@ relied on it its own filter. Landing T005 without T006 changes `libscanoss`.
 
 ## Phase 3 — Every layer states its profile
 
-- [ ] **T007** `cmd/dependencies.go`: replace `collectFilesRecursively` (38
+- [x] **T007** `cmd/dependencies.go`: replace `collectFilesRecursively` (38
       lines of `filepath.Walk` with an embedded directory list) with
       `filter.Collect` using `DependencyOptions()` and
       `settings.Resolve` + `DependencyFilter()`.
@@ -83,7 +83,7 @@ relied on it its own filter. Landing T005 without T006 changes `libscanoss`.
       `skip.patterns.dependencies` rule is honoured; `.gitignore` is **not**
       applied. (depends on T003, T004)
 
-- [ ] **T008 [P]** `cmd/scan.go` and `cmd/wfp.go`: build their options from
+- [x] **T008 [P]** `cmd/scan.go` and `cmd/wfp.go`: build their options from
       `ScanOptions()` / `FingerprintOptions()`, overriding only what
       comes from flags, instead of assembling the literal by hand.
       Tests: both still collect T001's baseline set. (depends on T003)
@@ -116,7 +116,7 @@ one uses the profile of its **stage** rather than the profile of the command.
 
 ## Phase 4 — Docs & verification
 
-- [ ] **T009 [P]** `CHANGELOG.md`: **Fixed** — `--default-filters=false` now
+- [x] **T009 [P]** `CHANGELOG.md`: **Fixed** — `--default-filters=false` now
       restores extension-skipped files, and the filtered count includes what the
       lower layers used to drop silently; `dependencies` now honours
       `scanoss.json`. **Changed, SDK** — `GenerateWFP`/`GenerateFingerprint` no
@@ -125,7 +125,7 @@ one uses the profile of its **stage** rather than the profile of the command.
       `filter.NewMatcher`. This is the only silent change in the release and must
       read as such.
 
-- [ ] **T010** Verification: T001 passes unchanged for scanning and
+- [x] **T010** Verification: T001 passes unchanged for scanning and
       fingerprinting; the dependency baseline matches except for the two
       deliberate additions; `--default-filters=false` keeps `a.png`;
       `grep -rn "ShouldSkipFile\|filteredExt"` returns nothing outside the
@@ -155,6 +155,33 @@ right for everyone.
       Tests: the characterisation test composes the same way an external
       consumer would, which is also how it verifies the exported pieces are
       sufficient — if something is missing, that test cannot be written.
+
+## Phase 6 — The last duplicated rule
+
+Found while sizing an `--all-hidden` flag: the hidden-entry check was written in
+four places — twice inline in `Collect`, once in `pkg/scanner/worker.go`, and
+again in earnie's extractor. The same shape as the extension list, in the line
+next to the one this SDD had already cleaned.
+
+- [x] **T013** `pkg/filter`: make it a source (`HiddenSource`, `hiddenMatcher`)
+      with `Options.IncludeHidden` to switch it off, drop the two inline checks
+      in `Collect` and the one in the worker, and add `--all-hidden` to `scan`
+      and `wfp`.
+
+      `.git` moves to `CommonSkippedDirs`: with the rule switchable it would
+      otherwise be walked, and on a working checkout it is usually larger than
+      the project and holds compressed objects nothing can match. This is a
+      deliberate widening of the shared list, so the two directory-set tests
+      were updated with the reason.
+
+      It also closes a hole in the reported count: hidden *directories* were
+      pruned before the counter ran, so they never appeared in "Filtered N
+      files" while hidden files did.
+
+      Tests: the scanning and dependency sets, updated for `.git`; the worker
+      fingerprints a dotfile handed to it directly (the policy moved out);
+      end-to-end, `--all-hidden` collects `.env` and `.config/tool.go` but never
+      `.git`.
 
 ## Follow-ups (not this change)
 - `dist`/`build`/`target` are preserved as-is in `DependencyOnlySkippedDirs`.
