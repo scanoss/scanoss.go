@@ -29,14 +29,15 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 
 	"github.com/scanoss/scanoss.go/internal/cliconfig"
 	"github.com/scanoss/scanoss.go/pkg/dependencies"
 	"github.com/scanoss/scanoss.go/pkg/dependencies/parsers"
+	"github.com/scanoss/scanoss.go/pkg/filter"
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
+	"github.com/scanoss/scanoss.go/pkg/settings"
 )
 
 var dependenciesCmd = &cobra.Command{
@@ -93,6 +94,7 @@ func init() {
 
 	// Local extraction mode
 	dependenciesCmd.Flags().Bool("extract-local", false, "Extract local dependencies from manifest files")
+	dependenciesCmd.Flags().String("settings", "", "Path to settings file (scanoss.json/settings.json)")
 
 	// API mode flags
 	dependenciesCmd.Flags().String("purl", "", "Package URL (purl) of the component (required for API mode)")
@@ -111,6 +113,7 @@ func init() {
 
 func runDependencies(cmd *cobra.Command, args []string) error {
 	extractLocal, _ := cmd.Flags().GetBool("extract-local")
+	settingsFlag, _ := cmd.Flags().GetString("settings")
 	outputFile, _ := cmd.Flags().GetString("output")
 	purl, _ := cmd.Flags().GetString("purl")
 	transient, _ := cmd.Flags().GetBool("transient")
@@ -137,7 +140,7 @@ func runDependencies(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
 			return fmt.Errorf("path argument is required with --extract-local")
 		}
-		return runLocalExtraction(args[0], outputFile)
+		return runLocalExtraction(args[0], outputFile, settingsFlag)
 	}
 
 	// Mode 2: API query with specific purl. --requirement is optional (the API
@@ -168,11 +171,11 @@ func runDependencies(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("path argument is required (use --purl for API-only mode or --extract-local for local-only mode)")
 	}
 
-	return runScanMode(httpClient, args[0], outputFile, apiURL, apiKey, transient, depth, limit)
+	return runScanMode(httpClient, args[0], outputFile, apiURL, apiKey, settingsFlag, transient, depth, limit)
 }
 
 // runLocalExtraction extracts dependencies from local manifest files
-func runLocalExtraction(targetPath, outputFile string) error {
+func runLocalExtraction(targetPath, outputFile, settingsFlag string) error {
 	// Check if path exists
 	if _, err := os.Stat(targetPath); os.IsNotExist(err) {
 		return fmt.Errorf("path does not exist: %s", targetPath)
@@ -183,13 +186,16 @@ func runLocalExtraction(targetPath, outputFile string) error {
 
 	infof("Scanning for dependency files in %s", targetPath)
 
-	// Collect all files recursively
-	allFiles, err := collectFilesRecursively(targetPath)
+	// Collect the candidate files
+	allFiles, skipped, err := collectDependencyFiles(targetPath, settingsFlag)
 	if err != nil {
 		return fmt.Errorf("failed to collect files: %w", err)
 	}
 
 	infof("Total files found: %d", len(allFiles))
+	if skipped > 0 {
+		infof("Filtered %d files", skipped)
+	}
 
 	// Filter only dependency files
 	depFiles := parser.FilterFiles(allFiles)
@@ -250,7 +256,7 @@ func runLocalExtraction(targetPath, outputFile string) error {
 }
 
 // runScanMode extracts local dependencies and queries the SCANOSS API
-func runScanMode(httpClient *http.Client, targetPath, outputFile, apiURL, apiKey string, transient bool, depth, limit int) error {
+func runScanMode(httpClient *http.Client, targetPath, outputFile, apiURL, apiKey, settingsFlag string, transient bool, depth, limit int) error {
 	// Check if path exists
 	if _, err := os.Stat(targetPath); os.IsNotExist(err) {
 		return fmt.Errorf("path does not exist: %s", targetPath)
@@ -261,13 +267,16 @@ func runScanMode(httpClient *http.Client, targetPath, outputFile, apiURL, apiKey
 
 	infof("Scanning for dependency files in %s", targetPath)
 
-	// Collect all files recursively
-	allFiles, err := collectFilesRecursively(targetPath)
+	// Collect the candidate files
+	allFiles, skipped, err := collectDependencyFiles(targetPath, settingsFlag)
 	if err != nil {
 		return fmt.Errorf("failed to collect files: %w", err)
 	}
 
 	infof("Total files found: %d", len(allFiles))
+	if skipped > 0 {
+		infof("Filtered %d files", skipped)
+	}
 
 	// Filter only dependency files
 	depFiles := parser.FilterFiles(allFiles)
@@ -340,44 +349,27 @@ func runScanMode(httpClient *http.Client, targetPath, outputFile, apiURL, apiKey
 	return writeOutput(response, outputFile)
 }
 
-// collectFilesRecursively walks through directory and collects all file paths
-func collectFilesRecursively(root string) ([]string, error) {
-	var files []string
+// collectDependencyFiles collects the files a dependency scan may parse, using
+// the shared filter with the dependency profile: the same rules the rest of the
+// CLI applies, and the same ones `scan --include deps` uses for this stage.
+//
+// It replaces a hand-written walk that carried its own directory list and read
+// neither scanoss.json nor the shared defaults. The manifests survive the
+// default extension list (.json, .mod, .xml, …) through
+// PreserveDependencyManifests, so what the parser receives is unchanged.
+func collectDependencyFiles(root, settingsFlag string) ([]string, int, error) {
+	depSettings, err := settings.Resolve(settingsFlag, root)
+	if err != nil {
+		return nil, 0, fmt.Errorf("error loading settings: %w", err)
+	}
+	opts := filter.DependencyOptions()
+	opts.Settings = depSettings.DependencyFilter()
 
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		// Don't skip the root directory itself
-		if path != root {
-			// Skip hidden directories and files
-			if info.IsDir() && len(info.Name()) > 0 && info.Name()[0] == '.' {
-				return filepath.SkipDir
-			}
-
-			// Skip hidden files
-			if !info.IsDir() && len(info.Name()) > 0 && info.Name()[0] == '.' {
-				return nil
-			}
-		}
-
-		// Skip directories like node_modules, vendor, etc.
-		if info.IsDir() {
-			switch info.Name() {
-			case "node_modules", "vendor", ".git", ".svn", "dist", "build", "target", "__pycache__":
-				return filepath.SkipDir
-			}
-		}
-
-		if !info.IsDir() {
-			files = append(files, path)
-		}
-
-		return nil
-	})
-
-	return files, err
+	res, err := filter.Collect(root, opts)
+	if err != nil {
+		return nil, 0, err
+	}
+	return res.Files, res.SkippedCount, nil
 }
 
 // outputJSON marshals data to JSON and writes to file or stdout

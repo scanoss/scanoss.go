@@ -42,6 +42,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/scanoss/scanoss.go/pkg/dependencies"
 	"github.com/scanoss/scanoss.go/pkg/filter"
 	"github.com/scanoss/scanoss.go/pkg/scanner"
 	"github.com/scanoss/scanoss.go/pkg/settings"
@@ -165,30 +166,72 @@ func TestBaselineScanCollectionNoDefaults(t *testing.T) {
 	})
 }
 
-// What `dependencies` collects today, through its own filepath.Walk.
+// What `dependencies` collects, now through the shared filter.
+//
+// This expectation was updated by T007 — the one task allowed to change it.
+// The candidate list is smaller because the default extension, name and ending
+// lists now apply: Makefile, README, a.png and scanoss.json are gone. None of
+// them was ever a manifest, so the parser's output is unchanged; only the
+// candidate set it is handed shrank.
+//
+// What did NOT change is the part that matters: every manifest is still here,
+// including the ones behind skipped extensions (go.mod, pom.xml) and the one
+// under examples/, which dependency collection deliberately does not prune.
+// ignored/gen.go is still present too: .gitignore does not decide what is a
+// dependency.
 func TestBaselineDependencyCollection(t *testing.T) {
 	root := baselineTree(t)
-	files, err := collectFilesRecursively(root)
+	files, _, err := collectDependencyFiles(root, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	// No extension or name filtering at all: it takes everything outside its
-	// embedded directory list and lets the parser decide. .gitignore and
-	// scanoss.json are not consulted.
 	assertSet(t, "dependency collection", relNames(t, root, files), []string{
 		"Gemfile",
-		"Makefile",
-		"README",
-		"a.png",
 		"examples/go.mod",
 		"examples/main.go",
 		"go.mod",
 		"ignored/gen.go",
 		"main.go",
 		"pom.xml",
-		"scanoss.json",
 		"venv/x.go",
 	})
+}
+
+// The parser's output is what users see, and it must be identical to what the
+// old walk produced. Asserting on the manifests rather than on the candidate
+// list is what proves T007 changed the route and not the result.
+func TestDependencyManifestsUnchanged(t *testing.T) {
+	root := baselineTree(t)
+	files, _, err := collectDependencyFiles(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := relNames(t, root, dependencies.NewDependencyParser().FilterFiles(files))
+	assertSet(t, "parsed manifests", got, []string{
+		"Gemfile",
+		"examples/go.mod",
+		"go.mod",
+		"pom.xml",
+	})
+}
+
+// scanoss.json's dependencies section now takes effect. It is part of the
+// published schema and did nothing before.
+func TestDependencySkipPatternsHonoured(t *testing.T) {
+	root := baselineTree(t)
+	cfg := `{"settings":{"skip":{"patterns":{"dependencies":["examples/**"]}}}}`
+	if err := os.WriteFile(filepath.Join(root, "scanoss.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	files, _, err := collectDependencyFiles(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range relNames(t, root, files) {
+		if strings.HasPrefix(f, "examples/") {
+			t.Errorf("skip.patterns.dependencies should have excluded %s", f)
+		}
+	}
 }
 
 // What the extraction pre-filter keeps today (the shape earnie relies on).
