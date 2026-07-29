@@ -188,6 +188,31 @@ func (symlinkMatcher) Match(rel string, info os.FileInfo) bool {
 
 func (symlinkMatcher) Key() string { return "symlink" }
 
+// vcsMatcher skips version-control metadata directories and everything under
+// them. It is not part of the default lists nor of the hidden rule: both can be
+// switched off, and this must not be. A .git directory holds compressed objects
+// nothing can match, is often larger than the project, and .git/config can carry
+// credentials in remote URLs — uploading it would leak them.
+type vcsMatcher struct{}
+
+var vcsDirs = map[string]bool{".git": true, ".svn": true, ".hg": true, ".bzr": true}
+
+func (vcsMatcher) Match(rel string, info os.FileInfo) bool {
+	if info.IsDir() && vcsDirs[info.Name()] {
+		return true
+	}
+	// Also catch paths below one, for callers that evaluate entries without a
+	// walk to prune for them.
+	for _, seg := range strings.Split(filepath.ToSlash(rel), "/") {
+		if vcsDirs[seg] {
+			return true
+		}
+	}
+	return false
+}
+
+func (vcsMatcher) Key() string { return "vcs" }
+
 // hiddenMatcher skips entries whose name begins with a dot. It matches
 // directories too, so a walk can prune the whole subtree.
 type hiddenMatcher struct{}

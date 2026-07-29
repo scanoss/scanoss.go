@@ -101,9 +101,11 @@ func DefaultSource(d Defaults) []Matcher {
 //   - zero-byte files: no content to match, so the WFP entry carries a zero hash
 //     and no lines — bytes on the wire no scan can act on;
 //   - symbolic links: the target is collected on its own when it is inside the
-//     tree, so following the link would report the same content twice.
+//     tree, so following the link would report the same content twice;
+//   - version-control metadata (.git, .svn, .hg, .bzr): compressed objects
+//     nothing can match, and .git/config can carry credentials in remote URLs.
 func UnscannableSource() []Matcher {
-	return []Matcher{emptyFileMatcher{}, symlinkMatcher{}}
+	return []Matcher{emptyFileMatcher{}, symlinkMatcher{}, vcsMatcher{}}
 }
 
 // HiddenSource skips entries whose name begins with a dot.

@@ -60,9 +60,8 @@ type Options struct {
 
 	// IncludeHidden collects entries whose name begins with a dot. They are
 	// excluded by default: a scan wants the project's source, not its tooling.
-	// Note that .git stays excluded either way — it is in CommonSkippedDirs,
-	// because on a working checkout it is usually larger than the project and
-	// holds compressed objects nothing can match.
+	// Version-control metadata (.git and friends) stays excluded either way — see
+	// UnscannableSource, which no option can switch off.
 	IncludeHidden bool
 
 	// Settings is the scanoss.json skip/folders rules, already resolved to a

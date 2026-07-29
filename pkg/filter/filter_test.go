@@ -27,6 +27,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 )
@@ -428,5 +429,43 @@ func TestCollectPrunesExcludedDirectories(t *testing.T) {
 	}
 	if got := baseNames(res.Files); !equalStrings(got, []string{"main.go"}) {
 		t.Fatalf("kept %v, want [main.go]", got)
+	}
+}
+
+// Version-control metadata is never collected, whatever the options say. This is
+// not a preference: .git holds compressed objects nothing can match, and
+// .git/config can carry credentials in remote URLs — collecting it would upload
+// them. It survived --all-hidden only because the hidden rule happened to cover
+// it, which is exactly the kind of accident this test exists to prevent.
+func TestVCSMetadataIsNeverCollected(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "main.go"), 400)
+	for _, p := range []string{
+		".git/config", ".git/objects/ab/cdef", ".git/HEAD",
+		".svn/entries", ".hg/store/data", ".bzr/checkout/dirstate",
+	} {
+		writeFile(t, filepath.Join(root, filepath.FromSlash(p)), 400)
+	}
+
+	// Every option a caller can turn off, turned off.
+	for name, o := range map[string]Options{
+		"defaults on":         {Defaults: true, GitIgnore: true},
+		"defaults off":        {Defaults: false},
+		"hidden included":     {Defaults: true, IncludeHidden: true},
+		"everything off":      {Defaults: false, GitIgnore: false, IncludeHidden: true},
+		"zero-valued options": {},
+	} {
+		res, err := Collect(root, o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, f := range res.Files {
+			rel, _ := filepath.Rel(root, f)
+			for _, vcs := range []string{".git", ".svn", ".hg", ".bzr"} {
+				if strings.HasPrefix(filepath.ToSlash(rel), vcs+"/") {
+					t.Errorf("%s: collected %s — version-control metadata must never be collected", name, rel)
+				}
+			}
+		}
 	}
 }
