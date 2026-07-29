@@ -11,11 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.0] - 2026-07-29
 
 ### Added
-- **`config`** — store the API endpoint and key in `~/.scanoss/settings.json` instead of passing
-  `--api-key` every time: `config set`, `get`, `list`, `unset`, `path`. Keys are `api-url` and
-  `api-key`; the file itself uses `snake_case`. The API key is never displayed.
-- Every command that accepts `--api-url`/`--api-key` resolves each value as
-  **flag > `SCANOSS_API_URL`/`SCANOSS_API_KEY` > config file > built-in default**.
+- **`config`** — store settings in `~/.scanoss/settings.json` instead of repeating flags:
+  `config set`, `get`, `list`, `unset`, `path`. Keys are `api-url`, `api-key`, `proxy` and
+  `ca-cert`; the file itself uses `snake_case`. The API key is never displayed.
+- Every setting resolves as **flag > `SCANOSS_<KEY>` > config file > built-in default**, so a
+  stored `proxy` or `ca-cert` also applies with no flag. `--ignore-cert-errors` is not storable.
 - **`--proxy` and `--ca-cert`** on every command that reaches the API. `--proxy` overrides
   `HTTP_PROXY`/`HTTPS_PROXY` for one run and still honours `NO_PROXY`; `--ca-cert` trusts a PEM
   file's certificates in addition to the system pool, with verification still on. PAC is not
