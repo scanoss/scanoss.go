@@ -27,7 +27,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 
@@ -120,13 +120,11 @@ func runDependencies(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	// Kept as locals: the query helpers below take the endpoint and key as strings,
-	// and rewriting their signatures is not part of wiring resolution in.
+	// Kept as locals: the query helpers below take the endpoint and key as strings.
 	apiURL, apiKey := api.URL, api.Key
-	ignoreCertErrors, _ := cmd.Flags().GetBool("ignore-cert-errors")
-
-	if ignoreCertErrors {
-		slog.Warn("ignoring TLS certificate errors (insecure)")
+	httpClient, err := newHTTPClient(cmd)
+	if err != nil {
+		return err
 	}
 
 	// No input (no path, no --purl, not --extract-local): show usage.
@@ -152,10 +150,10 @@ func runDependencies(cmd *cobra.Command, args []string) error {
 
 		if transient {
 			// Transitive dependencies endpoint
-			response, err = queryTransitiveDependencies(apiURL, apiKey, purl, requirement, depth, limit, ignoreCertErrors)
+			response, err = queryTransitiveDependencies(httpClient, apiURL, apiKey, purl, requirement, depth, limit)
 		} else {
 			// Direct dependencies endpoint
-			response, err = queryDirectDependencies(apiURL, apiKey, purl, requirement, ignoreCertErrors)
+			response, err = queryDirectDependencies(httpClient, apiURL, apiKey, purl, requirement)
 		}
 
 		if err != nil {
@@ -170,7 +168,7 @@ func runDependencies(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("path argument is required (use --purl for API-only mode or --extract-local for local-only mode)")
 	}
 
-	return runScanMode(args[0], outputFile, apiURL, apiKey, transient, depth, limit, ignoreCertErrors)
+	return runScanMode(httpClient, args[0], outputFile, apiURL, apiKey, transient, depth, limit)
 }
 
 // runLocalExtraction extracts dependencies from local manifest files
@@ -252,7 +250,7 @@ func runLocalExtraction(targetPath, outputFile string) error {
 }
 
 // runScanMode extracts local dependencies and queries the SCANOSS API
-func runScanMode(targetPath, outputFile, apiURL, apiKey string, transient bool, depth, limit int, insecure bool) error {
+func runScanMode(httpClient *http.Client, targetPath, outputFile, apiURL, apiKey string, transient bool, depth, limit int) error {
 	// Check if path exists
 	if _, err := os.Stat(targetPath); os.IsNotExist(err) {
 		return fmt.Errorf("path does not exist: %s", targetPath)
@@ -328,9 +326,9 @@ func runScanMode(targetPath, outputFile, apiURL, apiKey string, transient bool, 
 
 	var response string
 	if transient {
-		response, err = queryTransitiveDependenciesWithFiles(apiURL, apiKey, localDeps, depth, limit, insecure)
+		response, err = queryTransitiveDependenciesWithFiles(httpClient, apiURL, apiKey, localDeps, depth, limit)
 	} else {
-		response, err = queryDirectDependenciesWithFiles(apiURL, apiKey, localDeps, insecure)
+		response, err = queryDirectDependenciesWithFiles(httpClient, apiURL, apiKey, localDeps)
 	}
 
 	if err != nil {
@@ -402,12 +400,13 @@ func outputJSON(data interface{}, outputFile string) error {
 	return nil
 }
 
-// depClient builds an SDK client from the CLI's api-url / api-key / insecure flags.
-func depClient(apiURL, apiKey string, insecure bool) *scanoss.Client {
+// depClient builds an SDK client on the transport the command already configured
+// from --proxy, --ca-cert and --ignore-cert-errors.
+func depClient(httpClient *http.Client, apiURL, apiKey string) *scanoss.Client {
 	return scanoss.New(
 		scanoss.WithAPIURL(apiURL),
 		scanoss.WithAPIKey(apiKey),
-		scanoss.WithInsecureTLS(insecure),
+		scanoss.WithHTTPClient(httpClient),
 	)
 }
 
@@ -434,8 +433,8 @@ func marshalDepResponse(v interface{}) (string, error) {
 
 // queryDirectDependencies resolves declared dependencies for a single purl via the
 // v3 dependencies endpoint (SDK-typed response).
-func queryDirectDependencies(apiURL, apiKey, purl, requirement string, insecure bool) (string, error) {
-	resp, err := depClient(apiURL, apiKey, insecure).
+func queryDirectDependencies(httpClient *http.Client, apiURL, apiKey, purl, requirement string) (string, error) {
+	resp, err := depClient(httpClient, apiURL, apiKey).
 		Dependencies.Dependency(context.Background(), scanoss.Component{Purl: purl, Requirement: requirement})
 	if err != nil {
 		return "", err
@@ -444,8 +443,8 @@ func queryDirectDependencies(apiURL, apiKey, purl, requirement string, insecure 
 }
 
 // queryTransitiveDependencies walks the transitive dependency tree for a single purl.
-func queryTransitiveDependencies(apiURL, apiKey, purl, requirement string, depth, limit int, insecure bool) (string, error) {
-	resp, err := depClient(apiURL, apiKey, insecure).
+func queryTransitiveDependencies(httpClient *http.Client, apiURL, apiKey, purl, requirement string, depth, limit int) (string, error) {
+	resp, err := depClient(httpClient, apiURL, apiKey).
 		Dependencies.Transitive(context.Background(), []scanoss.Component{{Purl: purl, Requirement: requirement}}, depth, limit)
 	if err != nil {
 		return "", err
@@ -455,8 +454,8 @@ func queryTransitiveDependencies(apiURL, apiKey, purl, requirement string, depth
 
 // queryDirectDependenciesWithFiles resolves declared dependencies for all PURLs
 // extracted from local manifests (v3 batch endpoint).
-func queryDirectDependenciesWithFiles(apiURL, apiKey string, localDeps *parsers.LocalDependencies, insecure bool) (string, error) {
-	resp, err := depClient(apiURL, apiKey, insecure).
+func queryDirectDependenciesWithFiles(httpClient *http.Client, apiURL, apiKey string, localDeps *parsers.LocalDependencies) (string, error) {
+	resp, err := depClient(httpClient, apiURL, apiKey).
 		Dependencies.Dependencies(context.Background(), componentsFromLocalDeps(localDeps))
 	if err != nil {
 		return "", err
@@ -466,8 +465,8 @@ func queryDirectDependenciesWithFiles(apiURL, apiKey string, localDeps *parsers.
 
 // queryTransitiveDependenciesWithFiles walks the transitive tree for all PURLs
 // extracted from local manifests.
-func queryTransitiveDependenciesWithFiles(apiURL, apiKey string, localDeps *parsers.LocalDependencies, depth, limit int, insecure bool) (string, error) {
-	resp, err := depClient(apiURL, apiKey, insecure).
+func queryTransitiveDependenciesWithFiles(httpClient *http.Client, apiURL, apiKey string, localDeps *parsers.LocalDependencies, depth, limit int) (string, error) {
+	resp, err := depClient(httpClient, apiURL, apiKey).
 		Dependencies.Transitive(context.Background(), componentsFromLocalDeps(localDeps), depth, limit)
 	if err != nil {
 		return "", err

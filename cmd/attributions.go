@@ -28,7 +28,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -38,7 +37,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/scanoss/scanoss.go/internal/cliconfig"
-	"github.com/scanoss/scanoss.go/pkg/scanoss"
 )
 
 var attributionsCmd = &cobra.Command{
@@ -108,12 +106,7 @@ func runAttributions(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	outputFile, _ := cmd.Flags().GetString("output")
-	ignoreCertErrors, _ := cmd.Flags().GetBool("ignore-cert-errors")
-
-	if ignoreCertErrors {
-		slog.Warn("ignoring TLS certificate errors (insecure)")
-	}
-	httpClient, err := scanoss.NewHTTPClient(scanoss.HTTPClientOptions{Insecure: ignoreCertErrors})
+	httpClient, err := newHTTPClient(cmd)
 	if err != nil {
 		return err
 	}

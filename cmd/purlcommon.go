@@ -28,7 +28,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"os"
 	"strings"
 	"sync"
@@ -162,10 +161,9 @@ func clientOptions(cmd *cobra.Command) ([]scanoss.Option, error) {
 	}
 	chunkSize, _ := cmd.Flags().GetInt("chunk-size")
 	workers, _ := cmd.Flags().GetInt("workers")
-	ignoreCertErrors, _ := cmd.Flags().GetBool("ignore-cert-errors")
-
-	if ignoreCertErrors {
-		slog.Warn("ignoring TLS certificate errors (insecure)")
+	httpClient, err := newHTTPClient(cmd)
+	if err != nil {
+		return nil, err
 	}
 
 	return []scanoss.Option{
@@ -173,7 +171,7 @@ func clientOptions(cmd *cobra.Command) ([]scanoss.Option, error) {
 		scanoss.WithAPIKey(api.Key),
 		scanoss.WithChunkSize(chunkSize),
 		scanoss.WithWorkers(workers),
-		scanoss.WithInsecureTLS(ignoreCertErrors),
+		scanoss.WithHTTPClient(httpClient),
 	}, nil
 }
 

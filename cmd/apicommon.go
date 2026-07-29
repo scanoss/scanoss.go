@@ -24,13 +24,17 @@
 package cmd
 
 import (
+	"log/slog"
+	"net/http"
+
 	"github.com/spf13/cobra"
 
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
 )
 
 // addAPIFlags registers the flags every command that talks to the SCANOSS API
-// needs. It is the single declaration of these four: a new one is added here and
+// needs: where to reach it, how to authenticate, how to get there, and where to
+// write the result. It is their single declaration — a new one is added here and
 // reaches every such command, instead of being remembered in a dozen files.
 //
 // They are persistent so a parent command's subcommands inherit them — which is
@@ -45,4 +49,33 @@ func addAPIFlags(cmd *cobra.Command) {
 	fs.String("ca-cert", "", "Path to a PEM file with an additional CA to trust")
 	fs.Bool("ignore-cert-errors", false, "Ignore TLS certificate errors (insecure)")
 	fs.StringP("output", "o", "", "Output file (default: stdout)")
+}
+
+// newHTTPClient builds the HTTP client from the three transport flags. Every
+// command that talks to the API goes through here, so the transport is configured
+// in one place rather than per command.
+//
+// With no flags set the client keeps Go's defaults, which means HTTP_PROXY,
+// HTTPS_PROXY and NO_PROXY are honoured without any code of ours.
+func newHTTPClient(cmd *cobra.Command) (*http.Client, error) {
+	proxy, _ := cmd.Flags().GetString("proxy")
+	caCert, _ := cmd.Flags().GetString("ca-cert")
+	insecure, _ := cmd.Flags().GetBool("ignore-cert-errors")
+
+	if insecure {
+		slog.Warn("ignoring TLS certificate errors (insecure)")
+		// Dropped, not just unused: saying the flag has no effect and then failing
+		// because that same file is unreadable would contradict itself. With
+		// verification off the file is never consulted, so it is not read either.
+		if caCert != "" {
+			slog.Warn("--ca-cert has no effect with --ignore-cert-errors")
+			caCert = ""
+		}
+	}
+
+	return scanoss.NewHTTPClient(scanoss.HTTPClientOptions{
+		Proxy:      proxy,
+		CACertFile: caCert,
+		Insecure:   insecure,
+	})
 }

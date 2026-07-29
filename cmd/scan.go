@@ -25,7 +25,6 @@ package cmd
 
 import (
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -505,11 +504,15 @@ func buildScanClient(cmd *cobra.Command, prog *scanProgress) (*scanoss.Client, e
 	if err != nil {
 		return nil, err
 	}
-	ignoreCertErrors, _ := cmd.Flags().GetBool("ignore-cert-errors")
+	httpClient, err := newHTTPClient(cmd)
+	if err != nil {
+		return nil, err
+	}
 
 	opts := []scanoss.Option{
 		scanoss.WithAPIURL(api.URL),
 		scanoss.WithAPIKey(api.Key),
+		scanoss.WithHTTPClient(httpClient),
 		scanoss.WithProgress(prog.fn),
 		scanoss.WithScanIDNotify(func(id string) {
 			prog.writeLine("") // separate the scan-id block from the filter/skip notices above
@@ -519,10 +522,6 @@ func buildScanClient(cmd *cobra.Command, prog *scanProgress) (*scanoss.Client, e
 			prog.writeLine("  If interrupted, resume with:\n  " + buildResultsCommand(id, api.URL, api.Key))
 			prog.writeLine("") // separate the resume hint from the progress bars below
 		}),
-	}
-	if ignoreCertErrors {
-		slog.Warn("ignoring TLS certificate errors (insecure)")
-		opts = append(opts, scanoss.WithInsecureTLS(true))
 	}
 	return scanoss.New(opts...), nil
 }

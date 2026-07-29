@@ -82,10 +82,16 @@ func runResults(cmd *cobra.Command, args []string) error {
 	}
 	defer func() { _ = writer.Close() }()
 
+	httpClient, err := newHTTPClient(cmd)
+	if err != nil {
+		return err
+	}
+
 	prog := &scanProgress{}
 	client := scanoss.New(
 		scanoss.WithAPIURL(api.URL),
 		scanoss.WithAPIKey(api.Key),
+		scanoss.WithHTTPClient(httpClient),
 		scanoss.WithProgress(prog.fn),
 	)
 
