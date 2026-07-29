@@ -36,7 +36,6 @@ import (
 	"strings"
 
 	"github.com/scanoss/scanoss.go/internal/cliconfig"
-	"github.com/scanoss/scanoss.go/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -83,13 +82,8 @@ func init() {
 	// Input mode
 	attributionsCmd.Flags().String("purl", "", "Package URL to query for attributions (alternative to providing a file)")
 
-	// API configuration
-	attributionsCmd.Flags().String("api-url", config.DefaultAPIURL, "SCANOSS API base URL")
-	attributionsCmd.Flags().String("api-key", "", "API key for authentication")
-	attributionsCmd.Flags().Bool("ignore-cert-errors", false, "Ignore TLS certificate errors (insecure)")
-
-	// Output configuration
-	attributionsCmd.Flags().StringP("output", "o", "", "Output file (default: stdout)")
+	// API and output configuration
+	addAPIFlags(attributionsCmd)
 }
 
 func runAttributions(cmd *cobra.Command, args []string) error {

@@ -321,14 +321,11 @@ func init() {
 	scanCmd.AddCommand(scanWFPCmd)
 
 	// Shared flags (persistent → inherited by the wfp subcommand).
-	scanCmd.PersistentFlags().String("api-url", config.DefaultAPIURL, "SCANOSS API URL")
-	scanCmd.PersistentFlags().String("api-key", "", "API authentication token")
-	scanCmd.PersistentFlags().StringP("output", "o", "", "Output file (empty = stdout)")
+	addAPIFlags(scanCmd)
 	scanCmd.PersistentFlags().StringP("format", "f", config.DefaultFormat, "Result output format: raw, spdx, cyclonedx")
 	scanCmd.PersistentFlags().String("settings", "", "Path to settings file (scanoss.json/settings.json)")
 	scanCmd.PersistentFlags().Int("chunk-size", scanoss.DefaultScanChunkBytes, "WFP upload chunk size in bytes")
 	scanCmd.PersistentFlags().Duration("poll-interval", scanoss.DefaultScanPollInterval, "How often to poll for scan status")
-	scanCmd.PersistentFlags().Bool("ignore-cert-errors", false, "Ignore TLS certificate errors (insecure)")
 	scanCmd.PersistentFlags().StringSlice("include", nil, "Output layers to gather (comma-separated): deps, vulns, licenses, crypto, geo")
 
 	// Fingerprinting flags (apply to `scan <path>` only).

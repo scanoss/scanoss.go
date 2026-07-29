@@ -28,7 +28,6 @@ import (
 	"fmt"
 
 	"github.com/scanoss/scanoss.go/internal/cliconfig"
-	"github.com/scanoss/scanoss.go/internal/config"
 	"github.com/scanoss/scanoss.go/pkg/output"
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
 	"github.com/spf13/cobra"
@@ -56,9 +55,7 @@ Examples:
 func init() {
 	rootCmd.AddCommand(resultsCmd)
 
-	resultsCmd.Flags().String("api-url", config.DefaultAPIURL, "SCANOSS API URL")
-	resultsCmd.Flags().String("api-key", "", "API authentication token")
-	resultsCmd.Flags().StringP("output", "o", "", "Output file (empty = stdout)")
+	addAPIFlags(resultsCmd)
 	resultsCmd.Flags().Duration("poll-interval", scanoss.DefaultScanPollInterval, "How often to poll for scan status")
 }
 
