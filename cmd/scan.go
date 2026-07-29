@@ -334,6 +334,7 @@ func init() {
 	scanCmd.Flags().Int64("max-size", filter.DefaultMaxFileSize, "Maximum file size in bytes to scan (0 = unlimited)")
 	scanCmd.Flags().Bool("default-filters", true, "Apply the built-in default file filters")
 	scanCmd.Flags().Bool("gitignore", true, "Honor .gitignore files when collecting files")
+	scanCmd.Flags().Bool("all-hidden", false, "Include hidden files and folders (.git is always excluded)")
 }
 
 // runScan fingerprints a file or folder and scans it. Collection, fingerprinting, the scan, and
@@ -376,6 +377,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 	applyDefaultFilters, _ := cmd.Flags().GetBool("default-filters")
 	applyGitignore, _ := cmd.Flags().GetBool("gitignore")
+	allHidden, _ := cmd.Flags().GetBool("all-hidden")
 
 	// Settings drive file filtering. Of the BOM rules, only bom.remove is applied (SDK-side,
 	// post-scan, via WithBOM); identify/ignore/replace are not applied.
@@ -397,6 +399,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	collectOpts := filter.ScanOptions()
 	collectOpts.MinSize, collectOpts.MaxSize = minSize, maxSize
 	collectOpts.Defaults, collectOpts.GitIgnore = applyDefaultFilters, applyGitignore
+	collectOpts.IncludeHidden = allHidden
 	collectOpts.Settings = scanSettings.ScanFilter()
 
 	result, err := scanpipeline.Run(ctx, scanpipeline.Options{
