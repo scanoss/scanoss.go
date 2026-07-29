@@ -7,25 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
 
-- **`config`** — store the API endpoint and key once in `~/.scanoss/settings.json` instead of
-  passing `--api-key` on every command: `config set <key> <value>`, `config get <key>`,
-  `config list`, `config unset <key>`, and `config path`. Keys are named `api-url` and `api-key`,
-  the same as the flags; the file itself stores them `snake_case` (`api_url`, `api_key`). The file
-  is created on first `config set` with mode `0600` in a `0700` directory, and keys it does not
-  recognize are preserved on write. `config set api-url` requires an `https://` or `http://`
-  scheme, so a bare host is rejected where it can still be fixed rather than failing later as an
-  unsupported-protocol error from another command.
-- Every command that accepts `--api-url`/`--api-key` now resolves each value as
-  **flag > environment variable > `~/.scanoss/settings.json` > built-in default**. The environment
-  variables are `SCANOSS_API_URL` and `SCANOSS_API_KEY`; passing the flag still overrides both. A
-  stored key satisfies the no-key check, so the "no API key provided" banner no longer appears for
-  a configured user. The API key is never displayed: `config list` and `config get` render it as
-  `********`, with no flag to reveal it, and `--verbose` logs which source won without the value.
+## [0.4.0] - 2026-07-29
+
+### Added
+- **`config`** — store settings in `~/.scanoss/settings.json` instead of repeating flags:
+  `config set`, `get`, `list`, `unset`, `path`. Keys are `api-url`, `api-key`, `proxy` and
+  `ca-cert`; the file itself uses `snake_case`. The API key is never displayed.
+- Every setting resolves as **flag > `SCANOSS_<KEY>` > config file > built-in default**, so a
+  stored `proxy` or `ca-cert` also applies with no flag. `--ignore-cert-errors` is not storable.
+- **`--proxy` and `--ca-cert`** on every command that reaches the API. `--proxy` overrides
+  `HTTP_PROXY`/`HTTPS_PROXY` for one run and still honours `NO_PROXY`; `--ca-cert` trusts a PEM
+  file's certificates in addition to the system pool, with verification still on. PAC is not
+  supported.
+- **`scanoss.NewHTTPClient`** builds an `*http.Client` with the same proxy and CA settings, for use
+  with the existing `WithHTTPClient` option. `pkg/api` gained `SetHTTPClient`.
+
+
+## [0.3.0] - 2026-07-28
 
 ### Changed
-
 - **BREAKING** — the raw inventory format now reports matched line ranges as structured objects
   (`{"start_line": 82, "end_line": 209}`) instead of `"82-209"` strings, matching the shape the scan
   engine already returns. `schema_version` is `2.0`; a `1.0` document carrying string ranges no
@@ -89,5 +90,7 @@ Initial release of the SCANOSS Go CLI and SDK (`scanoss`).
   CycloneDX and SPDX (with `WithTool`/`WithAuthor`/`WithTimestamp` document-metadata options).
 - **C shared library** (`libscanoss`) with Node.js and Python bindings.
 
-[0.2.0]: https://github.com/scanoss/scanoss.go/releases/tag/v0.2.0
+[0.4.0]: https://github.com/scanoss/scanoss.go/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/scanoss/scanoss.go/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/scanoss/scanoss.go/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/scanoss/scanoss.go/releases/tag/v0.1.0

@@ -268,3 +268,98 @@ func TestCLIKey(t *testing.T) {
 		t.Errorf("CLIKey(unrecognized) = %q, want empty", got)
 	}
 }
+
+// transportFlags builds the flag set the real commands declare for the transport
+// pair: both default to empty.
+func transportFlags(t *testing.T) *pflag.FlagSet {
+	t.Helper()
+	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	flags.String("proxy", "", "")
+	flags.String("ca-cert", "", "")
+	return flags
+}
+
+// The transport pair walks the same ladder as the API pair, so this mirrors
+// TestResolverValueAndSourceAgree for the two new keys.
+func TestResolveTransport(t *testing.T) {
+	cases := []struct {
+		name    string
+		file    string
+		env     map[string]string
+		flag    map[string]string
+		wantVia string
+		wantCA  string
+	}{
+		{
+			name: "nothing configured",
+		},
+		{
+			name:    "config file",
+			file:    `{"proxy": "http://file.example.com:8080", "ca_cert": "/file/ca.pem"}`,
+			wantVia: "http://file.example.com:8080",
+			wantCA:  "/file/ca.pem",
+		},
+		{
+			name:    "environment overrides the file",
+			file:    `{"proxy": "http://file.example.com:8080", "ca_cert": "/file/ca.pem"}`,
+			env:     map[string]string{"SCANOSS_PROXY": "http://env.example.com:8080", "SCANOSS_CA_CERT": "/env/ca.pem"},
+			wantVia: "http://env.example.com:8080",
+			wantCA:  "/env/ca.pem",
+		},
+		{
+			name:    "flag overrides both",
+			file:    `{"proxy": "http://file.example.com:8080", "ca_cert": "/file/ca.pem"}`,
+			env:     map[string]string{"SCANOSS_PROXY": "http://env.example.com:8080", "SCANOSS_CA_CERT": "/env/ca.pem"},
+			flag:    map[string]string{"proxy": "http://flag.example.com:8080", "ca-cert": "/flag/ca.pem"},
+			wantVia: "http://flag.example.com:8080",
+			wantCA:  "/flag/ca.pem",
+		},
+		{
+			name:   "one key stored does not affect the other",
+			file:   `{"ca_cert": "/file/ca.pem"}`,
+			wantCA: "/file/ca.pem",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			home := withHome(t)
+			if tc.file != "" {
+				writeSettings(t, home, tc.file)
+			}
+			for name, value := range tc.env {
+				t.Setenv(name, value)
+			}
+			flags := transportFlags(t)
+			for name, value := range tc.flag {
+				setFlag(t, flags, name, value)
+			}
+
+			got, err := ResolveTransport(flags)
+			if err != nil {
+				t.Fatalf("ResolveTransport() error: %v", err)
+			}
+			if got.Proxy != tc.wantVia {
+				t.Errorf("Proxy = %q, want %q", got.Proxy, tc.wantVia)
+			}
+			if got.CACertFile != tc.wantCA {
+				t.Errorf("CACertFile = %q, want %q", got.CACertFile, tc.wantCA)
+			}
+		})
+	}
+}
+
+// A command that declares neither flag — `config list` is one — must still resolve
+// from the environment and the file.
+func TestResolveTransportWithoutFlags(t *testing.T) {
+	home := withHome(t)
+	writeSettings(t, home, `{"ca_cert": "/file/ca.pem"}`)
+
+	got, err := ResolveTransport(pflag.NewFlagSet("empty", pflag.ContinueOnError))
+	if err != nil {
+		t.Fatalf("ResolveTransport() error: %v", err)
+	}
+	if got.CACertFile != "/file/ca.pem" {
+		t.Errorf("CACertFile = %q, want the stored value", got.CACertFile)
+	}
+}

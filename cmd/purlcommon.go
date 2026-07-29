@@ -28,7 +28,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"os"
 	"strings"
 	"sync"
@@ -39,16 +38,6 @@ import (
 	"github.com/scanoss/scanoss.go/internal/cliconfig"
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
 )
-
-// addAPIFlags registers the API/output flags shared by every service command, as
-// persistent flags so a parent command's subcommands inherit them.
-func addAPIFlags(cmd *cobra.Command) {
-	fs := cmd.PersistentFlags()
-	fs.String("api-url", scanoss.DefaultAPIURL, "SCANOSS API base URL")
-	fs.String("api-key", "", "API key for authentication")
-	fs.Bool("ignore-cert-errors", false, "Ignore TLS certificate errors (insecure)")
-	fs.StringP("output", "o", "", "Output file (default: stdout)")
-}
 
 // addPurlInputFlags registers the PURL-list input flags (no API flags), as
 // persistent flags so a parent command's subcommands inherit them.
@@ -172,10 +161,9 @@ func clientOptions(cmd *cobra.Command) ([]scanoss.Option, error) {
 	}
 	chunkSize, _ := cmd.Flags().GetInt("chunk-size")
 	workers, _ := cmd.Flags().GetInt("workers")
-	ignoreCertErrors, _ := cmd.Flags().GetBool("ignore-cert-errors")
-
-	if ignoreCertErrors {
-		slog.Warn("ignoring TLS certificate errors (insecure)")
+	httpClient, err := newHTTPClient(cmd)
+	if err != nil {
+		return nil, err
 	}
 
 	return []scanoss.Option{
@@ -183,7 +171,7 @@ func clientOptions(cmd *cobra.Command) ([]scanoss.Option, error) {
 		scanoss.WithAPIKey(api.Key),
 		scanoss.WithChunkSize(chunkSize),
 		scanoss.WithWorkers(workers),
-		scanoss.WithInsecureTLS(ignoreCertErrors),
+		scanoss.WithHTTPClient(httpClient),
 	}, nil
 }
 
