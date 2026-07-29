@@ -47,12 +47,24 @@ type Defaults struct {
 // of it: they are caller input, not a built-in, and have their own SizeSource.
 func StdDefaults() Defaults {
 	return Defaults{
-		Dirs:    DefaultSkippedDirs,
+		Dirs:    skippedDirs(ScanOnlySkippedDirs),
 		DirExts: DefaultSkippedDirExts,
 		Files:   DefaultSkippedFiles,
 		Exts:    DefaultSkippedExts,
 		Endings: DefaultSkippedFileEndings,
 	}
+}
+
+// DependencyDefaults returns the built-in skip lists for dependency collection.
+// It differs from StdDefaults in the directory list only: the file, extension
+// and ending lists are shared, because the one difference that matters there —
+// manifests live behind skipped extensions like .json and .mod — is handled by
+// Options.PreserveDependencyManifests, which exempts the known manifest names
+// rather than reopening whole extensions.
+func DependencyDefaults() Defaults {
+	d := StdDefaults()
+	d.Dirs = skippedDirs(DependencyOnlySkippedDirs)
+	return d
 }
 
 // DefaultSource turns the default skip lists and size bounds into matchers.

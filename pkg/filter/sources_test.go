@@ -26,6 +26,7 @@ package filter
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -216,5 +217,92 @@ func TestGitIgnoreSourcePresent(t *testing.T) {
 	}
 	if m.Match("main.go", aFile("main.go", 10)) {
 		t.Error(".gitignore should not match main.go")
+	}
+}
+
+// The scanning directory set is the one the CLI has always applied. It is
+// asserted against literals rather than recomposed from the same lists the code
+// uses, so a mistake in the split shows up here instead of agreeing with itself.
+func TestScanningDirSetUnchanged(t *testing.T) {
+	got := append([]string(nil), StdDefaults().Dirs...)
+	sort.Strings(got)
+
+	want := []string{
+		"__pycache__", "__pypackages__", "_yardoc", "eggs", "example",
+		"examples", "htmlcov", "nbbuild", "nbdist", "nbproject",
+		"node_modules", "vendor", "venv", "wheels",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("scanning dirs = %d entries %v, want %d %v", len(got), got, len(want), want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("scanning dirs = %v, want %v", got, want)
+		}
+	}
+}
+
+// Dependency collection keeps the common list and adds only its own.
+func TestDependencyDirSet(t *testing.T) {
+	got := append([]string(nil), DependencyDefaults().Dirs...)
+	sort.Strings(got)
+
+	want := []string{"__pycache__", "build", "dist", "node_modules", "target", "vendor"}
+	if len(got) != len(want) {
+		t.Fatalf("dependency dirs = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("dependency dirs = %v, want %v", got, want)
+		}
+	}
+
+	// Everything except the directory list is shared with scanning: the one
+	// difference that would matter (manifests behind skipped extensions) is
+	// handled by PreserveDependencyManifests, not by a separate list.
+	std := StdDefaults()
+	dep := DependencyDefaults()
+	if len(dep.Exts) != len(std.Exts) || len(dep.Files) != len(std.Files) ||
+		len(dep.Endings) != len(std.Endings) || len(dep.DirExts) != len(std.DirExts) {
+		t.Error("only the directory list may differ between the two profiles")
+	}
+}
+
+// The three lists must not overlap: an entry in two of them would make the
+// split meaningless and the effective sets ambiguous.
+func TestDirListsAreDisjoint(t *testing.T) {
+	seen := map[string]string{}
+	for name, list := range map[string][]string{
+		"CommonSkippedDirs":         CommonSkippedDirs,
+		"ScanOnlySkippedDirs":       ScanOnlySkippedDirs,
+		"DependencyOnlySkippedDirs": DependencyOnlySkippedDirs,
+	} {
+		for _, d := range list {
+			if prev, dup := seen[d]; dup {
+				t.Errorf("%q appears in both %s and %s", d, prev, name)
+			}
+			seen[d] = name
+		}
+	}
+}
+
+// skippedDirs must not alias or append to the package-level lists.
+func TestSkippedDirsDoesNotAliasPackageLists(t *testing.T) {
+	before := append([]string(nil), CommonSkippedDirs...)
+	got := skippedDirs(ScanOnlySkippedDirs)
+	got[0] = "mutated"
+	for i := range before {
+		if CommonSkippedDirs[i] != before[i] {
+			t.Fatalf("CommonSkippedDirs was mutated through the returned slice")
+		}
+	}
+}
+
+// .whl moves in from the fingerprint layer's own list, so removing that list
+// does not start fingerprinting files it used to skip.
+func TestWhlIsSkipped(t *testing.T) {
+	c := Build(DefaultSource(StdDefaults()))
+	if !c.Match("pkg-1.0.whl", aFile("pkg-1.0.whl", 2000)) {
+		t.Error(".whl should be skipped")
 	}
 }
