@@ -218,6 +218,22 @@ scanoss-cli config set api-url https://scanoss.internal.example.com
 scanoss-cli scan .
 ```
 
+### Proxy and custom CA
+
+`HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` are honoured with no flags. `--proxy` overrides
+them for one run, and `--ca-cert` trusts a CA the system pool does not have — an internal
+endpoint, or a proxy that intercepts TLS:
+
+```bash
+scanoss-cli scan . --proxy http://proxy.example.com:8080
+scanoss-cli scan . --ca-cert /etc/ssl/corp-ca.pem
+```
+
+The CA is *added* to the system pool, so the public API keeps working, and verification
+stays on — unlike `--ignore-cert-errors`. Both flags work on every command that reaches
+the API. Proxy auto-configuration (PAC) is not supported: read the proxy out of the PAC
+and pass it with `--proxy`.
+
 ### CI
 
 Use the environment instead of a config file — no `config set`, and no key on the
@@ -319,6 +335,19 @@ res, err := client.Vulnerabilities.Components(ctx, comps) // *scanossapi.Vulnera
 client := scanoss.New(scanoss.WithAPIKey(os.Getenv("SCANOSS_API_KEY")))
 result, err := client.Scan.Folder(ctx, "./my-project")
 // resume by id: client.Scan.Wait(ctx, scanID)
+```
+
+### Proxy and custom CA from the SDK
+
+```go
+hc, err := scanoss.NewHTTPClient(scanoss.HTTPClientOptions{
+    Proxy:      "http://proxy.example.com:8080", // empty honours HTTP(S)_PROXY
+    CACertFile: "/etc/ssl/corp-ca.pem",          // added to the system pool
+})
+if err != nil {
+    return err
+}
+client := scanoss.New(scanoss.WithAPIKey(key), scanoss.WithHTTPClient(hc))
 ```
 
 ## Development
