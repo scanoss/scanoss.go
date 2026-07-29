@@ -88,6 +88,32 @@ relied on it its own filter. Landing T005 without T006 changes `libscanoss`.
       comes from flags, instead of assembling the literal by hand.
       Tests: both still collect T001's baseline set. (depends on T003)
 
+## Phase 3b — One profile per stage, not per entry point
+
+`scan --include deps` and `dependencies ./proj` disagree today: the first
+inherits the scanning profile for its manifest collection
+(`scanpipeline.go:147`), the second uses its own walk. So the same product
+answers differently depending on which door you came through — `examples/` is
+searched by one and not the other.
+
+The pipeline already runs two collections; what is missing is that the second
+one uses the profile of its **stage** rather than the profile of the command.
+
+- [ ] **T012** `pkg/scanpipeline`: build the dependency collection from
+      `filter.DependencyOptions()` instead of inheriting `opts.Filter`, carrying
+      over only what comes from the user (size bounds, `--default-filters`,
+      `--gitignore`) and the dependencies section of `scanoss.json`.
+      `filter.IngestOptions` is then dead and is removed: two dependency
+      profiles were only ever an artefact of the two entry points.
+
+      Deliberate behaviour change: `scan --include deps` starts finding
+      manifests under `examples/`, matching what the standalone command already
+      does. That is the point — one answer per question, not per door.
+
+      Tests: both entry points return the same manifest set for the same tree,
+      asserted against each other rather than against a literal, so they cannot
+      drift apart again. (depends on T003, T004)
+
 ## Phase 4 — Docs & verification
 
 - [ ] **T009 [P]** `CHANGELOG.md`: **Fixed** — `--default-filters=false` now
