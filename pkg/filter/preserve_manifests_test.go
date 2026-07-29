@@ -30,7 +30,7 @@ import (
 
 // TestCollectPreserveDependencyManifests verifies the split: ScanOptions prunes
 // dependency manifests (they are useless for fingerprint matching), while
-// IngestOptions applies the same prune but keeps manifests for the dependency
+// DependencyOptions applies the same prune but keeps manifests for the dependency
 // parser. Non-manifest files sharing a manifest extension (data.json) and
 // manifests nested inside skipped dirs (node_modules) are NOT kept.
 func TestCollectPreserveDependencyManifests(t *testing.T) {
@@ -51,14 +51,14 @@ func TestCollectPreserveDependencyManifests(t *testing.T) {
 		t.Fatalf("ScanOptions kept = %v, want %v (manifests must be skipped)", got, want)
 	}
 
-	ing, err := Collect(root, IngestOptions())
+	ing, err := Collect(root, DependencyOptions())
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := baseNames(ing.Files) // sorted base names
 	want := []string{"go.mod", "main.go", "package.json", "pom.xml"}
 	if !equalStrings(got, want) {
-		t.Fatalf("IngestOptions kept = %v, want %v "+
+		t.Fatalf("DependencyOptions kept = %v, want %v "+
 			"(root manifests kept; data.json/logo.png/node_modules pruned)", got, want)
 	}
 }

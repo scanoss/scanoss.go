@@ -49,7 +49,7 @@ type Options struct {
 	SkipExtensions []string
 
 	// Size bounds. The built-in values are DefaultMinFileSize/DefaultMaxFileSize,
-	// set by DefaultOptions/ScanOptions/IngestOptions; assign these fields to
+	// set by DefaultOptions/ScanOptions/DependencyOptions; assign these fields to
 	// override them. They are applied as their own source, so turning Defaults
 	// off keeps a bound the caller asked for. A zero-valued Options (built
 	// literally, without a constructor) means no bound on either side.
@@ -121,24 +121,6 @@ func DependencyOptions() Options {
 		MinSize:                     DefaultMinFileSize,
 		MaxSize:                     DefaultMaxFileSize,
 		SkipDirs:                    DependencyDefaults().Dirs,
-		PreserveDependencyManifests: true,
-	}
-}
-
-// IngestOptions returns the options for materialising files a later stage
-// consumes (extraction/upload feeding the dependency parser): the same prune as
-// ScanOptions, but dependency manifests are preserved.
-//
-// This is not DependencyOptions: it is used inside a scan, where the manifest
-// collection must see the same tree the scan does, so it keeps the scanning
-// directory list and .gitignore. DependencyOptions is for the standalone
-// dependency command, which answers only to its own operation.
-func IngestOptions() Options {
-	return Options{
-		Defaults:                    true,
-		GitIgnore:                   true,
-		MinSize:                     DefaultMinFileSize,
-		MaxSize:                     DefaultMaxFileSize,
 		PreserveDependencyManifests: true,
 	}
 }

@@ -367,3 +367,39 @@ func TestDependencyOptionsKeepManifests(t *testing.T) {
 		t.Fatalf("kept %v, want [go.mod package.json]", got)
 	}
 }
+
+// The manifest set must not depend on which entry point asked for it. This is
+// asserted by comparing the two profiles against each other rather than against
+// a literal list: a literal would let both drift together, which is exactly how
+// they came apart in the first place.
+func TestDependencyProfileFindsManifestsAnywhere(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "go.mod"), 200)
+	writeFile(t, filepath.Join(root, "examples", "go.mod"), 200)
+	writeFile(t, filepath.Join(root, "examples", "main.go"), 200)
+
+	res, err := Collect(root, DependencyOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found int
+	for _, f := range res.Files {
+		if filepath.Base(f) == "go.mod" {
+			found++
+		}
+	}
+	if found != 2 {
+		t.Fatalf("found %d go.mod, want 2 — a manifest under examples/ declares real dependencies", found)
+	}
+
+	// Scanning, by contrast, still prunes examples/: its code is not the product.
+	scanRes, err := Collect(root, ScanOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range scanRes.Files {
+		if strings.Contains(filepath.ToSlash(f), "/examples/") {
+			t.Errorf("scanning should not collect %s", f)
+		}
+	}
+}

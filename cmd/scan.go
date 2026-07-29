@@ -405,7 +405,8 @@ func runScan(cmd *cobra.Command, args []string) error {
 			GitIgnore: applyGitignore,
 			Settings:  scanSettings.ScanFilter(),
 		},
-		ScanOptions: scanTuning(cmd, scanSettings),
+		DependencySettings: scanSettings.DependencyFilter(),
+		ScanOptions:        scanTuning(cmd, scanSettings),
 		OnCollect: func(skipped int) {
 			if skipped > 0 {
 				infof("Filtered %d files", skipped)

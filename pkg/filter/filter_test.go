@@ -297,9 +297,9 @@ func TestZeroOptionsMatchDefaultBounds(t *testing.T) {
 // one gets the documented default rather than an implicit zero.
 func TestOptionConstructorsCarryDefaultBounds(t *testing.T) {
 	for name, o := range map[string]Options{
-		"DefaultOptions": DefaultOptions(),
-		"ScanOptions":    ScanOptions(),
-		"IngestOptions":  IngestOptions(),
+		"DefaultOptions":    DefaultOptions(),
+		"ScanOptions":       ScanOptions(),
+		"DependencyOptions": DependencyOptions(),
 	} {
 		if o.MinSize != DefaultMinFileSize {
 			t.Errorf("%s().MinSize = %d, want DefaultMinFileSize (%d)", name, o.MinSize, DefaultMinFileSize)
