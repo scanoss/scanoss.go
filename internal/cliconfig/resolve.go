@@ -57,6 +57,15 @@ type API struct {
 	Key string
 }
 
+// Transport holds the resolved settings for how to reach the API: through which
+// proxy, and trusting which extra certificate authority. Both are empty when
+// nothing is configured, which means "use the environment, and the system
+// certificate pool".
+type Transport struct {
+	Proxy      string
+	CACertFile string
+}
+
 // resolver answers "what value will this command actually use?" for each setting,
 // applying flag > environment > config file > flag default.
 //
@@ -157,6 +166,21 @@ func ResolveAPI(flags *pflag.FlagSet) (API, error) {
 		return API{}, err
 	}
 	return API{URL: r.Key(KeyAPIURL).Value, Key: r.Key(KeyAPIKey).Value}, nil
+}
+
+// ResolveTransport returns the transport settings a command should use, applying the
+// same ladder as ResolveAPI. Separate from ResolveAPI because the two answer different
+// questions — where to send the request, and how to get there — but resolved the same
+// way, and each call reads the file once.
+func ResolveTransport(flags *pflag.FlagSet) (Transport, error) {
+	r, err := newResolver(flags)
+	if err != nil {
+		return Transport{}, err
+	}
+	return Transport{
+		Proxy:      r.Key(KeyProxy).Value,
+		CACertFile: r.Key(KeyCACert).Value,
+	}, nil
 }
 
 // Resolve returns the effective value of one recognized key and its source. The key
