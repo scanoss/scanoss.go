@@ -414,3 +414,49 @@ func TestFingerprintFilterNil(t *testing.T) {
 		t.Fatalf("FingerprintFilter() on nil = %v, want nil", got)
 	}
 }
+
+// The three accessors must each read their own section. A command that copied
+// another's call would silently apply the wrong project rules, which is exactly
+// the kind of mistake no test would otherwise catch.
+func TestFilterAccessorsReadTheirOwnSection(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "scanoss.json")
+	content := `{
+	  "settings": {
+	    "skip": {
+	      "patterns": {
+	        "scanning":       ["only-scanning/**"],
+	        "fingerprinting": ["only-fingerprinting/**"],
+	        "dependencies":   ["only-dependencies/**"]
+	      }
+	    }
+	  }
+	}`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	for name, tc := range map[string]struct {
+		got  []string
+		want string
+	}{
+		"ScanFilter":        {s.ScanFilter().Skip.Patterns, "only-scanning/**"},
+		"FingerprintFilter": {s.FingerprintFilter().Skip.Patterns, "only-fingerprinting/**"},
+		"DependencyFilter":  {s.DependencyFilter().Skip.Patterns, "only-dependencies/**"},
+	} {
+		if len(tc.got) != 1 || tc.got[0] != tc.want {
+			t.Errorf("%s patterns = %v, want [%s]", name, tc.got, tc.want)
+		}
+	}
+}
+
+func TestDependencyFilterNil(t *testing.T) {
+	var s *Settings
+	if got := s.DependencyFilter(); got != nil {
+		t.Fatalf("DependencyFilter() on nil = %v, want nil", got)
+	}
+}
