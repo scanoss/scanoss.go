@@ -150,6 +150,113 @@ func TestNewHTTPClientProxy(t *testing.T) {
 	}
 }
 
+// An explicit proxy still honours NO_PROXY, so a split network — a corporate proxy for
+// the internet, an internal endpoint reached directly — keeps working once the proxy is
+// configured rather than left to the environment.
+//
+// Unlike http.ProxyFromEnvironment, NewHTTPClient samples the environment when it builds
+// the client, so t.Setenv is enough and no test decides the answer for the others.
+func TestNewHTTPClientProxyHonoursNoProxy(t *testing.T) {
+	const proxy = "http://proxy.example.com:8080"
+
+	tests := []struct {
+		name    string
+		noProxy string
+		target  string
+		want    string // "" means the request must go direct
+	}{
+		{name: "exact host exempted", noProxy: "scanoss.internal.example.com", target: "https://scanoss.internal.example.com/v3", want: ""},
+		{name: "another host still proxied", noProxy: "scanoss.internal.example.com", target: "https://api.scanoss.com/v3", want: proxy},
+		{name: "domain suffix exempted", noProxy: ".internal.example.com", target: "https://scanoss.internal.example.com/v3", want: ""},
+		{name: "wildcard exempts everything", noProxy: "*", target: "https://api.scanoss.com/v3", want: ""},
+		{name: "unset proxies everything", noProxy: "", target: "https://scanoss.internal.example.com/v3", want: proxy},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("NO_PROXY", tt.noProxy)
+			t.Setenv("no_proxy", "")
+
+			client, err := NewHTTPClient(HTTPClientOptions{Proxy: proxy})
+			if err != nil {
+				t.Fatalf("NewHTTPClient() error: %v", err)
+			}
+			req, err := http.NewRequest(http.MethodGet, tt.target, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := transportOf(t, client).Proxy(req)
+			if err != nil {
+				t.Fatalf("resolving the proxy: %v", err)
+			}
+			switch {
+			case tt.want == "" && got != nil:
+				t.Errorf("proxy = %v, want the request to go direct", got)
+			case tt.want != "" && (got == nil || got.String() != tt.want):
+				t.Errorf("proxy = %v, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// Loopback is exempt with no NO_PROXY at all, as it is when the proxy comes from the
+// environment. A local endpoint is not what a proxy is for, and this keeps one rule
+// rather than two. Note it is the *target* that matters: a proxy running on localhost
+// still serves requests to a remote API.
+func TestNewHTTPClientProxySkipsLoopbackTargets(t *testing.T) {
+	const proxy = "http://localhost:8080" // a local intercepting proxy
+	t.Setenv("NO_PROXY", "")
+	t.Setenv("no_proxy", "")
+
+	client, err := NewHTTPClient(HTTPClientOptions{Proxy: proxy})
+	if err != nil {
+		t.Fatalf("NewHTTPClient() error: %v", err)
+	}
+	tests := map[string]string{
+		"http://127.0.0.1:9000/v3":   "",    // loopback target: direct
+		"http://localhost:9000/v3":   "",    // same by name
+		"https://api.scanoss.com/v3": proxy, // remote target: proxied
+	}
+	for target, want := range tests {
+		req, err := http.NewRequest(http.MethodGet, target, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := transportOf(t, client).Proxy(req)
+		if err != nil {
+			t.Fatalf("resolving the proxy for %s: %v", target, err)
+		}
+		switch {
+		case want == "" && got != nil:
+			t.Errorf("%s: proxy = %v, want direct", target, got)
+		case want != "" && (got == nil || got.String() != want):
+			t.Errorf("%s: proxy = %v, want %q", target, got, want)
+		}
+	}
+}
+
+// Go reads no_proxy when NO_PROXY is unset, and a client that ignored the lowercase
+// spelling would proxy hosts the rest of the user's tooling reaches directly.
+func TestNewHTTPClientProxyHonoursLowercaseNoProxy(t *testing.T) {
+	t.Setenv("NO_PROXY", "")
+	t.Setenv("no_proxy", "scanoss.internal.example.com")
+
+	client, err := NewHTTPClient(HTTPClientOptions{Proxy: "http://proxy.example.com:8080"})
+	if err != nil {
+		t.Fatalf("NewHTTPClient() error: %v", err)
+	}
+	req, err := http.NewRequest(http.MethodGet, "https://scanoss.internal.example.com/v3", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := transportOf(t, client).Proxy(req)
+	if err != nil {
+		t.Fatalf("resolving the proxy: %v", err)
+	}
+	if got != nil {
+		t.Errorf("proxy = %v, want the request to go direct", got)
+	}
+}
+
 // A proxy without a scheme is refused where the user can still fix it. url.Parse
 // would read the host as the scheme and leave no host, which surfaces much later
 // as "dial tcp :0".

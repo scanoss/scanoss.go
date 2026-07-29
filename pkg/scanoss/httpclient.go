@@ -31,6 +31,8 @@ import (
 	"net/url"
 	"os"
 	"strings"
+
+	"golang.org/x/net/http/httpproxy"
 )
 
 // HTTPClientOptions configures how the SDK reaches the API: through which proxy,
@@ -39,9 +41,10 @@ import (
 // The zero value is the default behaviour — the proxy comes from HTTP_PROXY,
 // HTTPS_PROXY and NO_PROXY, and verification uses the system certificate pool.
 type HTTPClientOptions struct {
-	// Proxy is the proxy URL to use, overriding the environment for this client.
-	// It must carry an https:// or http:// scheme. Empty leaves Go's own
-	// environment handling in place.
+	// Proxy is the proxy URL to use, overriding HTTP_PROXY and HTTPS_PROXY for this
+	// client. It must carry an https:// or http:// scheme. NO_PROXY still applies, so
+	// the hosts it exempts are reached directly. Empty leaves Go's own environment
+	// handling in place.
 	Proxy string
 
 	// CACertFile is a PEM file whose certificates are trusted in addition to the
@@ -74,11 +77,11 @@ func NewHTTPClient(opts HTTPClientOptions) (*http.Client, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 
 	if opts.Proxy != "" {
-		proxyURL, err := parseProxy(opts.Proxy)
+		proxy, err := proxyFuncFor(opts.Proxy)
 		if err != nil {
 			return nil, err
 		}
-		transport.Proxy = http.ProxyURL(proxyURL)
+		transport.Proxy = proxy
 	}
 
 	// Both TLS settings mutate the cloned config rather than replacing it: the clone
@@ -121,6 +124,33 @@ func parseProxy(proxy string) (*url.URL, error) {
 		return nil, fmt.Errorf("parsing proxy %q: %w", proxy, err)
 	}
 	return parsed, nil
+}
+
+// proxyFuncFor routes requests through proxy, minus the hosts NO_PROXY exempts.
+//
+// The exemption is the reason this is not http.ProxyURL: that returns the same URL for
+// every request and cannot consult NO_PROXY, so an explicit proxy would also capture
+// the internal hosts a split network deliberately reaches directly. httpproxy is what
+// net/http itself uses for ProxyFromEnvironment, so the matching rules — suffixes,
+// wildcards, ports, CIDR blocks, and the loopback exemption — are the same ones that
+// apply when the proxy comes from the environment.
+func proxyFuncFor(proxy string) (func(*http.Request) (*url.URL, error), error) {
+	// Validated here, though httpproxy parses the string again: it is forgiving about a
+	// missing scheme and would silently accept what parseProxy exists to reject.
+	if _, err := parseProxy(proxy); err != nil {
+		return nil, err
+	}
+	// Both spellings, as Go accepts both.
+	noProxy := os.Getenv("NO_PROXY")
+	if noProxy == "" {
+		noProxy = os.Getenv("no_proxy")
+	}
+	// Both fields carry the same proxy: one setting covers the API whichever scheme it
+	// uses. The environment is sampled here rather than per request, matching how Go
+	// samples it once.
+	cfg := httpproxy.Config{HTTPProxy: proxy, HTTPSProxy: proxy, NoProxy: noProxy}
+	proxyFor := cfg.ProxyFunc()
+	return func(req *http.Request) (*url.URL, error) { return proxyFor(req.URL) }, nil
 }
 
 // certPoolWith returns the system pool plus the certificates in path.

@@ -17,8 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Every command that accepts `--api-url`/`--api-key` resolves each value as
   **flag > `SCANOSS_API_URL`/`SCANOSS_API_KEY` > config file > built-in default**.
 - **`--proxy` and `--ca-cert`** on every command that reaches the API. `--proxy` overrides
-  `HTTP_PROXY`/`HTTPS_PROXY` for one run; `--ca-cert` trusts a PEM file's certificates in addition
-  to the system pool, with verification still on. PAC is not supported.
+  `HTTP_PROXY`/`HTTPS_PROXY` for one run and still honours `NO_PROXY`; `--ca-cert` trusts a PEM
+  file's certificates in addition to the system pool, with verification still on. PAC is not
+  supported.
 - **`scanoss.NewHTTPClient`** builds an `*http.Client` with the same proxy and CA settings, for use
   with the existing `WithHTTPClient` option. `pkg/api` gained `SetHTTPClient`.
 
