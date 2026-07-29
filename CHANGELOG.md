@@ -7,7 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-
 ## [0.4.0] - 2026-07-29
 
 ### Added
@@ -22,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   supported.
 - **`scanoss.NewHTTPClient`** builds an `*http.Client` with the same proxy and CA settings, for use
   with the existing `WithHTTPClient` option. `pkg/api` gained `SetHTTPClient`.
+- 
+### Changed
+- Files under 100 bytes are no longer skipped
 
 
 ## [0.3.0] - 2026-07-28

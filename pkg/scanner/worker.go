@@ -28,7 +28,6 @@ import (
 	"os"
 	"sync"
 
-	"github.com/scanoss/scanoss.go/internal/config"
 	"github.com/scanoss/scanoss.go/internal/models"
 	"github.com/scanoss/scanoss.go/pkg/batch"
 	"github.com/scanoss/scanoss.go/pkg/filter"
@@ -80,8 +79,11 @@ func (wp *WorkerPool) worker(id int) {
 			continue
 		}
 
-		// Skip hidden and very small files
-		if stat.Name()[0] == '.' || stat.Size() < config.MinFileSize {
+		// Skip hidden files. Size bounds are not applied here: they belong to
+		// collection (pkg/filter), which is the only place that reports what it
+		// skipped. A second, silent size check here would drop files the caller
+		// has already counted as collected.
+		if stat.Name()[0] == '.' {
 			continue
 		}
 
