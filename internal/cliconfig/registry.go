@@ -38,6 +38,8 @@ import (
 const (
 	KeyAPIURL = "api_url"
 	KeyAPIKey = "api_key"
+	KeyProxy  = "proxy"
+	KeyCACert = "ca_cert"
 )
 
 // keySpec describes one recognized key.
@@ -66,6 +68,11 @@ type keySpec struct {
 var registry = map[string]keySpec{
 	KeyAPIURL: {cli: "api-url", def: config.DefaultAPIURL},
 	KeyAPIKey: {cli: "api-key", secret: true}, // no default: an absent key is absent
+	// How to reach the API. Neither is secret — a proxy URL and a file path are not
+	// credentials — and neither has a default: absent means "use the environment, or
+	// the system certificate pool".
+	KeyProxy:  {cli: "proxy"},
+	KeyCACert: {cli: "ca-cert"},
 }
 
 // storedKeys maps a command-line key to the form stored in the file, built from the
