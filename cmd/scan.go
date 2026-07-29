@@ -330,6 +330,7 @@ func init() {
 	// Fingerprinting flags (apply to `scan <path>` only).
 	scanCmd.Flags().IntP("threads", "t", config.DefaultThreads, "Number of parallel fingerprint workers")
 	scanCmd.Flags().String("save-wfp", "", "Save WFP fingerprints to file before sending to API")
+	scanCmd.Flags().Int64("min-size", 0, "Minimum file size in bytes to scan (0 = no minimum)")
 	scanCmd.Flags().Int64("max-size", 0, "Maximum file size in bytes to scan (0 = unlimited)")
 	scanCmd.Flags().Bool("default-filters", true, "Apply the built-in default file filters")
 	scanCmd.Flags().Bool("gitignore", true, "Honor .gitignore files when collecting files")
@@ -368,7 +369,11 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 	saveWFPFile, _ := cmd.Flags().GetString("save-wfp")
 	settingsFlag, _ := cmd.Flags().GetString("settings")
+	minSize, _ := cmd.Flags().GetInt64("min-size")
 	maxSize, _ := cmd.Flags().GetInt64("max-size")
+	if err := validateSizeBounds(minSize, maxSize); err != nil {
+		return err
+	}
 	applyDefaultFilters, _ := cmd.Flags().GetBool("default-filters")
 	applyGitignore, _ := cmd.Flags().GetBool("gitignore")
 
@@ -394,6 +399,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 		SourcePath: targetPath,
 		Threads:    threads,
 		Filter: filter.Options{
+			MinSize:   minSize,
 			MaxSize:   maxSize,
 			Defaults:  applyDefaultFilters,
 			GitIgnore: applyGitignore,
