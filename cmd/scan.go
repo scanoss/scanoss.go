@@ -393,18 +393,18 @@ func runScan(cmd *cobra.Command, args []string) error {
 	ctx, cancel := createCancellableContext()
 	defer cancel()
 
+	// The profile says which rules apply; the flags say what the user asked for.
+	collectOpts := filter.ScanOptions()
+	collectOpts.MinSize, collectOpts.MaxSize = minSize, maxSize
+	collectOpts.Defaults, collectOpts.GitIgnore = applyDefaultFilters, applyGitignore
+	collectOpts.Settings = scanSettings.ScanFilter()
+
 	result, err := scanpipeline.Run(ctx, scanpipeline.Options{
-		Client:     client,
-		Layers:     layers,
-		SourcePath: targetPath,
-		Threads:    threads,
-		Filter: filter.Options{
-			MinSize:   minSize,
-			MaxSize:   maxSize,
-			Defaults:  applyDefaultFilters,
-			GitIgnore: applyGitignore,
-			Settings:  scanSettings.ScanFilter(),
-		},
+		Client:             client,
+		Layers:             layers,
+		SourcePath:         targetPath,
+		Threads:            threads,
+		Filter:             collectOpts,
 		DependencySettings: scanSettings.DependencyFilter(),
 		ScanOptions:        scanTuning(cmd, scanSettings),
 		OnCollect: func(skipped int) {
