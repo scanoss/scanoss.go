@@ -165,6 +165,14 @@ func (s *Settings) ScanFilter() *filter.Settings {
 	return s.filterFor(OperationScanning)
 }
 
+// FingerprintFilter returns the file-collection filter for the fingerprinting
+// operation. scanoss.json keeps the two operations apart, so a command that only
+// fingerprints (wfp) must read its own rules rather than the scanning ones.
+// Returns nil when s is nil.
+func (s *Settings) FingerprintFilter() *filter.Settings {
+	return s.filterFor(OperationFingerprinting)
+}
+
 // HasBOM returns true if the settings contain any BOM entries
 func (s *Settings) HasBOM() bool {
 	return len(s.BOM.Include) > 0 ||

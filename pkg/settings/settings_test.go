@@ -373,3 +373,44 @@ func TestLoadSkip(t *testing.T) {
 		t.Fatalf("SkipSizes(scanning) = %+v, want one rule with max 1024", sizes)
 	}
 }
+
+// ScanFilter and FingerprintFilter must read their own operation's rules.
+// scanoss.json keeps them apart, so a command that fingerprints (wfp) and one
+// that scans must not pick up each other's patterns.
+func TestScanAndFingerprintFiltersAreDistinct(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "scanoss.json")
+	content := `{
+	  "settings": {
+	    "skip": {
+	      "patterns": {
+	        "scanning":       ["only-scanning/**"],
+	        "fingerprinting": ["only-fingerprinting/**"]
+	      }
+	    }
+	  }
+	}`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	scan := s.ScanFilter()
+	if got := scan.Skip.Patterns; len(got) != 1 || got[0] != "only-scanning/**" {
+		t.Errorf("ScanFilter patterns = %v, want [only-scanning/**]", got)
+	}
+	fingerprint := s.FingerprintFilter()
+	if got := fingerprint.Skip.Patterns; len(got) != 1 || got[0] != "only-fingerprinting/**" {
+		t.Errorf("FingerprintFilter patterns = %v, want [only-fingerprinting/**]", got)
+	}
+}
+
+func TestFingerprintFilterNil(t *testing.T) {
+	var s *Settings
+	if got := s.FingerprintFilter(); got != nil {
+		t.Fatalf("FingerprintFilter() on nil = %v, want nil", got)
+	}
+}
