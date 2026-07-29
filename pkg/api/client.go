@@ -81,16 +81,34 @@ func NewClientWithStrategy(apiURL, apiKey string, strategy SendStrategy) *Client
 	}
 }
 
+// SetHTTPClient replaces the HTTP client used for API calls, so a caller can
+// supply one configured for a proxy or an internal CA. A nil client is ignored.
+//
+// This is the injection point for the C/Python/Node bindings, which reach the API
+// through this package rather than through pkg/scanoss.
+func (c *Client) SetHTTPClient(client *http.Client) {
+	if client != nil {
+		c.client = client
+	}
+}
+
 // SetInsecureTLS disables TLS certificate verification when insecure is true.
 // For self-signed or internal endpoints only — insecure, avoid in production.
 func (c *Client) SetInsecureTLS(insecure bool) {
-	if insecure {
-		c.client = &http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-			},
-		}
+	if !insecure {
+		return
 	}
+	// Clone rather than construct: a zero-value http.Transport has a nil Proxy,
+	// which means no proxy at all — not even from HTTP_PROXY/HTTPS_PROXY — and it
+	// drops Go's timeouts and connection pooling too. Building one by hand is how
+	// this option used to disable proxy support as a side effect.
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if transport.TLSClientConfig == nil {
+		transport.TLSClientConfig = &tls.Config{}
+	}
+	transport.TLSClientConfig.InsecureSkipVerify = true
+
+	c.SetHTTPClient(&http.Client{Transport: transport})
 }
 
 // SendFingerprints implements ScanClient.SendFingerprints
