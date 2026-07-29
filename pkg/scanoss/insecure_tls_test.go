@@ -46,4 +46,19 @@ func TestWithInsecureTLS(t *testing.T) {
 			t.Fatalf("Transport = %v, want nil (default client)", c.transport.httpClient.Transport)
 		}
 	})
+
+	// The option used to build its transport by hand, and a hand-built
+	// http.Transport has a nil Proxy — so turning off certificate verification also
+	// turned off HTTP_PROXY/HTTPS_PROXY, silently. This is the assertion that fails
+	// against that version.
+	t.Run("true keeps the environment proxy", func(t *testing.T) {
+		c := New(WithInsecureTLS(true))
+		tr, ok := c.transport.httpClient.Transport.(*http.Transport)
+		if !ok {
+			t.Fatalf("Transport = %T, want *http.Transport", c.transport.httpClient.Transport)
+		}
+		if !usesEnvironmentProxy(tr) {
+			t.Error("disabling certificate verification dropped the environment proxy")
+		}
+	})
 }

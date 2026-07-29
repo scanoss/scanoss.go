@@ -160,13 +160,19 @@ func runConfigSet(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("%s cannot be set to an empty value; use %q to remove it",
 			name, "scanoss-cli config unset "+name)
 	}
-	// api-url is stored the way the SDK will use it, and must carry a scheme: without
-	// one the failure surfaces much later, in another command, as Go's "unsupported
-	// protocol scheme".
-	if storedKey == cliconfig.KeyAPIURL {
+	// Per-setting rules. Both URLs must carry a scheme: without one the failure
+	// surfaces much later, in another command, as Go's "unsupported protocol scheme"
+	// or a proxy dial to no host at all.
+	switch storedKey {
+	case cliconfig.KeyAPIURL:
 		value = normalizeURL(value)
 		if !hasHTTPScheme(value) {
 			return fmt.Errorf("api-url must start with https:// or http:// (got %q)", value)
+		}
+	case cliconfig.KeyProxy:
+		// Same message the flag gives, so the rule reads the same wherever it is hit.
+		if !hasHTTPScheme(value) {
+			return fmt.Errorf("proxy must start with https:// or http:// (got %q)", value)
 		}
 	}
 

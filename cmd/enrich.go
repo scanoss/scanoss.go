@@ -60,11 +60,8 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(enrichCmd)
-	enrichCmd.Flags().String("api-url", config.DefaultAPIURL, "SCANOSS API URL")
-	enrichCmd.Flags().String("api-key", "", "API authentication token")
-	enrichCmd.Flags().StringP("output", "o", "", "Output file (empty = stdout)")
+	addAPIFlags(enrichCmd)
 	enrichCmd.Flags().StringP("format", "f", "", "Output format: raw, spdx, cyclonedx (default: same as input)")
-	enrichCmd.Flags().Bool("ignore-cert-errors", false, "Ignore TLS certificate errors (insecure)")
 	enrichCmd.Flags().StringSlice("include", nil, "Layers to gather (comma-separated): vulns, licenses, crypto, geo")
 }
 

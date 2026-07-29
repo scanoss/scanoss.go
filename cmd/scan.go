@@ -25,7 +25,6 @@ package cmd
 
 import (
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -321,14 +320,11 @@ func init() {
 	scanCmd.AddCommand(scanWFPCmd)
 
 	// Shared flags (persistent → inherited by the wfp subcommand).
-	scanCmd.PersistentFlags().String("api-url", config.DefaultAPIURL, "SCANOSS API URL")
-	scanCmd.PersistentFlags().String("api-key", "", "API authentication token")
-	scanCmd.PersistentFlags().StringP("output", "o", "", "Output file (empty = stdout)")
+	addAPIFlags(scanCmd)
 	scanCmd.PersistentFlags().StringP("format", "f", config.DefaultFormat, "Result output format: raw, spdx, cyclonedx")
 	scanCmd.PersistentFlags().String("settings", "", "Path to settings file (scanoss.json/settings.json)")
 	scanCmd.PersistentFlags().Int("chunk-size", scanoss.DefaultScanChunkBytes, "WFP upload chunk size in bytes")
 	scanCmd.PersistentFlags().Duration("poll-interval", scanoss.DefaultScanPollInterval, "How often to poll for scan status")
-	scanCmd.PersistentFlags().Bool("ignore-cert-errors", false, "Ignore TLS certificate errors (insecure)")
 	scanCmd.PersistentFlags().StringSlice("include", nil, "Output layers to gather (comma-separated): deps, vulns, licenses, crypto, geo")
 
 	// Fingerprinting flags (apply to `scan <path>` only).
@@ -508,11 +504,15 @@ func buildScanClient(cmd *cobra.Command, prog *scanProgress) (*scanoss.Client, e
 	if err != nil {
 		return nil, err
 	}
-	ignoreCertErrors, _ := cmd.Flags().GetBool("ignore-cert-errors")
+	httpClient, err := newHTTPClient(cmd)
+	if err != nil {
+		return nil, err
+	}
 
 	opts := []scanoss.Option{
 		scanoss.WithAPIURL(api.URL),
 		scanoss.WithAPIKey(api.Key),
+		scanoss.WithHTTPClient(httpClient),
 		scanoss.WithProgress(prog.fn),
 		scanoss.WithScanIDNotify(func(id string) {
 			prog.writeLine("") // separate the scan-id block from the filter/skip notices above
@@ -522,10 +522,6 @@ func buildScanClient(cmd *cobra.Command, prog *scanProgress) (*scanoss.Client, e
 			prog.writeLine("  If interrupted, resume with:\n  " + buildResultsCommand(id, api.URL, api.Key))
 			prog.writeLine("") // separate the resume hint from the progress bars below
 		}),
-	}
-	if ignoreCertErrors {
-		slog.Warn("ignoring TLS certificate errors (insecure)")
-		opts = append(opts, scanoss.WithInsecureTLS(true))
 	}
 	return scanoss.New(opts...), nil
 }

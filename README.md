@@ -114,7 +114,7 @@ Stdout stays reserved for results, so logs never corrupt `--output` or piped JSO
 | `geoprovenance` | Component origin and contributor countries. |
 | `copyright` | Copyright evidence and holders. |
 | `components` | Search, versions, and lifecycle status. |
-| `config` | Store the API URL and key in `~/.scanoss/settings.json` (see [Configuration](#configuration)). |
+| `config` | Store settings in `~/.scanoss/settings.json` (see [Configuration](#configuration)). |
 
 The default endpoint (`https://api.scanoss.com`) requires an API key; a custom API
 URL (e.g. an on-prem deployment) may run keyless.
@@ -132,35 +132,32 @@ scanoss-cli config set api-key SC_abc123def456
 scanoss-cli scan ./my-project --output results.json
 ```
 
-Settings are named `api-key` and `api-url` on the command line — the same names as the
-flags. They live in `~/.scanoss/settings.json`, created on first `config set` with mode
-`0600` in a `0700` directory, where the JSON uses `snake_case`:
+Settings use the same names as the flags: `api-key`, `api-url`, `proxy` and `ca-cert`.
+They live in `~/.scanoss/settings.json`:
 
 ```json
 {
   "api_key": "SC_abc123def456",
-  "api_url": "https://api.scanoss.com"
+  "api_url": "https://api.scanoss.com",
+  "proxy": "http://proxy.example.com:8080",
+  "ca_cert": "/etc/ssl/corp-ca.pem"
 }
 ```
 
 The command line always uses the dashed names; `snake_case` is the file's format, not a
 second way to type a key.
 
-> **Not the same file as `scanoss.json`.** `~/.scanoss/settings.json` is *your*
-> configuration — credentials and endpoint. A project's `scanoss.json` (or the file you
-> pass to `--settings`) holds that project's BOM rules and skip rules. Different scope,
-> different file.
-
 ### Precedence
 
-Every command that accepts `--api-url`/`--api-key` resolves each value the same way:
+Every setting resolves the same way, and each has a matching flag:
 
 ```
 --flag  >  environment variable  >  ~/.scanoss/settings.json  >  built-in default
 ```
 
-Environment variables are `SCANOSS_API_KEY` and `SCANOSS_API_URL`. An empty value from
-the environment or the file is treated as unset and falls through to the next source.
+The environment variable is the setting name in upper case with a `SCANOSS_` prefix:
+`SCANOSS_API_KEY`, `SCANOSS_API_URL`, `SCANOSS_PROXY`, `SCANOSS_CA_CERT`. An empty value
+from the environment or the file is treated as unset and falls through to the next source.
 
 ```bash
 scanoss-cli config set api-url https://scanoss.internal.example.com
@@ -217,6 +214,33 @@ command:
 scanoss-cli config set api-url https://scanoss.internal.example.com
 scanoss-cli scan .
 ```
+
+### Proxy and custom CA
+
+`HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` are honoured with no flags. `--proxy` overrides
+them for one run, and `--ca-cert` trusts a CA the system pool does not have — an internal
+endpoint, or a proxy that intercepts TLS:
+
+```bash
+scanoss-cli scan . --proxy http://proxy.example.com:8080
+scanoss-cli scan . --ca-cert /etc/ssl/corp-ca.pem
+```
+
+The CA is *added* to the system pool, so the public API keeps working, and verification
+stays on — unlike `--ignore-cert-errors`. Both flags work on every command that reaches
+the API. Proxy auto-configuration (PAC) is not supported: read the proxy out of the PAC
+and pass it with `--proxy`.
+
+Both can be stored, so neither flag has to be repeated:
+
+```bash
+scanoss-cli config set proxy http://proxy.example.com:8080
+scanoss-cli config set ca-cert /etc/ssl/corp-ca.pem
+scanoss-cli scan .
+```
+
+A stored `proxy` takes precedence over `HTTP_PROXY`/`HTTPS_PROXY`. `--ignore-cert-errors`
+is not storable — turning off verification stays a per-run choice.
 
 ### CI
 
@@ -319,6 +343,19 @@ res, err := client.Vulnerabilities.Components(ctx, comps) // *scanossapi.Vulnera
 client := scanoss.New(scanoss.WithAPIKey(os.Getenv("SCANOSS_API_KEY")))
 result, err := client.Scan.Folder(ctx, "./my-project")
 // resume by id: client.Scan.Wait(ctx, scanID)
+```
+
+### Proxy and custom CA from the SDK
+
+```go
+hc, err := scanoss.NewHTTPClient(scanoss.HTTPClientOptions{
+    Proxy:      "http://proxy.example.com:8080", // empty honours HTTP(S)_PROXY
+    CACertFile: "/etc/ssl/corp-ca.pem",          // added to the system pool
+})
+if err != nil {
+    return err
+}
+client := scanoss.New(scanoss.WithAPIKey(key), scanoss.WithHTTPClient(hc))
 ```
 
 ## Development
