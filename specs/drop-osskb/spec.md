@@ -16,7 +16,7 @@ error must be rendered clearly on the console, not as a generic `API returned st
 
 On-prem and custom deployments must keep working **without** a key: the no-key guard
 fires **only** against the default SCANOSS endpoint. A custom `--api-url` (e.g.
-`https://elgato.scanoss.com`) proceeds straight through, key or no key.
+`https://scanoss.internal.example.com`) proceeds straight through, key or no key.
 
 > Whoever wants the free OSS KB (`osskb.org`) uses the legacy scanners. This Go
 > client targets the SCANOSS API by default.
@@ -49,7 +49,7 @@ required and where to get one — never a confusing "cannot reach …" or bare 4
    required" message and exits non-zero **without** making a network request.
 2. **Given** `--api-key <valid>` and no `--api-url`, **then** the command runs against
    `https://api.scanoss.com` and succeeds (no "using premium endpoint" line).
-3. **Given** `--api-url https://elgato.scanoss.com` and **no** `--api-key`, **then**
+3. **Given** `--api-url https://scanoss.internal.example.com` and **no** `--api-key`, **then**
    the command proceeds to that endpoint normally (no no-key guard) — on-prem works
    keyless.
 4. **Given** any endpoint returns **401 Unauthorized**, **then** the CLI prints a clear

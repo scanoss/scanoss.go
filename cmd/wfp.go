@@ -62,6 +62,7 @@ func init() {
 	wfpCmd.Flags().String("settings", "", "Path to settings file (scanoss.json/settings.json)")
 	wfpCmd.Flags().Bool("default-filters", true, "Apply the built-in default file filters")
 	wfpCmd.Flags().Bool("gitignore", true, "Honor .gitignore files when collecting files")
+	wfpCmd.Flags().Bool("all-hidden", false, "Include hidden files and folders (.git is always excluded)")
 }
 
 func runWFP(cmd *cobra.Command, args []string) error {
@@ -84,6 +85,7 @@ func runWFP(cmd *cobra.Command, args []string) error {
 	settingsFlag, _ := cmd.Flags().GetString("settings")
 	applyDefaultFilters, _ := cmd.Flags().GetBool("default-filters")
 	applyGitignore, _ := cmd.Flags().GetBool("gitignore")
+	allHidden, _ := cmd.Flags().GetBool("all-hidden")
 
 	// Validate configuration
 	if threads < 1 {
@@ -112,13 +114,12 @@ func runWFP(cmd *cobra.Command, args []string) error {
 
 	// Collect files with the same inputs `scan` uses, so a WFP generated here
 	// covers exactly the files a scan of the same tree would upload.
-	res, err := scanner.CollectFilesWithOptions(targetPath, filter.Options{
-		MinSize:   minSize,
-		MaxSize:   maxSize,
-		Defaults:  applyDefaultFilters,
-		GitIgnore: applyGitignore,
-		Settings:  wfpSettings.FingerprintFilter(),
-	})
+	collectOpts := filter.FingerprintOptions()
+	collectOpts.MinSize, collectOpts.MaxSize = minSize, maxSize
+	collectOpts.Defaults, collectOpts.GitIgnore = applyDefaultFilters, applyGitignore
+	collectOpts.IncludeHidden = allHidden
+	collectOpts.Settings = wfpSettings.FingerprintFilter()
+	res, err := scanner.CollectFilesWithOptions(targetPath, collectOpts)
 	if err != nil {
 		return fmt.Errorf("error collecting files: %w", err)
 	}

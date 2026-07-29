@@ -30,7 +30,7 @@ import (
 
 // TestCollectPreserveDependencyManifests verifies the split: ScanOptions prunes
 // dependency manifests (they are useless for fingerprint matching), while
-// IngestOptions applies the same prune but keeps manifests for the dependency
+// DependencyOptions applies the same prune but keeps manifests for the dependency
 // parser. Non-manifest files sharing a manifest extension (data.json) and
 // manifests nested inside skipped dirs (node_modules) are NOT kept.
 func TestCollectPreserveDependencyManifests(t *testing.T) {
@@ -51,14 +51,53 @@ func TestCollectPreserveDependencyManifests(t *testing.T) {
 		t.Fatalf("ScanOptions kept = %v, want %v (manifests must be skipped)", got, want)
 	}
 
-	ing, err := Collect(root, IngestOptions())
+	ing, err := Collect(root, DependencyOptions())
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := baseNames(ing.Files) // sorted base names
 	want := []string{"go.mod", "main.go", "package.json", "pom.xml"}
 	if !equalStrings(got, want) {
-		t.Fatalf("IngestOptions kept = %v, want %v "+
+		t.Fatalf("DependencyOptions kept = %v, want %v "+
 			"(root manifests kept; data.json/logo.png/node_modules pruned)", got, want)
+	}
+}
+
+// A rule the project wrote in scanoss.json overrules the manifest exemption.
+//
+// The exemption exists so the built-in extension list (.json, .mod, .xml) does
+// not swallow the manifests a dependency scan needs. It is not there to overrule
+// someone who said, explicitly, not to look at a given file — before this, a user
+// excluding "examples/go.mod" by name was ignored, and the only way through was
+// to prune the whole directory.
+func TestUserRulesOverrideTheManifestExemption(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "go.mod"), 200)
+	writeFile(t, filepath.Join(root, "examples", "go.mod"), 200)
+
+	opts := DependencyOptions()
+	opts.Settings = &Settings{Skip: Skip{Patterns: []string{"examples/go.mod"}}}
+
+	res, err := Collect(root, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range res.Files {
+		rel, _ := filepath.Rel(root, f)
+		if filepath.ToSlash(rel) == "examples/go.mod" {
+			t.Error("a manifest excluded by name in scanoss.json must not be collected")
+		}
+	}
+
+	// The built-in rules still yield to the exemption: go.mod survives the
+	// default extension list, which is what the exemption is for.
+	var found bool
+	for _, f := range res.Files {
+		if filepath.Base(f) == "go.mod" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("the root manifest must still be collected")
 	}
 }

@@ -47,7 +47,7 @@ type Defaults struct {
 // of it: they are caller input, not a built-in, and have their own SizeSource.
 func StdDefaults() Defaults {
 	return Defaults{
-		Dirs:    DefaultSkippedDirs,
+		Dirs:    skippedDirs(ScanOnlySkippedDirs),
 		DirExts: DefaultSkippedDirExts,
 		Files:   DefaultSkippedFiles,
 		Exts:    DefaultSkippedExts,
@@ -101,9 +101,22 @@ func DefaultSource(d Defaults) []Matcher {
 //   - zero-byte files: no content to match, so the WFP entry carries a zero hash
 //     and no lines — bytes on the wire no scan can act on;
 //   - symbolic links: the target is collected on its own when it is inside the
-//     tree, so following the link would report the same content twice.
+//     tree, so following the link would report the same content twice;
+//   - version-control metadata (.git, .svn, .hg, .bzr): compressed objects
+//     nothing can match, and .git/config can carry credentials in remote URLs.
 func UnscannableSource() []Matcher {
-	return []Matcher{emptyFileMatcher{}, symlinkMatcher{}}
+	return []Matcher{emptyFileMatcher{}, symlinkMatcher{}, vcsMatcher{}}
+}
+
+// HiddenSource skips entries whose name begins with a dot.
+//
+// Not part of UnscannableSource: a dotfile has perfectly good content, so this
+// is a policy choice about what belongs to a project, not a statement about the
+// entry. That is why it can be switched off (Options.IncludeHidden) and why it
+// is a source like any other rather than a check buried in the walk — a caller
+// that cannot walk a tree needs to apply it too.
+func HiddenSource() []Matcher {
+	return []Matcher{hiddenMatcher{}}
 }
 
 // SizeSource turns a [min, max] byte range into a matcher. It is a source of its

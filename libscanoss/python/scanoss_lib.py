@@ -138,7 +138,7 @@ class ScanossLib:
             path.encode('utf-8')
         )
         return json.loads(json_str) if json_str else []
-    def scan(self, path, api_url="https://osskb.org/api/scan/direct", api_key="",
+    def scan(self, path, api_url="https://api.scanoss.com", api_key="",
              threads=10, post_size=65536):
         """
         Perform a complete scan: collect files, generate fingerprints, and send to API
@@ -219,7 +219,7 @@ def main():
     # Uncomment to test with real API:
     # scan_results = lib.scan(
     #     path="../../cmd",
-    #     api_url="https://osskb.org/api/scan/direct",
+    #     api_url="https://api.scanoss.com",
     #     threads=10,
     #     post_size=65536
     # )

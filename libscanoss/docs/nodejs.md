@@ -52,7 +52,7 @@ files.forEach(f => console.log(f));
 ```javascript
 const results = lib.scan(
     './src',                                    // path
-    'https://api.osskb.org/scan/direct',       // API URL
+    'https://api.scanoss.com',       // API URL
     '',                                         // API key (empty = public)
     10,                                         // threads
     65536                                       // POST size
@@ -160,7 +160,7 @@ Complete scan with API submission.
 
 **Parameters**:
 - `path`: Path to file or directory
-- `apiUrl`: API URL (default: `https://api.osskb.org/scan/direct`)
+- `apiUrl`: API URL (default: `https://api.scanoss.com`)
 - `apiKey`: API key (default: empty for public API)
 - `threads`: Number of threads (default: 10)
 - `postSize`: Maximum POST size (default: 65536)

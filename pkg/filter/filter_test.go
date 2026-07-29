@@ -27,6 +27,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 )
@@ -208,10 +209,11 @@ func TestCollectSkipsSymlinks(t *testing.T) {
 	}
 }
 
-// NewMatcher (the streaming path) agrees with Collect on unscannable entries.
-func TestNewMatcherSkipsUnscannable(t *testing.T) {
+// A matcher composed the way an external caller composes one (Build over the
+// exported sources) agrees with Collect on unscannable entries.
+func TestComposedMatcherSkipsUnscannable(t *testing.T) {
 	for _, o := range []Options{{Defaults: true}, {Defaults: false}, {}} {
-		m := NewMatcher(o)
+		m := Build(UnscannableSource(), DefaultSource(o.defaults()))
 		if !m.Match("empty.go", aFile("empty.go", 0)) {
 			t.Errorf("%+v: a zero-byte file should be skipped", o)
 		}
@@ -245,10 +247,17 @@ func TestCollectSizeBoundsIndependentOfDefaults(t *testing.T) {
 	}
 }
 
-// NewMatcher (the streaming path) must agree with Collect on the same Options.
-func TestNewMatcherSizeBoundsIndependentOfDefaults(t *testing.T) {
+// Size bounds are their own source, so a caller composing by hand gets them
+// whether or not it also asked for the built-in lists.
+func TestComposedSizeBoundsIndependentOfDefaults(t *testing.T) {
 	for _, useDefaults := range []bool{true, false} {
-		m := NewMatcher(Options{Defaults: useDefaults, MinSize: 100})
+		o := Options{Defaults: useDefaults, MinSize: 100}
+		var srcs [][]Matcher
+		if useDefaults {
+			srcs = append(srcs, DefaultSource(o.defaults()))
+		}
+		srcs = append(srcs, SizeSource(o.MinSize, o.MaxSize))
+		m := Build(srcs...)
 		if !m.Match("tiny.go", aFile("tiny.go", 40)) {
 			t.Errorf("Defaults=%v: a 40-byte file should be skipped by MinSize=100", useDefaults)
 		}
@@ -297,9 +306,9 @@ func TestZeroOptionsMatchDefaultBounds(t *testing.T) {
 // one gets the documented default rather than an implicit zero.
 func TestOptionConstructorsCarryDefaultBounds(t *testing.T) {
 	for name, o := range map[string]Options{
-		"DefaultOptions": DefaultOptions(),
-		"ScanOptions":    ScanOptions(),
-		"IngestOptions":  IngestOptions(),
+		"DefaultOptions":    DefaultOptions(),
+		"ScanOptions":       ScanOptions(),
+		"DependencyOptions": DependencyOptions(),
 	} {
 		if o.MinSize != DefaultMinFileSize {
 			t.Errorf("%s().MinSize = %d, want DefaultMinFileSize (%d)", name, o.MinSize, DefaultMinFileSize)
@@ -404,5 +413,59 @@ func TestCollectGitIgnore(t *testing.T) {
 	want := []string{"keep.go"}
 	if !equalStrings(got, want) {
 		t.Fatalf("kept files = %v, want %v", got, want)
+	}
+}
+
+// Collect has the tree, so it prunes the directory and never looks inside. A
+// caller without a tree owns that decision and has the exported lists for it.
+func TestCollectPrunesExcludedDirectories(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "node_modules", "left-pad", "index.js"), 400)
+	writeFile(t, filepath.Join(root, "src", "main.go"), 400)
+
+	res, err := Collect(root, ScanOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := baseNames(res.Files); !equalStrings(got, []string{"main.go"}) {
+		t.Fatalf("kept %v, want [main.go]", got)
+	}
+}
+
+// Version-control metadata is never collected, whatever the options say. This is
+// not a preference: .git holds compressed objects nothing can match, and
+// .git/config can carry credentials in remote URLs — collecting it would upload
+// them. It survived --all-hidden only because the hidden rule happened to cover
+// it, which is exactly the kind of accident this test exists to prevent.
+func TestVCSMetadataIsNeverCollected(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "main.go"), 400)
+	for _, p := range []string{
+		".git/config", ".git/objects/ab/cdef", ".git/HEAD",
+		".svn/entries", ".hg/store/data", ".bzr/checkout/dirstate",
+	} {
+		writeFile(t, filepath.Join(root, filepath.FromSlash(p)), 400)
+	}
+
+	// Every option a caller can turn off, turned off.
+	for name, o := range map[string]Options{
+		"defaults on":         {Defaults: true, GitIgnore: true},
+		"defaults off":        {Defaults: false},
+		"hidden included":     {Defaults: true, IncludeHidden: true},
+		"everything off":      {Defaults: false, GitIgnore: false, IncludeHidden: true},
+		"zero-valued options": {},
+	} {
+		res, err := Collect(root, o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, f := range res.Files {
+			rel, _ := filepath.Rel(root, f)
+			for _, vcs := range []string{".git", ".svn", ".hg", ".bzr"} {
+				if strings.HasPrefix(filepath.ToSlash(rel), vcs+"/") {
+					t.Errorf("%s: collected %s — version-control metadata must never be collected", name, rel)
+				}
+			}
+		}
 	}
 }

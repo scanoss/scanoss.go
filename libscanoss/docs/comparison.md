@@ -107,7 +107,7 @@ files.forEach(f => {
 ```python
 results = lib.scan(
     path="./src",
-    api_url="https://api.osskb.org/scan/direct",
+    api_url="https://api.scanoss.com",
     api_key="",
     threads=10,
     post_size=65536
@@ -126,7 +126,7 @@ for file_path, matches in results.items():
 ```javascript
 const results = lib.scan(
     "./src",                                    // path
-    "https://api.osskb.org/scan/direct",       // api_url
+    "https://api.scanoss.com",       // api_url
     "",                                         // api_key
     10,                                         // threads
     65536                                       // post_size

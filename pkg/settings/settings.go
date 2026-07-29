@@ -173,6 +173,14 @@ func (s *Settings) FingerprintFilter() *filter.Settings {
 	return s.filterFor(OperationFingerprinting)
 }
 
+// DependencyFilter returns the file-collection filter for the dependencies
+// operation. The section is part of the published scanoss.json schema, so a
+// project can already write skip.patterns.dependencies today — this is what
+// makes it take effect. Returns nil when s is nil.
+func (s *Settings) DependencyFilter() *filter.Settings {
+	return s.filterFor(OperationDependencies)
+}
+
 // HasBOM returns true if the settings contain any BOM entries
 func (s *Settings) HasBOM() bool {
 	return len(s.BOM.Include) > 0 ||
