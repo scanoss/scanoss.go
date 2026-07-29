@@ -7,7 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-
 ## [0.4.0] - 2026-07-29
 
 ### Added
@@ -22,6 +21,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   supported.
 - **`scanoss.NewHTTPClient`** builds an `*http.Client` with the same proxy and CA settings, for use
   with the existing `WithHTTPClient` option. `pkg/api` gained `SetHTTPClient`.
+- **`--min-size`** on `scan` and `wfp` — skip files below a size in bytes.
+- **`--max-size` on `wfp`**.
+- **`--default-filters`, `--gitignore` and `--settings` on `wfp`** — it now collects files exactly
+  the way `scan` does, so the two no longer disagree on which files they cover. `scanoss.json` is
+  read for the **fingerprinting** operation (`skip.patterns.fingerprinting`), not the scanning one.
+- **`settings.FingerprintFilter()`** alongside `ScanFilter()`, for SDK callers that fingerprint.
+
+### Changed
+- Files under 100 bytes are no longer skipped
+- **SDK, breaking** — `filter.Defaults` no longer carries `MinSize`/`MaxSize`, and neither does
+  `filter.StdDefaults()`. Size is caller input, not a built-in skip list: set
+  `filter.Options.MinSize`/`MaxSize`, or build the matcher directly with the new
+  `filter.SizeSource(min, max)`. `filter.DefaultOptions`/`ScanOptions`/`IngestOptions` carry the
+  built-in bounds, so callers that start from a constructor need no change.
+
+### Fixed
+- Zero-byte files and symbolic links are no longer fingerprinted. An empty file produced a WFP
+  entry with a zero hash and no lines, and a link reported the same content twice — its target is
+  collected on its own. Neither is configurable: they are not policy, and both match what the
+  Python and JS clients already do.
+- `--max-size` (and the new `--min-size`) were silently ignored when combined with
+  `--default-filters=false`: the bounds were applied from inside the built-in default filters, so
+  switching those off discarded them. They are now applied independently, in both the directory
+  walk and the streaming-extraction path.
 
 
 ## [0.3.0] - 2026-07-28

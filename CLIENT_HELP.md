@@ -77,9 +77,16 @@ scanoss-cli wfp ./src/main.go > main.wfp
 
 # More workers
 scanoss-cli wfp ./my-project --threads 20
+
+# Skip files below 100 bytes
+scanoss-cli wfp ./my-project --min-size 100
 ```
 
-Flags: `-t, --threads` (10), `-o, --output`.
+Flags: `-t, --threads` (10), `-o, --output`, `--min-size` (bytes, default 0),
+`--max-size` (0 = unlimited).
+
+The size bounds mean the same here as on `scan` — see
+[Skipping files](#skipping-files).
 
 ## Scanning (`scan`)
 
@@ -129,7 +136,7 @@ Flags (persistent flags are shared with `scan wfp`): `--api-url`, `--api-key`,
 `-f, --format` (`raw`/`spdx`/`cyclonedx`), `--include` (extra output layers — see
 [Output layers](#output-layers---include)), `-o, --output`, `--settings`,
 `--chunk-size` (1 MiB), `--ignore-cert-errors`, `-t, --threads` (10),
-`--save-wfp`, `--max-size` (0 = unlimited),
+`--save-wfp`, `--min-size` (bytes, default 0), `--max-size` (0 = unlimited),
 `--default-filters` (true), `--gitignore` (true).
 
 ### Skipping files
@@ -138,14 +145,38 @@ Files are filtered before scanning (build dirs, vendored deps, generated/binary
 files, oversized files). Toggle the sources with flags, or configure project rules
 in `scanoss.json` — see [`scanoss.json` reference](#scanossjson-reference).
 
+**There is no minimum file size by default** — however small a file is, it is
+fingerprinted unless another rule skips it. Set a floor with `--min-size`:
+
 ```bash
-# Disable the built-in default filters and .gitignore, cap file size at 1 MiB
+# Skip files below 100 bytes
+scanoss-cli scan ./my-project --api-key "$SCANOSS_API_KEY" --min-size 100
+```
+
+```bash
+# Keep files between 100 bytes and 1 MiB
+scanoss-cli scan ./my-project \
+  --api-key "$SCANOSS_API_KEY" \
+  --min-size 100 \
+  --max-size 1048576
+```
+
+```bash
+# Disable the built-in default filters and .gitignore
 scanoss-cli scan ./my-project \
   --api-key "$SCANOSS_API_KEY" \
   --default-filters=false \
-  --gitignore=false \
-  --max-size 1048576
+  --gitignore=false
 ```
+
+The size bounds are independent of `--default-filters`: they are what you asked
+for, not a built-in, so they still apply when the built-in skip lists are off.
+
+The two bounds read differently. `--min-size` is literal: `--min-size 0` — the
+default — admits every file, because every file is at least 0 bytes. `--max-size`
+cannot work that way, since a literal maximum of 0 would exclude everything, so
+there `0` means "unlimited". A negative value, or a `--min-size` above a non-zero
+`--max-size`, is rejected before any file is read.
 
 **scanoss.json equivalent** (per-project skip rules):
 
@@ -159,6 +190,12 @@ scanoss-cli scan ./my-project \
   }
 }
 ```
+
+The two are not alternatives — they compose. `--min-size`/`--max-size` apply to
+every file, while a `skip.sizes` rule applies only to the files its `patterns`
+match (a rule with no `patterns` matches nothing and is ignored). Use the flags
+for a blanket bound, and `skip.sizes` when one file type deserves different limits
+from the rest.
 
 ### BOM context
 

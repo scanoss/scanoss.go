@@ -41,11 +41,10 @@ type Defaults struct {
 	Files   []string // exact file names skipped
 	Exts    []string // file extensions skipped (leading dot)
 	Endings []string // non-extension file-name suffixes skipped
-	MinSize int64    // minimum file size; 0 disables
-	MaxSize int64    // maximum file size; 0 disables (unlimited)
 }
 
-// StdDefaults returns the built-in default skip lists and size bounds.
+// StdDefaults returns the built-in default skip lists. Size bounds are not part
+// of it: they are caller input, not a built-in, and have their own SizeSource.
 func StdDefaults() Defaults {
 	return Defaults{
 		Dirs:    DefaultSkippedDirs,
@@ -53,8 +52,6 @@ func StdDefaults() Defaults {
 		Files:   DefaultSkippedFiles,
 		Exts:    DefaultSkippedExts,
 		Endings: DefaultSkippedFileEndings,
-		MinSize: DefaultMinFileSize,
-		MaxSize: DefaultMaxFileSize,
 	}
 }
 
@@ -93,10 +90,32 @@ func DefaultSource(d Defaults) []Matcher {
 	for _, ending := range d.Endings {
 		ms = append(ms, newEndingMatcher(ending))
 	}
-	if d.MinSize > 0 || d.MaxSize > 0 {
-		ms = append(ms, newSizeMatcher(d.MinSize, d.MaxSize))
-	}
 	return ms
+}
+
+// UnscannableSource skips entries there is no point fingerprinting, whatever the
+// other rules say. It is not configurable and applies on every collection,
+// independently of the default lists and of the size bounds — these are not
+// policy choices but statements about the entry:
+//
+//   - zero-byte files: no content to match, so the WFP entry carries a zero hash
+//     and no lines — bytes on the wire no scan can act on;
+//   - symbolic links: the target is collected on its own when it is inside the
+//     tree, so following the link would report the same content twice.
+func UnscannableSource() []Matcher {
+	return []Matcher{emptyFileMatcher{}, symlinkMatcher{}}
+}
+
+// SizeSource turns a [min, max] byte range into a matcher. It is a source of its
+// own — not part of DefaultSource — because the bounds come from the caller
+// (--min-size/--max-size), not from the built-in lists: switching the defaults
+// off must not discard a bound the caller asked for. A min of 0 imposes no
+// minimum and a max of 0 no maximum, so 0/0 yields no matcher at all.
+func SizeSource(min, max int64) []Matcher {
+	if min <= 0 && max <= 0 {
+		return nil
+	}
+	return []Matcher{newSizeMatcher(min, max)}
 }
 
 // SizeRule is one scanoss.json skip.sizes entry: files matching any of Patterns

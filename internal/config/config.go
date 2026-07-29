@@ -37,9 +37,6 @@ const (
 	// DefaultPostSize is the default maximum POST size in bytes (64KB)
 	DefaultPostSize = 64 * 1024
 
-	// MinFileSize is the minimum file size to process
-	MinFileSize = 100
-
 	// Output format constants
 	FormatRaw       = "raw"
 	FormatSPDX      = "spdx"

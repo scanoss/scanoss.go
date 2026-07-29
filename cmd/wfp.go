@@ -29,8 +29,10 @@ import (
 	"path/filepath"
 
 	"github.com/scanoss/scanoss.go/internal/config"
+	"github.com/scanoss/scanoss.go/pkg/filter"
 	"github.com/scanoss/scanoss.go/pkg/output"
 	"github.com/scanoss/scanoss.go/pkg/scanner"
+	"github.com/scanoss/scanoss.go/pkg/settings"
 	"github.com/spf13/cobra"
 )
 
@@ -55,6 +57,11 @@ func init() {
 	// Optional flags
 	wfpCmd.Flags().IntP("threads", "t", config.DefaultThreads, "Number of parallel threads")
 	wfpCmd.Flags().StringP("output", "o", "", "Output file (empty = stdout)")
+	wfpCmd.Flags().Int64("min-size", filter.DefaultMinFileSize, "Minimum file size in bytes to scan")
+	wfpCmd.Flags().Int64("max-size", filter.DefaultMaxFileSize, "Maximum file size in bytes to scan (0 = unlimited)")
+	wfpCmd.Flags().String("settings", "", "Path to settings file (scanoss.json/settings.json)")
+	wfpCmd.Flags().Bool("default-filters", true, "Apply the built-in default file filters")
+	wfpCmd.Flags().Bool("gitignore", true, "Honor .gitignore files when collecting files")
 }
 
 func runWFP(cmd *cobra.Command, args []string) error {
@@ -72,10 +79,25 @@ func runWFP(cmd *cobra.Command, args []string) error {
 	// Get configuration from flags
 	threads, _ := cmd.Flags().GetInt("threads")
 	outputFile, _ := cmd.Flags().GetString("output")
+	minSize, _ := cmd.Flags().GetInt64("min-size")
+	maxSize, _ := cmd.Flags().GetInt64("max-size")
+	settingsFlag, _ := cmd.Flags().GetString("settings")
+	applyDefaultFilters, _ := cmd.Flags().GetBool("default-filters")
+	applyGitignore, _ := cmd.Flags().GetBool("gitignore")
 
 	// Validate configuration
 	if threads < 1 {
 		threads = config.DefaultThreads
+	}
+	if err := validateSizeBounds(minSize, maxSize); err != nil {
+		return err
+	}
+
+	// Fingerprinting rules, not scanning ones: scanoss.json keeps the two
+	// operations apart, and this command only fingerprints.
+	wfpSettings, err := settings.Resolve(settingsFlag, targetPath)
+	if err != nil {
+		return fmt.Errorf("error loading settings: %w", err)
 	}
 
 	// Report WFP paths relative to the scanned root (a folder, or the file's
@@ -88,10 +110,23 @@ func runWFP(cmd *cobra.Command, args []string) error {
 		scanRoot = abs
 	}
 
-	// Collect files
-	files, err := scanner.CollectFiles(targetPath)
+	// Collect files with the same inputs `scan` uses, so a WFP generated here
+	// covers exactly the files a scan of the same tree would upload.
+	res, err := scanner.CollectFilesWithOptions(targetPath, filter.Options{
+		MinSize:   minSize,
+		MaxSize:   maxSize,
+		Defaults:  applyDefaultFilters,
+		GitIgnore: applyGitignore,
+		Settings:  wfpSettings.FingerprintFilter(),
+	})
 	if err != nil {
 		return fmt.Errorf("error collecting files: %w", err)
+	}
+	files := res.Files
+	// Say what was dropped, as `scan` does: a filtered file that goes unreported
+	// looks like a file that was never there.
+	if res.SkippedCount > 0 {
+		infof("Filtered %d files", res.SkippedCount)
 	}
 
 	if len(files) == 0 {
