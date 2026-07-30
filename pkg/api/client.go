@@ -33,7 +33,7 @@ import (
 	"mime/multipart"
 	"net/http"
 
-	"github.com/scanoss/scanoss.go/internal/models"
+	fingerprint "github.com/scanoss/scanoss.go/pkg/fingerprint/wfp"
 )
 
 // Client handles communications with the SCANOSS API
@@ -149,7 +149,7 @@ func (c *Client) GetBatchStatus(sessionID string) (*BatchStatus, error) {
 }
 
 // SendFingerprint sends a single fingerprint to the API (legacy)
-func (c *Client) SendFingerprint(fp *models.FileFingerprint) (string, error) {
+func (c *Client) SendFingerprint(fp *fingerprint.FileFingerprint) (string, error) {
 	return c.sendWFP([]byte(fp.Fingerprint), "", false, nil)
 }
 
