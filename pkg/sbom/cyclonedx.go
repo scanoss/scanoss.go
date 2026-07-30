@@ -177,7 +177,7 @@ func cycloneDXLicense(l License) cdx.License {
 	lic := cdx.License{Acknowledgement: cdxAcknowledgement(l.Acknowledgement)}
 	canonical, ok := normalizeLicense(l.ID)
 	switch {
-	case ok && !isCompound(canonical) && !strings.HasPrefix(canonical, "LicenseRef-"):
+	case ok && !isExpression(canonical) && !strings.HasPrefix(canonical, "LicenseRef-"):
 		lic.ID = canonical
 	case ok:
 		// A valid expression, or a LicenseRef: both are legal here, but not in "id".
