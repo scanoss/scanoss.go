@@ -42,13 +42,14 @@ and detecting open source components.
 
 Supports fingerprinting (WFP) and full scanning with API submission.`,
 	Version: version.Version(),
-	// PersistentPreRunE runs before every subcommand: it configures the logger
-	// from --verbose so diagnostics honor the flag everywhere.
+	// PersistentPreRunE runs before every subcommand: it configures the logger from --verbose so
+	// diagnostics honor the flag everywhere, and rejects an unwritable --output before the command
+	// does the work whose result was going to go there.
 	PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 		verbose, _ := cmd.Flags().GetBool("verbose")
 		logging.Configure(verbose)
 		slog.Debug("verbose logging enabled")
-		return nil
+		return validateOutputTarget(cmd)
 	},
 }
 

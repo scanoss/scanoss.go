@@ -53,12 +53,17 @@ func clearFlags(c *cobra.Command) {
 	}
 }
 
-// runBare invokes a command with no arguments at all and reports what it wrote where, plus the
-// error it returned. Execute() turns a non-nil error into exit 1, so the error standing in for the
-// exit code is the whole point.
+// runBare invokes a command and reports what it wrote where, plus the error it returned.
+// Execute() turns a non-nil error into exit 1, so the error standing in for the exit code is the
+// whole point.
+//
+// Flags are cleared on the way out as well as on the way in: cobra keeps them on the command
+// between calls, so a value left behind here would reach whichever test runs next — which is not
+// hypothetical, an --output left set made an unrelated size-bounds test fail on the wrong error.
 func runBare(t *testing.T, argv ...string) (stdout, stderr string, err error) {
 	t.Helper()
 	clearFlags(rootCmd)
+	defer clearFlags(rootCmd)
 
 	var out, errOut bytes.Buffer
 	rootCmd.SetOut(&out)
