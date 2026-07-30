@@ -183,10 +183,13 @@ func (s scanService) scan(ctx context.Context, wfp []byte, o scanOptions) (scano
 	if err != nil {
 		return scanossapi.ScanEnvelope{}, err
 	}
-	// Apply BOM rules on the result (post-scan)
+	// Apply BOM rules on the result (post-scan). Remove before replace: relabelling a match that
+	// is about to be dismissed is wasted, and the other order would let a replacement reintroduce
+	// a removed component under a new PURL.
 	if o.bom != nil && env.Result != nil {
 		s.c.log.Debug("applying BOM rules to scan result")
 		ApplyBOMRemove(env.Result, o.bom)
+		ApplyBOMReplace(env.Result, o.bom)
 	}
 	s.c.log.Info("scan complete", "scanID", scanID)
 	return env, nil
