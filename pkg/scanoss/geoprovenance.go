@@ -42,10 +42,10 @@ var (
 // contributor countries, each batch and single. Responses are typed from the
 // OpenAPI v3 contract.
 type GeoprovenanceAPI interface {
-	Origins(ctx context.Context, comps []Component) (*scanossapi.GeoOriginResponse, error)
-	Origin(ctx context.Context, comp Component) (*scanossapi.GeoOriginResponse, error)
-	Countries(ctx context.Context, comps []Component) (*scanossapi.GeoContributorsResponse, error)
-	Country(ctx context.Context, comp Component) (*scanossapi.GeoContributorsResponse, error)
+	Origins(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.GeoOriginResponse, error)
+	Origin(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.GeoOriginResponse, error)
+	Countries(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.GeoContributorsResponse, error)
+	Country(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.GeoContributorsResponse, error)
 }
 
 type geoprovenanceService struct{ c *Client }
@@ -53,8 +53,8 @@ type geoprovenanceService struct{ c *Client }
 var _ GeoprovenanceAPI = geoprovenanceService{}
 
 // Origins returns the country of origin for the given components (batch).
-func (s geoprovenanceService) Origins(ctx context.Context, comps []Component) (*scanossapi.GeoOriginResponse, error) {
-	res, err := s.c.decorate(ctx, ServiceGeoprovenanceOrigin, comps)
+func (s geoprovenanceService) Origins(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.GeoOriginResponse, error) {
+	res, err := s.c.decorate(ctx, ServiceGeoprovenanceOrigin, comps, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -62,8 +62,8 @@ func (s geoprovenanceService) Origins(ctx context.Context, comps []Component) (*
 }
 
 // Origin returns the country of origin for a single component.
-func (s geoprovenanceService) Origin(ctx context.Context, comp Component) (*scanossapi.GeoOriginResponse, error) {
-	res, err := s.c.decorateOne(ctx, ServiceGeoprovenanceOriginOne, comp)
+func (s geoprovenanceService) Origin(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.GeoOriginResponse, error) {
+	res, err := s.c.decorateOne(ctx, ServiceGeoprovenanceOriginOne, comp, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -71,8 +71,8 @@ func (s geoprovenanceService) Origin(ctx context.Context, comp Component) (*scan
 }
 
 // Countries returns contributor countries for the given components (batch).
-func (s geoprovenanceService) Countries(ctx context.Context, comps []Component) (*scanossapi.GeoContributorsResponse, error) {
-	res, err := s.c.decorate(ctx, ServiceGeoprovenanceCountries, comps)
+func (s geoprovenanceService) Countries(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.GeoContributorsResponse, error) {
+	res, err := s.c.decorate(ctx, ServiceGeoprovenanceCountries, comps, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -80,8 +80,8 @@ func (s geoprovenanceService) Countries(ctx context.Context, comps []Component) 
 }
 
 // Country returns contributor countries for a single component.
-func (s geoprovenanceService) Country(ctx context.Context, comp Component) (*scanossapi.GeoContributorsResponse, error) {
-	res, err := s.c.decorateOne(ctx, ServiceGeoprovenanceCountriesOne, comp)
+func (s geoprovenanceService) Country(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.GeoContributorsResponse, error) {
+	res, err := s.c.decorateOne(ctx, ServiceGeoprovenanceCountriesOne, comp, opts...)
 	if err != nil {
 		return nil, err
 	}

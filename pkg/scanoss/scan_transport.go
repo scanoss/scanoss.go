@@ -38,7 +38,11 @@ var ServiceScan = Service{Name: "scan", endpoint: "/v3/wfp/scan"}
 
 // DefaultScanPollInterval is the cadence for polling the scan status endpoint
 // when the caller does not override it with WithPollInterval.
-const DefaultScanPollInterval = 5 * time.Second
+//
+// The server reports progress per pass, and polling samples it rather than streaming it: at a
+// slower cadence a whole pass can come and go between two polls, leaving a progress display
+// frozen for stretches that look like a hang.
+const DefaultScanPollInterval = 2 * time.Second
 
 // scanPollInitial is the delay before the first status poll. It is clamped to the
 // poll interval when a smaller interval is set (see scanService.wait).

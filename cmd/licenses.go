@@ -32,16 +32,16 @@ import (
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
 )
 
-func callLicenseDeclared(c *scanoss.Client, ctx context.Context, comps []scanoss.Component) (*scanossapi.ComponentsLicenseResponse, error) {
-	return c.Licenses.Components(ctx, comps)
+func callLicenseDeclared(c *scanoss.Client, ctx context.Context, comps []scanoss.Component, opts ...scanoss.DecorateOption) (*scanossapi.ComponentsLicenseResponse, error) {
+	return c.Licenses.Components(ctx, comps, opts...)
 }
 
-func callLicenseAttribution(c *scanoss.Client, ctx context.Context, comps []scanoss.Component) (*scanossapi.AttributionResponse, error) {
-	return c.Licenses.Attribution(ctx, comps)
+func callLicenseAttribution(c *scanoss.Client, ctx context.Context, comps []scanoss.Component, opts ...scanoss.DecorateOption) (*scanossapi.AttributionResponse, error) {
+	return c.Licenses.Attribution(ctx, comps, opts...)
 }
 
-func callLicenseEvidence(c *scanoss.Client, ctx context.Context, comps []scanoss.Component) (*scanossapi.LicenseEvidenceResponse, error) {
-	return c.Licenses.Evidence(ctx, comps)
+func callLicenseEvidence(c *scanoss.Client, ctx context.Context, comps []scanoss.Component, opts ...scanoss.DecorateOption) (*scanossapi.LicenseEvidenceResponse, error) {
+	return c.Licenses.Evidence(ctx, comps, opts...)
 }
 
 var licensesCmd = &cobra.Command{

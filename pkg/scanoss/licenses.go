@@ -48,10 +48,10 @@ var (
 // LicenseAPI is the licenses service surface. Responses are typed from the
 // OpenAPI v3 contract.
 type LicenseAPI interface {
-	Attribution(ctx context.Context, comps []Component) (*scanossapi.AttributionResponse, error)
-	Evidence(ctx context.Context, comps []Component) (*scanossapi.LicenseEvidenceResponse, error)
-	Components(ctx context.Context, comps []Component) (*scanossapi.ComponentsLicenseResponse, error)
-	Component(ctx context.Context, comp Component) (*scanossapi.ComponentLicenseResponse, error)
+	Attribution(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.AttributionResponse, error)
+	Evidence(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.LicenseEvidenceResponse, error)
+	Components(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.ComponentsLicenseResponse, error)
+	Component(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.ComponentLicenseResponse, error)
 	Details(ctx context.Context, license string) (*scanossapi.LicenseDetailsResponse, error)
 	Obligations(ctx context.Context, license string) (*scanossapi.ObligationsResponse, error)
 }
@@ -62,8 +62,8 @@ var _ LicenseAPI = licenseService{}
 
 // Attribution returns the attribution files (LICENSE/NOTICE/…) for the given
 // components.
-func (s licenseService) Attribution(ctx context.Context, comps []Component) (*scanossapi.AttributionResponse, error) {
-	res, err := s.c.decorate(ctx, ServiceLicenseAttribution, comps)
+func (s licenseService) Attribution(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.AttributionResponse, error) {
+	res, err := s.c.decorate(ctx, ServiceLicenseAttribution, comps, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -71,8 +71,8 @@ func (s licenseService) Attribution(ctx context.Context, comps []Component) (*sc
 }
 
 // Evidence returns per-file license evidence for the given components.
-func (s licenseService) Evidence(ctx context.Context, comps []Component) (*scanossapi.LicenseEvidenceResponse, error) {
-	res, err := s.c.decorate(ctx, ServiceLicenseEvidence, comps)
+func (s licenseService) Evidence(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.LicenseEvidenceResponse, error) {
+	res, err := s.c.decorate(ctx, ServiceLicenseEvidence, comps, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -80,8 +80,8 @@ func (s licenseService) Evidence(ctx context.Context, comps []Component) (*scano
 }
 
 // Components returns the declared licenses for the given components (batch).
-func (s licenseService) Components(ctx context.Context, comps []Component) (*scanossapi.ComponentsLicenseResponse, error) {
-	res, err := s.c.decorate(ctx, ServiceLicenses, comps)
+func (s licenseService) Components(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.ComponentsLicenseResponse, error) {
+	res, err := s.c.decorate(ctx, ServiceLicenses, comps, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -89,8 +89,8 @@ func (s licenseService) Components(ctx context.Context, comps []Component) (*sca
 }
 
 // Component returns the declared licenses for a single component.
-func (s licenseService) Component(ctx context.Context, comp Component) (*scanossapi.ComponentLicenseResponse, error) {
-	res, err := s.c.decorateOne(ctx, ServiceLicense, comp)
+func (s licenseService) Component(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.ComponentLicenseResponse, error) {
+	res, err := s.c.decorateOne(ctx, ServiceLicense, comp, opts...)
 	if err != nil {
 		return nil, err
 	}

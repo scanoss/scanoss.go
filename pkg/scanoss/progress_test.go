@@ -31,58 +31,65 @@ import (
 	"testing"
 )
 
-func TestProgressCountsPurls(t *testing.T) {
+// Decoration progress is counted in PURLs, not in the chunks the request is split into, and it
+// only ever grows: a consumer drawing a bar from it never sees it move backwards.
+func TestDecorationProgressCountsPurls(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"components":[]}`))
 	}))
 	defer srv.Close()
 
 	var mu sync.Mutex
-	var events []Progress
+	type update struct {
+		service     string
+		done, total int
+	}
+	var updates []update
+
 	client := New(
 		WithAPIURL(srv.URL),
 		WithChunkSize(10),
 		WithWorkers(3),
-		WithProgress(func(p Progress) {
-			mu.Lock()
-			events = append(events, p)
-			mu.Unlock()
-		}),
 	)
 
 	purls := make([]string, 25) // 25 purls, chunk 10 -> 3 chunks
 	for i := range purls {
 		purls[i] = "pkg:test/c"
 	}
-
-	if _, err := client.decorate(context.Background(), ServiceVulnerabilities, Components(purls...)); err != nil {
+	if _, err := client.decorate(context.Background(), ServiceVulnerabilities, Components(purls...),
+		WithDecorationReporter(decorationFunc(func(service string, done, total int) {
+			mu.Lock()
+			updates = append(updates, update{service, done, total})
+			mu.Unlock()
+		}))); err != nil {
 		t.Fatalf("decorate returned error: %v", err)
 	}
 
 	mu.Lock()
 	defer mu.Unlock()
-	if len(events) != 3 { // one per chunk
-		t.Fatalf("expected 3 progress events, got %d", len(events))
+	if len(updates) != 3 { // one per chunk
+		t.Fatalf("expected 3 updates, got %d", len(updates))
 	}
-	last := events[len(events)-1]
-	if last.Service != "vulnerabilities" {
-		t.Errorf("Service = %q, want vulnerabilities", last.Service)
+	last := updates[len(updates)-1]
+	if last.service != "vulnerabilities" {
+		t.Errorf("service = %q, want vulnerabilities", last.service)
 	}
-	if last.Unit != "purls" {
-		t.Errorf("Unit = %q, want purls", last.Unit)
+	if last.total != 25 {
+		t.Errorf("total = %d, want 25 (purls, not chunks)", last.total)
 	}
-	if last.Total != 25 {
-		t.Errorf("Total = %d, want 25", last.Total)
+	if last.done != 25 {
+		t.Errorf("final done = %d, want 25", last.done)
 	}
-	if last.Done != 25 { // all purls done by the final event
-		t.Errorf("final Done = %d, want 25", last.Done)
-	}
-	// Done is monotonically non-decreasing and in purl units (multiples of chunk size here).
 	prev := 0
-	for _, e := range events {
-		if e.Done < prev {
-			t.Errorf("Done went backwards: %d after %d", e.Done, prev)
+	for _, u := range updates {
+		if u.done < prev {
+			t.Errorf("done went backwards: %d after %d", u.done, prev)
 		}
-		prev = e.Done
+		prev = u.done
 	}
 }
+
+// decorationFunc adapts a func to DecorationReporter, for tests that want a closure.
+type decorationFunc func(service string, done, total int)
+
+func (f decorationFunc) Decorating(service string, done, total int) { f(service, done, total) }

@@ -317,7 +317,7 @@ func TestWhlIsSkipped(t *testing.T) {
 // and .gitignore off.
 func TestLayerProfiles(t *testing.T) {
 	scan := ScanOptions()
-	if !scan.Defaults || !scan.GitIgnore || scan.PreserveDependencyManifests {
+	if !scan.FolderDefaults || !scan.FileDefaults || !scan.GitIgnore || scan.PreserveDependencyManifests {
 		t.Errorf("ScanOptions = %+v", scan)
 	}
 	if scan.SkipDirs != nil {
@@ -325,7 +325,7 @@ func TestLayerProfiles(t *testing.T) {
 	}
 
 	fp := FingerprintOptions()
-	if fp.Defaults != scan.Defaults || fp.GitIgnore != scan.GitIgnore ||
+	if fp.FolderDefaults != scan.FolderDefaults || fp.FileDefaults != scan.FileDefaults || fp.GitIgnore != scan.GitIgnore ||
 		fp.MinSize != scan.MinSize || fp.MaxSize != scan.MaxSize ||
 		fp.PreserveDependencyManifests != scan.PreserveDependencyManifests ||
 		fp.SkipDirs != nil {
@@ -333,7 +333,7 @@ func TestLayerProfiles(t *testing.T) {
 	}
 
 	dep := DependencyOptions()
-	if !dep.Defaults {
+	if !dep.FolderDefaults || !dep.FileDefaults {
 		t.Error("DependencyOptions must apply the built-in lists")
 	}
 	if dep.GitIgnore {

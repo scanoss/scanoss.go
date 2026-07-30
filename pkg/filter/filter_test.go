@@ -141,7 +141,7 @@ func TestCollectDefaults(t *testing.T) {
 	writeFile(t, filepath.Join(root, "__pycache__", "y.go"), 200)  // skip: dir
 	writeFile(t, filepath.Join(root, "vendor", "v.go"), 200)       // skip: dir
 
-	res, err := Collect(root, Options{Defaults: true})
+	res, err := Collect(root, Options{FolderDefaults: true, FileDefaults: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,10 +167,10 @@ func TestCollectSkipsUnscannable(t *testing.T) {
 	writeFile(t, filepath.Join(root, "main.go"), 200)
 
 	for _, o := range map[string]Options{
-		"defaults on":            {Defaults: true},
-		"defaults off":           {Defaults: false},
+		"defaults on":            {FolderDefaults: true, FileDefaults: true},
+		"defaults off":           {FolderDefaults: false, FileDefaults: false},
 		"zero-valued options":    {},
-		"with an explicit floor": {Defaults: true, MinSize: 100},
+		"with an explicit floor": {FolderDefaults: true, FileDefaults: true, MinSize: 100},
 	} {
 		res, err := Collect(root, o)
 		if err != nil {
@@ -212,7 +212,7 @@ func TestCollectSkipsSymlinks(t *testing.T) {
 // A matcher composed the way an external caller composes one (Build over the
 // exported sources) agrees with Collect on unscannable entries.
 func TestComposedMatcherSkipsUnscannable(t *testing.T) {
-	for _, o := range []Options{{Defaults: true}, {Defaults: false}, {}} {
+	for _, o := range []Options{{FolderDefaults: true, FileDefaults: true}, {FolderDefaults: false, FileDefaults: false}, {}} {
 		m := Build(UnscannableSource(), DefaultSource(o.defaults()))
 		if !m.Match("empty.go", aFile("empty.go", 0)) {
 			t.Errorf("%+v: a zero-byte file should be skipped", o)
@@ -234,7 +234,7 @@ func TestCollectSizeBoundsIndependentOfDefaults(t *testing.T) {
 	writeFile(t, filepath.Join(root, "big.go"), 200)
 
 	for _, useDefaults := range []bool{true, false} {
-		res, err := Collect(root, Options{Defaults: useDefaults, MinSize: 100})
+		res, err := Collect(root, Options{FolderDefaults: useDefaults, FileDefaults: useDefaults, MinSize: 100})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -251,7 +251,7 @@ func TestCollectSizeBoundsIndependentOfDefaults(t *testing.T) {
 // whether or not it also asked for the built-in lists.
 func TestComposedSizeBoundsIndependentOfDefaults(t *testing.T) {
 	for _, useDefaults := range []bool{true, false} {
-		o := Options{Defaults: useDefaults, MinSize: 100}
+		o := Options{FolderDefaults: useDefaults, FileDefaults: useDefaults, MinSize: 100}
 		var srcs [][]Matcher
 		if useDefaults {
 			srcs = append(srcs, DefaultSource(o.defaults()))
@@ -288,7 +288,7 @@ func TestZeroOptionsMatchDefaultBounds(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "tiny.go"), 40)
 
-	viaLiteral, err := Collect(root, Options{Defaults: true, GitIgnore: true})
+	viaLiteral, err := Collect(root, Options{FolderDefaults: true, FileDefaults: true, GitIgnore: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,7 +336,7 @@ func TestCollectMinSize(t *testing.T) {
 		t.Fatalf("default SkippedCount = %d, want 0", res.SkippedCount)
 	}
 
-	res, err = Collect(root, Options{Defaults: true, MinSize: 100})
+	res, err = Collect(root, Options{FolderDefaults: true, FileDefaults: true, MinSize: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,7 +437,11 @@ func TestCollectPrunesExcludedDirectories(t *testing.T) {
 // .git/config can carry credentials in remote URLs — collecting it would upload
 // them. It survived --all-hidden only because the hidden rule happened to cover
 // it, which is exactly the kind of accident this test exists to prevent.
-func TestVCSMetadataIsNeverCollected(t *testing.T) {
+
+// Version-control metadata is excluded like any other dotted entry — by the hidden rule — and so
+// IncludeHidden reaches it. That is deliberate parity with the reference implementation, where the
+// equivalent flag has the same reach: asking for every hidden entry means every hidden entry.
+func TestVCSMetadataFollowsTheHiddenRule(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "main.go"), 400)
 	for _, p := range []string{
@@ -447,25 +451,36 @@ func TestVCSMetadataIsNeverCollected(t *testing.T) {
 		writeFile(t, filepath.Join(root, filepath.FromSlash(p)), 400)
 	}
 
-	// Every option a caller can turn off, turned off.
-	for name, o := range map[string]Options{
-		"defaults on":         {Defaults: true, GitIgnore: true},
-		"defaults off":        {Defaults: false},
-		"hidden included":     {Defaults: true, IncludeHidden: true},
-		"everything off":      {Defaults: false, GitIgnore: false, IncludeHidden: true},
-		"zero-valued options": {},
-	} {
+	countVCS := func(o Options) int {
 		res, err := Collect(root, o)
 		if err != nil {
 			t.Fatal(err)
 		}
+		n := 0
 		for _, f := range res.Files {
 			rel, _ := filepath.Rel(root, f)
 			for _, vcs := range []string{".git", ".svn", ".hg", ".bzr"} {
 				if strings.HasPrefix(filepath.ToSlash(rel), vcs+"/") {
-					t.Errorf("%s: collected %s — version-control metadata must never be collected", name, rel)
+					n++
 				}
 			}
 		}
+		return n
+	}
+
+	// Hidden entries excluded — the default — keeps it all out, however the other rules are set.
+	for name, o := range map[string]Options{
+		"defaults on":         {FolderDefaults: true, FileDefaults: true, GitIgnore: true},
+		"defaults off":        {FolderDefaults: false, FileDefaults: false},
+		"zero-valued options": {},
+	} {
+		if n := countVCS(o); n != 0 {
+			t.Errorf("%s: collected %d version-control entries, want none", name, n)
+		}
+	}
+
+	// Hidden entries included reaches it, like any other dotfile.
+	if n := countVCS(Options{FolderDefaults: true, FileDefaults: true, IncludeHidden: true}); n == 0 {
+		t.Error("IncludeHidden collected no version-control entries: it should reach them like any other dotted entry")
 	}
 }

@@ -79,10 +79,9 @@ type Client struct {
 	// TODO: refactor so each decoration service can set its chunk size per call
 	// (a per-call DecorateOption, mirroring the scan WithChunkBytes option),
 	// instead of a single client-wide value.
-	chunkSize  int
-	workers    int
-	onProgress ProgressFunc
-	onScanID   func(string)
+	chunkSize int
+	workers   int
+	onScanID  func(string)
 	// log receives the SDK's diagnostic logging (WithLogger); defaults to
 	// slog.Default(). The SDK never writes to stdout, only through this logger.
 	log *slog.Logger
@@ -187,13 +186,6 @@ func WithMaxRetryAfter(d time.Duration) Option {
 			c.transport.maxRetryAfter = d
 		}
 	}
-}
-
-// WithProgress registers a callback invoked as work completes, reporting
-// per-service progress in PURLs. It is optional; by default the SDK produces no
-// output. See Progress.
-func WithProgress(fn ProgressFunc) Option {
-	return func(c *Client) { c.onProgress = fn }
 }
 
 // WithLogger sets the structured logger the SDK uses for diagnostics (HTTP

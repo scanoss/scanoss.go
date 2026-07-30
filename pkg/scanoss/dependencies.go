@@ -48,9 +48,9 @@ var (
 type DependencyAPI interface {
 	// Dependencies resolves declared dependencies + licenses for the given
 	// components (batch POST).
-	Dependencies(ctx context.Context, comps []Component) (*scanossapi.DependenciesResolveResponse, error)
+	Dependencies(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.DependenciesResolveResponse, error)
 	// Dependency resolves declared dependencies for a single component (GET).
-	Dependency(ctx context.Context, comp Component) (*scanossapi.DependenciesResolveResponse, error)
+	Dependency(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.DependenciesResolveResponse, error)
 	// Transitive walks declared dependencies bounded by depth and limit (POST).
 	// depth/limit <= 0 are omitted so the server defaults apply.
 	Transitive(ctx context.Context, comps []Component, depth, limit int) (*scanossapi.TransitiveResponse, error)
@@ -61,8 +61,8 @@ type dependencyService struct{ c *Client }
 var _ DependencyAPI = dependencyService{}
 
 // Dependencies resolves declared dependencies for the given components (batch).
-func (s dependencyService) Dependencies(ctx context.Context, comps []Component) (*scanossapi.DependenciesResolveResponse, error) {
-	res, err := s.c.decorate(ctx, ServiceDependencies, comps)
+func (s dependencyService) Dependencies(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.DependenciesResolveResponse, error) {
+	res, err := s.c.decorate(ctx, ServiceDependencies, comps, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -70,8 +70,8 @@ func (s dependencyService) Dependencies(ctx context.Context, comps []Component) 
 }
 
 // Dependency resolves declared dependencies for a single component.
-func (s dependencyService) Dependency(ctx context.Context, comp Component) (*scanossapi.DependenciesResolveResponse, error) {
-	res, err := s.c.decorateOne(ctx, ServiceDependency, comp)
+func (s dependencyService) Dependency(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.DependenciesResolveResponse, error) {
+	res, err := s.c.decorateOne(ctx, ServiceDependency, comp, opts...)
 	if err != nil {
 		return nil, err
 	}

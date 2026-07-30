@@ -39,8 +39,8 @@ var (
 // CopyrightAPI is the copyright service surface. Responses are typed from the
 // OpenAPI v3 contract.
 type CopyrightAPI interface {
-	Evidence(ctx context.Context, comps []Component) (*scanossapi.CopyrightEvidenceResponse, error)
-	Holders(ctx context.Context, comps []Component) (*scanossapi.CopyrightHoldersResponse, error)
+	Evidence(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.CopyrightEvidenceResponse, error)
+	Holders(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.CopyrightHoldersResponse, error)
 }
 
 type copyrightService struct{ c *Client }
@@ -48,8 +48,8 @@ type copyrightService struct{ c *Client }
 var _ CopyrightAPI = copyrightService{}
 
 // Evidence returns per-file copyright evidence for the given components.
-func (s copyrightService) Evidence(ctx context.Context, comps []Component) (*scanossapi.CopyrightEvidenceResponse, error) {
-	res, err := s.c.decorate(ctx, ServiceCopyrightEvidence, comps)
+func (s copyrightService) Evidence(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.CopyrightEvidenceResponse, error) {
+	res, err := s.c.decorate(ctx, ServiceCopyrightEvidence, comps, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -57,8 +57,8 @@ func (s copyrightService) Evidence(ctx context.Context, comps []Component) (*sca
 }
 
 // Holders returns the distinct copyright holders for the given components.
-func (s copyrightService) Holders(ctx context.Context, comps []Component) (*scanossapi.CopyrightHoldersResponse, error) {
-	res, err := s.c.decorate(ctx, ServiceCopyrightHolders, comps)
+func (s copyrightService) Holders(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.CopyrightHoldersResponse, error) {
+	res, err := s.c.decorate(ctx, ServiceCopyrightHolders, comps, opts...)
 	if err != nil {
 		return nil, err
 	}

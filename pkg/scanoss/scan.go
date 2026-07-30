@@ -43,7 +43,7 @@ import (
 // full flow — upload (parallel byte-range chunks) + poll to completion — and
 // return the envelope with its Result populated. They differ only in the input:
 // a directory tree, an explicit file list, or an already-assembled WFP. The
-// caller never manages the scan id; progress is reported via WithProgress and
+// caller never manages the scan id; stages are reported via WithScanReporter and
 // the client-generated id is surfaced via WithScanIDNotify for optional recovery.
 type ScanAPI interface {
 	// Folder collects, fingerprints and scans a directory tree (or single file).
@@ -77,12 +77,16 @@ type scanOptions struct {
 	root         string         // when set, WFP file paths are rewritten relative to it
 	bom          *settings.BOM  // when set, BOM rules are applied to the result (post-scan)
 	pollInterval time.Duration  // scan status poll cadence (WithPollInterval)
+	reporter     ScanReporter   // receives this scan's stages (WithScanReporter)
 }
 
 func resolveScanOptions(opts []ScanOption) scanOptions {
 	o := scanOptions{
-		chunkBytes:   DefaultScanChunkBytes,
-		filters:      filter.Options{Defaults: true, GitIgnore: true},
+		chunkBytes: DefaultScanChunkBytes,
+		// The profile, not a hand-built equivalent: the two agree today only because the default
+		// size bounds happen to be an int's zero value, so a change to either would silently leave
+		// a scan filtering differently from everything else that uses the scanning profile.
+		filters:      filter.ScanOptions(),
 		pollInterval: DefaultScanPollInterval,
 	}
 	for _, opt := range opts {
@@ -169,13 +173,13 @@ func (s scanService) WFP(ctx context.Context, wfp []byte, opts ...ScanOption) (s
 // points (Folder/Files/WFP) each produce the WFP, then funnel through here.
 func (s scanService) scan(ctx context.Context, wfp []byte, o scanOptions) (scanossapi.ScanEnvelope, error) {
 	s.c.log.Debug("scan: uploading WFP", "bytes", len(wfp), "chunkBytes", o.chunkBytes)
-	scanID, err := s.upload(ctx, wfp, o.chunkBytes)
+	scanID, err := s.upload(ctx, wfp, o.chunkBytes, o.reporter)
 	if err != nil {
 		return scanossapi.ScanEnvelope{}, err
 	}
 	s.c.log.Info("scan uploaded", "scanID", scanID)
 
-	env, err := s.wait(ctx, scanID, o.pollInterval)
+	env, err := s.wait(ctx, scanID, o.pollInterval, o.reporter)
 	if err != nil {
 		return scanossapi.ScanEnvelope{}, err
 	}
@@ -195,8 +199,8 @@ func (s scanService) fingerprint(files []string, o scanOptions) ([]byte, error) 
 		return nil, fmt.Errorf("no files to scan")
 	}
 	wfp, _ := scanner.GenerateWFP(files, s.c.workers, o.root, func(done, total int) {
-		if s.c.onProgress != nil {
-			s.c.onProgress(Progress{Service: ServiceScan.Name, Done: done, Total: total, Unit: "files"})
+		if o.reporter != nil {
+			o.reporter.Fingerprinting(done, total)
 		}
 	})
 	s.c.log.Debug("fingerprinted files", "files", len(files), "wfpBytes", len(wfp))
@@ -210,7 +214,7 @@ func (s scanService) fingerprint(files []string, o scanOptions) ([]byte, error) 
 // concurrently (each carrying the id, bounded by the client's worker limit), then
 // fires the notify hook. The hook fires only after the full WFP is on the server,
 // so the surfaced id is always resumable. It returns the scan id.
-func (s scanService) upload(ctx context.Context, wfp []byte, chunkBytes int) (string, error) {
+func (s scanService) upload(ctx context.Context, wfp []byte, chunkBytes int, r ScanReporter) (string, error) {
 	if len(wfp) == 0 {
 		return "", fmt.Errorf("no fingerprints to scan")
 	}
@@ -223,7 +227,7 @@ func (s scanService) upload(ctx context.Context, wfp []byte, chunkBytes int) (st
 
 	ranges := chunkRanges(len(wfp), chunkBytes)
 	s.c.log.Debug("uploading WFP chunks", "scanID", scanID, "chunks", len(ranges))
-	prog := &chunkProgress{c: s.c, total: len(ranges)}
+	prog := &chunkProgress{r: r, total: len(ranges)}
 	if err := s.uploadChunks(ctx, scanID, wfp, ranges, prog); err != nil {
 		return "", err
 	}
@@ -297,20 +301,15 @@ func blockOf(wfp []byte, r [2]int) []byte { return wfp[r[0] : r[1]+1] }
 
 // chunkProgress reports upload progress in chunks. Safe for concurrent inc.
 type chunkProgress struct {
-	c     *Client
+	r     ScanReporter
 	done  int64
 	total int
 }
 
 func (p *chunkProgress) inc() {
 	atomic.AddInt64(&p.done, 1)
-	if p.c.onProgress != nil {
-		p.c.onProgress(Progress{
-			Service: ServiceScan.Name,
-			Done:    int(atomic.LoadInt64(&p.done)),
-			Total:   p.total,
-			Unit:    "chunks",
-		})
+	if p.r != nil {
+		p.r.Uploading(int(atomic.LoadInt64(&p.done)), p.total)
 	}
 }
 
@@ -337,13 +336,13 @@ func (s scanService) Status(ctx context.Context, scanID string) (scanossapi.Scan
 // be overridden with WithPollInterval.
 func (s scanService) Wait(ctx context.Context, scanID string, opts ...ScanOption) (scanossapi.ScanEnvelope, error) {
 	o := resolveScanOptions(opts)
-	return s.wait(ctx, scanID, o.pollInterval)
+	return s.wait(ctx, scanID, o.pollInterval, o.reporter)
 }
 
 // wait is the polling loop shared by the full scan flow and the public Wait. The
 // first poll fires after scanPollInitial, clamped to interval so a sub-second
 // cadence stays responsive.
-func (s scanService) wait(ctx context.Context, scanID string, interval time.Duration) (scanossapi.ScanEnvelope, error) {
+func (s scanService) wait(ctx context.Context, scanID string, interval time.Duration, r ScanReporter) (scanossapi.ScanEnvelope, error) {
 	if scanID == "" {
 		return scanossapi.ScanEnvelope{}, fmt.Errorf("no scan id")
 	}
@@ -366,13 +365,8 @@ func (s scanService) wait(ctx context.Context, scanID string, interval time.Dura
 		if err != nil {
 			return scanossapi.ScanEnvelope{}, err
 		}
-		if s.c.onProgress != nil && e.PhaseTotal > 0 {
-			s.c.onProgress(Progress{
-				Service: ServiceScan.Name,
-				Done:    e.PhaseDone,
-				Total:   e.PhaseTotal,
-				Unit:    "phase",
-			})
+		if r != nil {
+			r.Scanning(e)
 		}
 
 		switch e.Status {

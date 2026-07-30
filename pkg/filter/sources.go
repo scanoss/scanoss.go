@@ -55,8 +55,16 @@ func StdDefaults() Defaults {
 	}
 }
 
-// DefaultSource turns the default skip lists and size bounds into matchers.
+// DefaultSource turns every default skip list into matchers: the directory rules and the file
+// rules together. Callers that want one half without the other use FolderDefaultSource and
+// FileDefaultSource, which is what the two --all-folders / --all-extensions switches select.
 func DefaultSource(d Defaults) []Matcher {
+	return append(FolderDefaultSource(d), FileDefaultSource(d)...)
+}
+
+// FolderDefaultSource turns the default directory skip lists into matchers: whole directory names
+// and directory-name suffixes. Skipping a directory prunes everything under it.
+func FolderDefaultSource(d Defaults) []Matcher {
 	var ms []Matcher
 	for _, name := range d.Dirs {
 		ms = append(ms, newDirNameMatcher(name))
@@ -64,6 +72,14 @@ func DefaultSource(d Defaults) []Matcher {
 	for _, suffix := range d.DirExts {
 		ms = append(ms, newDirSuffixMatcher(suffix))
 	}
+	return ms
+}
+
+// FileDefaultSource turns the default file skip lists into matchers: extensions, non-extension
+// name endings, and exact names. The three go together because they answer one question — is this
+// file worth fingerprinting — and because the reference implementation gates them with one switch.
+func FileDefaultSource(d Defaults) []Matcher {
+	var ms []Matcher
 	for _, name := range d.Files {
 		ms = append(ms, newNameMatcher(name))
 	}
@@ -102,10 +118,14 @@ func DefaultSource(d Defaults) []Matcher {
 //     and no lines — bytes on the wire no scan can act on;
 //   - symbolic links: the target is collected on its own when it is inside the
 //     tree, so following the link would report the same content twice;
-//   - version-control metadata (.git, .svn, .hg, .bzr): compressed objects
-//     nothing can match, and .git/config can carry credentials in remote URLs.
+//
+// Version-control metadata (.git and friends) is NOT here: it is excluded by the hidden rule like
+// any other dotted entry, so --all-hidden includes it. That matches the reference implementation,
+// where the same flag has the same reach. What travels is fingerprints — hashes and paths, not
+// contents — so asking for every hidden entry gets a scan of the repository's own objects: noisy,
+// unmatchable, and the caller's choice to make.
 func UnscannableSource() []Matcher {
-	return []Matcher{emptyFileMatcher{}, symlinkMatcher{}, vcsMatcher{}}
+	return []Matcher{emptyFileMatcher{}, symlinkMatcher{}}
 }
 
 // HiddenSource skips entries whose name begins with a dot.

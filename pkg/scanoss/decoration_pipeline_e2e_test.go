@@ -28,7 +28,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"sync"
 	"testing"
 )
 
@@ -53,16 +52,12 @@ func TestPipelineEndToEnd(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Capture progress snapshots delivered serially (no lock needed by contract,
-	// but the test reads them afterwards so guard the handoff).
-	var mu sync.Mutex
-	var final PipelineProgress
+	rec := newRecorder()
 
 	client := New(
 		WithAPIURL(srv.URL),
 		WithChunkSize(2), // 5 purls -> 3 chunks per service (exercises merge)
 		WithWorkers(3),
-		WithProgress(func(p Progress) { _ = p }), // client-level hook still fires
 	)
 
 	p := client.DecorationPipeline(
@@ -70,14 +65,10 @@ func TestPipelineEndToEnd(t *testing.T) {
 		ServiceLicenses,
 		ServiceCryptographyAlgorithms,
 		ServiceGeoprovenanceOrigin,
-	).OnProgress(func(pp PipelineProgress) {
-		mu.Lock()
-		final = pp
-		mu.Unlock()
-	})
+	)
 
 	comps := Components("pkg:a", "pkg:b", "pkg:c", "pkg:d", "pkg:e") // 5 purls
-	res, err := p.Run(context.Background(), comps)
+	res, err := p.Run(context.Background(), comps, WithDecorationReporter(rec))
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}
@@ -127,15 +118,13 @@ func TestPipelineEndToEnd(t *testing.T) {
 	}
 
 	// 4) Final progress: every service reached Done==Total==5 purls.
-	mu.Lock()
-	defer mu.Unlock()
-	if len(final.Services) != len(wantEndpoints) {
-		t.Fatalf("final progress services = %d, want %d", len(final.Services), len(wantEndpoints))
+	final := rec.snapshot()
+	if len(final) != len(wantEndpoints) {
+		t.Fatalf("services that reported = %d, want %d", len(final), len(wantEndpoints))
 	}
 	for name := range wantEndpoints {
-		pr := final.Services[name]
-		if pr.Done != 5 || pr.Total != 5 || pr.Unit != "purls" {
-			t.Errorf("%s final progress = %d/%d %s, want 5/5 purls", name, pr.Done, pr.Total, pr.Unit)
+		if dt := final[name]; dt[0] != 5 || dt[1] != 5 {
+			t.Errorf("%s ended at %d/%d, want 5/5", name, dt[0], dt[1])
 		}
 	}
 }
