@@ -63,7 +63,7 @@ func init() {
 
 func runResults(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
-		return cmd.Help()
+		return usageError(cmd, "a scan id is required")
 	}
 	if err := checkAuth(cmd); err != nil {
 		return err

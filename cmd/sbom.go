@@ -67,9 +67,8 @@ func init() {
 }
 
 func runSbom(cmd *cobra.Command, args []string) error {
-	// No input given: show usage instead of a terse arg error.
 	if len(args) == 0 {
-		return cmd.Help()
+		return usageError(cmd, "an input file is required")
 	}
 
 	// Validate the target up front (raw/plain are not SBOM targets).

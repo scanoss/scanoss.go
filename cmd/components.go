@@ -65,7 +65,8 @@ func runComponentsSearch(cmd *cobra.Command, _ []string) error {
 	vendor, _ := cmd.Flags().GetString("vendor")
 	component, _ := cmd.Flags().GetString("component")
 	if search == "" && vendor == "" && component == "" {
-		return cmd.Help() // no search criteria: show usage, not the auth banner
+		// Show usage, not the auth banner: the key is not what is missing.
+		return usageError(cmd, "--search, --vendor or --component is required")
 	}
 	if err := checkAuth(cmd); err != nil {
 		return err
@@ -95,7 +96,8 @@ func runComponentsSearch(cmd *cobra.Command, _ []string) error {
 func runComponentsVersions(cmd *cobra.Command, _ []string) error {
 	purl, _ := cmd.Flags().GetString("purl")
 	if purl == "" {
-		return cmd.Help() // no --purl: show usage, not the auth banner
+		// Show usage, not the auth banner: the key is not what is missing.
+		return usageError(cmd, "--purl is required")
 	}
 	if err := checkAuth(cmd); err != nil {
 		return err

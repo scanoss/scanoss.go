@@ -89,9 +89,9 @@ func init() {
 func runAttributions(cmd *cobra.Command, args []string) error {
 	purl, _ := cmd.Flags().GetString("purl")
 
-	// No input: show usage. Both an SBOM file and --purl: error.
+	// Neither input, or both: the first is a missing argument, the second a contradiction.
 	if len(args) == 0 && purl == "" {
-		return cmd.Help()
+		return usageError(cmd, "an SBOM file or --purl is required")
 	}
 	if len(args) > 0 && purl != "" {
 		return fmt.Errorf("cannot specify both SBOM file and --purl flag")

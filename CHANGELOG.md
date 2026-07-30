@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   finished a successful scan drawn near empty.
 - **A scan whose session expired no longer hangs.** `expired` is terminal, but was treated as "still
   running", so the CLI polled a dead session until interrupted.
+- **A command invoked without its required argument now fails.** It printed its help to stdout and
+  exited `0`, so `scanoss-cli scan $DIR` with an unset variable reported success having scanned
+  nothing and fed usage text to whatever consumed the results. Help now goes to stderr and the exit
+  code is non-zero. A namespace command with no subcommand (`scanoss-cli config`) still succeeds:
+  it was not asked to do anything.
 - **`scanpipeline.Run` rejects a nil `Options.Client` instead of panicking.** The client was only
   reached inside the scan goroutine, so the panic could not be recovered by the caller and `Run`
   returned a nil error as the process was torn down.

@@ -65,7 +65,9 @@ Examples:
   scanoss-cli config unset api-key
   scanoss-cli config path`,
 	Args: cobra.NoArgs,
-	// No subcommand: show usage rather than a terse error, matching scan/enrich.
+	// No subcommand: this is a namespace, not an action, so listing what it holds is a complete
+	// answer and succeeding is right. Commands that were asked to do something without being told
+	// what to do it to fail instead — see usageError.
 	RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 }
 
