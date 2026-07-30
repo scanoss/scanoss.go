@@ -30,7 +30,6 @@ import (
 	scanossapi "github.com/scanoss/scanoss.api-sdk"
 	"net/http"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -300,17 +299,26 @@ func (s scanService) uploadChunks(ctx context.Context, scanID string, wfp []byte
 // blockOf returns the WFP byte slice for the inclusive range r = [off, end].
 func blockOf(wfp []byte, r [2]int) []byte { return wfp[r[0] : r[1]+1] }
 
-// chunkProgress reports upload progress in chunks. Safe for concurrent inc.
+// chunkProgress reports upload progress in chunks.
+//
+// inc is safe for concurrent use, and deliberately does more than keep the counter
+// intact: the increment and the report happen under one lock, so the reporter sees
+// 1..total once each and in order, however the upload workers interleave. Counting
+// atomically but reporting outside the lock would keep the counter correct and still
+// deliver the values out of order — the report is what the caller sees.
 type chunkProgress struct {
+	mu    sync.Mutex
 	r     ScanReporter
-	done  int64
+	done  int
 	total int
 }
 
 func (p *chunkProgress) inc() {
-	atomic.AddInt64(&p.done, 1)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.done++
 	if p.r != nil {
-		p.r.Uploading(int(atomic.LoadInt64(&p.done)), p.total)
+		p.r.Uploading(p.done, p.total)
 	}
 }
 

@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   finished a successful scan drawn near empty.
 - **A scan whose session expired no longer hangs.** `expired` is terminal, but was treated as "still
   running", so the CLI polled a dead session until interrupted.
+- **Upload progress is reported once per block, in order.** Every upload worker reported
+  concurrently, so `ScanReporter.Uploading` received duplicated and out-of-order counts: an upload
+  bar ran backwards and settled below 100% because the last report was not the highest. Calls are
+  now serialised, which also means a reporter needs no lock of its own.
 - Enrichment layers appear when they start rather than when their first response arrives.
 
 ### Changed

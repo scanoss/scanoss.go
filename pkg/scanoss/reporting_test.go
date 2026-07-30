@@ -163,3 +163,48 @@ func (r *stageRecorder) Scanning(env scanossapi.ScanEnvelope) {
 
 func (r *stageRecorder) uploaded() bool { r.mu.Lock(); defer r.mu.Unlock(); return r.up }
 func (r *stageRecorder) scanned() bool  { r.mu.Lock(); defer r.mu.Unlock(); return r.sc }
+
+// unlockedRecorder records every Uploading call with no synchronisation of its own —
+// which is exactly what ScanReporter documents as sufficient. Any lock here would hide
+// the defect this test exists to catch.
+type unlockedRecorder struct{ got []int }
+
+func (r *unlockedRecorder) Fingerprinting(done, total int)   {}
+func (r *unlockedRecorder) Uploading(done, total int)        { r.got = append(r.got, done) }
+func (r *unlockedRecorder) Scanning(scanossapi.ScanEnvelope) {}
+
+// Upload progress is reported by every upload worker at once, so the counter being atomic is
+// not enough: the value has to be read and delivered without another worker slipping in
+// between. Run under -race, an implementation that reports outside the lock fails here twice
+// over — the append races, and the values arrive out of order.
+func TestChunkProgressReportsEveryBlockInOrder(t *testing.T) {
+	const workers, perWorker = 16, 32
+	const total = workers * perWorker
+
+	rec := &unlockedRecorder{}
+	prog := &chunkProgress{r: rec, total: total}
+
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < perWorker; i++ {
+				prog.inc()
+			}
+		}()
+	}
+	wg.Wait()
+
+	if len(rec.got) != total {
+		t.Fatalf("got %d Uploading calls, want %d", len(rec.got), total)
+	}
+	for i, done := range rec.got {
+		if done != i+1 {
+			t.Fatalf("call %d reported done=%d, want %d: values must arrive 1..total in order", i, done, i+1)
+		}
+	}
+	if last := rec.got[len(rec.got)-1]; last != total {
+		t.Errorf("last call reported done=%d, want %d: a bar built on this would finish short", last, total)
+	}
+}
