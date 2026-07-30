@@ -21,7 +21,7 @@
  * THE SOFTWARE.
  */
 
-package scanoss
+package postprocess
 
 import (
 	"sort"
@@ -32,11 +32,11 @@ import (
 	"github.com/scanoss/scanoss.go/pkg/settings"
 )
 
-// ApplyBOMReplace applies bom.replace rules to a scan result in place: a file whose match is
+// applyReplace applies bom.replace rules to a scan result in place: a file whose match is
 // covered by a rule is re-pointed at the rule's replace_with component, so the result reports the
 // component the user says is really there.
 //
-// It runs after ApplyBOMRemove, never before: a match that is about to be discarded is not worth
+// It runs after applyRemove, never before: a match that is about to be discarded is not worth
 // relabelling first, and running the other way round would let a replacement smuggle a dismissed
 // component back in under a new PURL.
 //
@@ -46,7 +46,7 @@ import (
 // decoration services, which will be handed the replacement PURL and answer for that.
 //
 // A nil result or nil/empty rules is a no-op.
-func ApplyBOMReplace(result *scanossapi.ScanResult, bom *settings.BOM) {
+func applyReplace(result *scanossapi.ScanResult, bom *settings.BOM) {
 	if result == nil || bom == nil || len(bom.Replace) == 0 {
 		return
 	}
