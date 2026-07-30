@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/CycloneDX/cyclonedx-go v0.11.0
+	github.com/github/go-spdx/v2 v2.7.0
 	github.com/go-git/go-git/v5 v5.19.1
 	github.com/google/uuid v1.6.0
 	github.com/scanoss/scanoss.api-sdk v0.5.0
@@ -13,7 +14,7 @@ require (
 	github.com/spf13/viper v1.21.0
 	github.com/vbauerster/mpb/v8 v8.12.1
 	golang.org/x/net v0.53.0
-	golang.org/x/sys v0.46.0
+	golang.org/x/sys v0.47.0
 )
 
 require (
@@ -22,7 +23,6 @@ require (
 	github.com/anchore/go-struct-converter v0.1.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
-	github.com/github/go-spdx/v2 v2.7.0 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.9.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
