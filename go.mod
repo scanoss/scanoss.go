@@ -4,7 +4,8 @@ go 1.25.0
 
 require (
 	github.com/CycloneDX/cyclonedx-go v0.11.0
-	github.com/go-git/go-git/v5 v5.19.1
+	github.com/github/go-spdx/v2 v2.7.0
+	github.com/go-git/go-git/v5 v5.19.2
 	github.com/google/uuid v1.6.0
 	github.com/scanoss/scanoss.api-sdk v0.5.0
 	github.com/spdx/tools-golang v0.5.7
@@ -12,7 +13,7 @@ require (
 	github.com/spf13/pflag v1.0.10
 	github.com/spf13/viper v1.21.0
 	github.com/vbauerster/mpb/v8 v8.12.1
-	golang.org/x/net v0.53.0
+	golang.org/x/net v0.56.0
 	golang.org/x/sys v0.46.0
 )
 
@@ -22,7 +23,6 @@ require (
 	github.com/anchore/go-struct-converter v0.1.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
-	github.com/github/go-spdx/v2 v2.7.0 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.9.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
@@ -37,6 +37,6 @@ require (
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/text v0.36.0 // indirect
+	golang.org/x/text v0.39.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 )
