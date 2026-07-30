@@ -29,7 +29,28 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/spf13/cobra"
 )
+
+// usageError shows a command's help and returns an error naming what it was missing. It is how a
+// command reports being invoked without the input it needs.
+//
+// Both halves matter. The help goes to stderr because the command produced no result, and help
+// written to stdout lands wherever the results were meant to: `scan $DIR --output r.json` with an
+// empty variable would otherwise fill the pipe with usage text. And returning an error is what
+// makes the exit code non-zero — without it a CI step that scanned nothing reports success, which
+// for a compliance gate is the one failure nobody notices.
+//
+// A parent command invoked with no subcommand is not this case: it was not asked to do anything,
+// so it prints its help and succeeds.
+func usageError(cmd *cobra.Command, format string, args ...any) error {
+	restore := cmd.OutOrStdout()
+	cmd.SetOut(cmd.ErrOrStderr())
+	_ = cmd.Help()
+	cmd.SetOut(restore)
+	return fmt.Errorf(format, args...)
+}
 
 // createCancellableContext creates a context that can be cancelled with CTRL+C
 func createCancellableContext() (context.Context, context.CancelFunc) {

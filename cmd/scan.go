@@ -358,9 +358,9 @@ func init() {
 // enrichment all happen inside scanpipeline.Run; this command only gathers flags, renders
 // progress, and writes the result.
 func runScan(cmd *cobra.Command, args []string) error {
-	// No path given: show usage instead of a terse arg error or the auth banner.
+	// No path given: show usage rather than the auth banner, which would blame the wrong thing.
 	if len(args) == 0 {
-		return cmd.Help()
+		return usageError(cmd, "a path to scan is required")
 	}
 	if err := checkAuth(cmd); err != nil {
 		return err
@@ -455,7 +455,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 // source tree, so the deps layer cannot be sourced; it uses the lower-level scanpipeline.Build.
 func runScanWFP(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
-		return cmd.Help()
+		return usageError(cmd, "a WFP file is required")
 	}
 	if err := checkAuth(cmd); err != nil {
 		return err

@@ -130,9 +130,8 @@ func runDependencies(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// No input (no path, no --purl, not --extract-local): show usage.
 	if !extractLocal && purl == "" && len(args) == 0 {
-		return cmd.Help()
+		return usageError(cmd, "a path, --purl or --extract-local is required")
 	}
 
 	// Mode 1: Local extraction only

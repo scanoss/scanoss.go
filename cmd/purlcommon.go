@@ -247,7 +247,8 @@ func hasPurlInput(cmd *cobra.Command) bool {
 // returned OpenAPI model to indented JSON output.
 func runPurlServiceTyped[T any](cmd *cobra.Command, call typedDecorateFunc[T]) error {
 	if !hasPurlInput(cmd) {
-		return cmd.Help() // no --purl/--input: show usage, not the auth banner
+		// Show usage, not the auth banner: the key is not what is missing.
+		return usageError(cmd, "--purl or --input is required")
 	}
 	if err := checkAuth(cmd); err != nil {
 		return err
