@@ -95,7 +95,7 @@ func TestSizeBoundsEndToEnd(t *testing.T) {
 			rootCmd.SetArgs([]string{
 				"wfp", root, "--output", out,
 				"--min-size", tc.min, "--max-size", tc.max,
-				"--default-filters=true", "--gitignore=true",
+				"--gitignore=true",
 			})
 			if err := rootCmd.Execute(); err != nil {
 				t.Fatalf("wfp: %v", err)
@@ -139,7 +139,7 @@ func TestWFPAndScanCoverTheSameFiles(t *testing.T) {
 	rootCmd.SetArgs([]string{
 		"wfp", root, "--output", out,
 		"--min-size", "0", "--max-size", "0",
-		"--default-filters=true", "--gitignore=true",
+		"--gitignore=true",
 	})
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("wfp: %v", err)
@@ -154,7 +154,7 @@ func TestWFPAndScanCoverTheSameFiles(t *testing.T) {
 	rootCmd.SetArgs([]string{
 		"scan", root,
 		"--min-size", "0", "--max-size", "0",
-		"--default-filters=true", "--gitignore=true",
+		"--gitignore=true",
 		"--api-url", srv.URL, "--api-key", "test",
 	})
 	_ = rootCmd.Execute()

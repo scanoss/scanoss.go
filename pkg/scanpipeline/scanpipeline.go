@@ -49,72 +49,42 @@ import (
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
 )
 
-// Layer is an opt-in enrichment layer (requested via --include).
-type Layer string
-
-// Supported layers.
-const (
-	LayerDeps     Layer = "deps"
-	LayerVulns    Layer = "vulns"
-	LayerLicenses Layer = "licenses"
-	LayerCrypto   Layer = "crypto"
-	LayerGeo      Layer = "geo"
-)
-
-var known = map[Layer]bool{
-	LayerDeps:     true,
-	LayerVulns:    true,
-	LayerLicenses: true,
-	LayerCrypto:   true,
-	LayerGeo:      true,
-}
-
-// Set is a set of requested layers.
-type Set map[Layer]bool
-
-// Has reports whether the layer was requested.
-func (s Set) Has(l Layer) bool { return s[l] }
-
-// ParseLayers validates a list of layer names (e.g. from --include) into a Set.
-func ParseLayers(values []string) (Set, error) {
-	set := make(Set, len(values))
-	for _, v := range values {
-		v = strings.TrimSpace(v)
-		if v == "" {
-			continue
-		}
-		l := Layer(v)
-		if !known[l] {
-			return nil, fmt.Errorf("unknown --include layer %q (valid: deps, vulns, licenses, crypto, geo)", v)
-		}
-		set[l] = true
-	}
-	return set, nil
-}
-
-// Options configures Run, the full scan pipeline over a source path. Progress for the scan and
-// each enrichment layer is reported through the client's own scanoss.WithProgress callback
-// (keyed by Service); the two steps that happen locally before the API — fingerprinting and
-// dependency-manifest parsing — report through OnFingerprint and OnDependencies.
+// Options configures Run, the full scan pipeline over a source path. Every layer reports through
+// OnProgress — the steps the pipeline runs itself and the ones it delegates to the SDK alike, so
+// a caller listens on one channel rather than reconciling two.
 type Options struct {
-	Client     *scanoss.Client // required
-	Layers     Set             // requested output layers
-	SourcePath string          // file or directory to scan (required)
-	Threads    int             // fingerprint workers (<1 => 1)
-	Filter     filter.Options  // file-collection filters (directory scans)
+	Client *scanoss.Client // required
+
+	// Services are the decoration services to gather over the components. The caller resolves
+	// these — from a flag, a config file, or nothing at all — and hands over the result: this
+	// package knows services, not whatever vocabulary produced them.
+	Services []scanoss.Service
+
+	// SourceDeclared asks for declared dependencies to be sourced from the dependency manifests in
+	// the same tree, and merged into the inventory alongside the scan's detected components. It is
+	// not a decoration service: nothing is fetched, the manifests already carry resolved PURLs.
+	SourceDeclared bool
+
+	SourcePath string         // file or directory to scan (required)
+	Threads    int            // fingerprint workers (<1 => 1)
+	Filter     filter.Options // file-collection filters (directory scans)
 	// DependencySettings is the scanoss.json skip rules for the dependencies
 	// operation. The manifest collection is a stage of its own, with its own
 	// profile, so it cannot reuse Filter.Settings (which holds the scanning
 	// section). Nil when there is no scanoss.json.
 	DependencySettings *filter.Settings
-	ScanOptions        []scanoss.ScanOption  // per-scan tuning (chunk size, poll interval, BOM, ...)
-	OnCollect          func(skipped int)     // optional: called once after collection with the filtered count
-	OnFingerprint      func(done, total int) // optional fingerprinting progress
-	OnDependencies     func(done, total int) // optional dependency-manifest parsing progress
+	ScanOptions        []scanoss.ScanOption // per-scan tuning (chunk size, poll interval, BOM, ...)
+
+	// OnProgress receives every layer's progress. Optional; nil reports nothing. The pipeline runs
+	// layers concurrently, so it must be safe for concurrent use.
+	OnProgress func(Progress)
 }
 
-// Result is the outcome of Run: the gathered inventory, the generated WFP (for --save-wfp), and
-// the count of files that failed to fingerprint.
+// Result is the outcome of Run: the gathered inventory, the generated WFP (for --save-wfp) and the
+// count of files that failed to fingerprint.
+//
+// What the filters excluded is not here: it is reported as the collect layer completing, while the
+// scan is still ahead, rather than handed back once everything is over.
 type Result struct {
 	Inventory     sbom.Inventory
 	WFP           []byte
@@ -126,6 +96,9 @@ type Result struct {
 // file set (when the deps layer is requested), and gather + enrich into an Inventory. It owns
 // everything from file collection onward; the caller supplies only flag-derived configuration.
 func Run(ctx context.Context, opts Options) (Result, error) {
+	r := NewReporter(opts.OnProgress)
+	emit := r.emit
+
 	info, err := os.Stat(opts.SourcePath)
 	if err != nil {
 		return Result{}, fmt.Errorf("accessing path: %w", err)
@@ -148,7 +121,7 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 		}
 		files, skipped = cr.Files, cr.SkippedCount
 
-		if opts.Layers.Has(LayerDeps) {
+		if opts.SourceDeclared {
 			// Collecting manifests is its own stage, so it uses the dependency
 			// profile rather than inheriting the scan's. Only what the user asked
 			// for carries over; the profile decides the rest, which is what keeps
@@ -156,7 +129,8 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 			depFilter := filter.DependencyOptions()
 			depFilter.MinSize = opts.Filter.MinSize
 			depFilter.MaxSize = opts.Filter.MaxSize
-			depFilter.Defaults = opts.Filter.Defaults
+			depFilter.FolderDefaults = opts.Filter.FolderDefaults
+			depFilter.FileDefaults = opts.Filter.FileDefaults
 			depFilter.Settings = opts.DependencySettings
 			dcr, depErr := scanner.CollectFilesWithOptions(opts.SourcePath, depFilter)
 			if depErr != nil {
@@ -171,16 +145,17 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 		}
 		files = []string{abs}
 		scanRoot = filepath.Dir(opts.SourcePath)
-		if opts.Layers.Has(LayerDeps) {
+		if opts.SourceDeclared {
 			manifestFiles = dependencies.NewDependencyParser().FilterFiles(files)
 		}
 	}
 	if abs, absErr := filepath.Abs(scanRoot); absErr == nil {
 		scanRoot = abs
 	}
-	if opts.OnCollect != nil {
-		opts.OnCollect(skipped)
-	}
+	// The walk has no incremental progress — its total is unknown until it ends — so it reports
+	// once, on completion: how many files it kept out of how many it saw. A consumer wanting the
+	// excluded count subtracts.
+	emit(Progress{Layer: LayerCollect, Status: StatusCompleted, Done: len(files), Total: len(files) + skipped})
 
 	threads := opts.Threads
 	if threads < 1 {
@@ -203,12 +178,28 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		w, errs := scanner.GenerateWFP(files, threads, scanRoot, opts.OnFingerprint)
+
+		// Fingerprinting stays here rather than going through Scan.Files, which would do it too:
+		// this package already has the file list, the root and the worker count as plain values,
+		// and handing them to the SDK instead would mean three scan options existing for no reason
+		// but to carry them back. It reports the stage itself and hands over a finished WFP.
+		w, errs := scanner.GenerateWFP(files, threads, scanRoot, r.Fingerprinting)
 		wfp, procErrors = w, len(errs)
+		emit(Progress{Layer: LayerFingerprint, Status: StatusCompleted, Done: len(files), Total: len(files)})
 		if len(w) == 0 {
 			return
 		}
-		res, err := opts.Client.Scan.WFP(ctx, w, opts.ScanOptions...)
+
+		// The reporter travels with the call, not with the client: the client is the caller's, and a
+		// reporter it registered for itself keeps working untouched.
+		// A fresh slice rather than appending to the caller's: append writes into their array
+		// whenever it has spare capacity, so the caller's Options would sprout an option it never
+		// asked for. Options is exported, so the slice is theirs to reuse.
+		scanOpts := make([]scanoss.ScanOption, 0, len(opts.ScanOptions)+1)
+		scanOpts = append(scanOpts, opts.ScanOptions...)
+		scanOpts = append(scanOpts, scanoss.WithScanReporter(r))
+
+		res, err := opts.Client.Scan.WFP(ctx, w, scanOpts...)
 		if err != nil {
 			scanErr = err
 			return
@@ -226,18 +217,15 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 		go func() {
 			defer wg.Done()
 			total := len(manifestFiles)
-			if opts.OnDependencies != nil {
-				opts.OnDependencies(0, total) // show the phase up front, alongside fingerprinting
-			}
+			emit(Progress{Layer: LayerManifests, Status: StatusRunning, Total: total}) // show it up front, alongside fingerprinting
 			parsed, err := dependencies.NewDependencyParser().ParseFiles(manifestFiles)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: dependency scan failed: %v\n", err)
+				emit(Progress{Layer: LayerManifests, Status: StatusFailed, Total: total})
 				return
 			}
 			declaredComps = sourceDeclared(parsed, scanRoot)
-			if opts.OnDependencies != nil {
-				opts.OnDependencies(total, total)
-			}
+			emit(Progress{Layer: LayerManifests, Status: StatusCompleted, Done: total, Total: total})
 		}()
 	}
 
@@ -249,7 +237,8 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 		return Result{ProcessErrors: procErrors}, nil
 	}
 
-	inv := assemble(ctx, opts.Client, scanResult, declaredComps, opts.Layers)
+	// assemble runs the enrichment layers, which report to r as well.
+	inv := assemble(ctx, opts.Client, scanResult, declaredComps, opts.Services, r)
 	return Result{Inventory: inv, WFP: wfp, ProcessErrors: procErrors}, nil
 }
 
@@ -261,27 +250,27 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 // gathered over all components, via the decoration pipeline. The requested layers, not any format,
 // decide what is gathered. Enrichment is non-fatal: a failed service is logged and skipped so a
 // partial inventory is still returned.
-func Build(ctx context.Context, client *scanoss.Client, result *scanossapi.ScanResult, layers Set, declared *parsers.LocalDependencies) (sbom.Inventory, error) {
+func Build(ctx context.Context, client *scanoss.Client, result *scanossapi.ScanResult, services []scanoss.Service, includeDeclared bool, declared *parsers.LocalDependencies, reporter scanoss.DecorationReporter) (sbom.Inventory, error) {
 	// SOURCE the declared dependency components (opt-in via the deps layer) straight from the parsed
 	// manifests — no dependency-service round trip, since the lockfile already carries resolved
 	// PURLs. Once sourced they are ordinary components, enriched alongside the scan matches.
 	var declaredComps []sbom.Component
-	if layers.Has(LayerDeps) && declared != nil && len(declared.Files) > 0 {
+	if includeDeclared && declared != nil && len(declared.Files) > 0 {
 		declaredComps = sourceDeclared(declared, "")
 	}
-	return assemble(ctx, client, result, declaredComps, layers), nil
+	return assemble(ctx, client, result, declaredComps, services, reporter), nil
 }
 
 // assemble merges the detected components (from the scan result) with the already-resolved
 // declared components into one inventory, then enriches every component with the requested
 // purl-layers. With no purl-layer requested the enrich step is a no-op — a bare scan does no
 // decoration work.
-func assemble(ctx context.Context, client *scanoss.Client, result *scanossapi.ScanResult, declaredComps []sbom.Component, layers Set) sbom.Inventory {
+func assemble(ctx context.Context, client *scanoss.Client, result *scanossapi.ScanResult, declaredComps []sbom.Component, services []scanoss.Service, r scanoss.DecorationReporter) sbom.Inventory {
 	inv := scansource.FromScanResult(result)
 	inv.Components = append(inv.Components, declaredComps...)
 	inv.Components = dedupeComponents(inv.Components)
 	if len(inv.Components) > 0 {
-		Enrich(ctx, client, &inv, layers)
+		Enrich(ctx, client, &inv, services, r)
 	}
 	return inv
 }
@@ -324,20 +313,7 @@ func mergeComponent(dst *sbom.Component, src sbom.Component) {
 // command calls it directly on an inventory parsed from an existing SBOM — no scan required. Each
 // layer is opt-in (driven by the requested set, never the output format); with no purl-layer
 // requested it makes no API call. Enrichment is non-fatal: a failed service is logged and skipped.
-func Enrich(ctx context.Context, client *scanoss.Client, inv *sbom.Inventory, layers Set) {
-	var services []scanoss.Service
-	if layers.Has(LayerLicenses) {
-		services = append(services, scanoss.ServiceLicenses)
-	}
-	if layers.Has(LayerVulns) {
-		services = append(services, scanoss.ServiceVulnerabilities)
-	}
-	if layers.Has(LayerCrypto) {
-		services = append(services, scanoss.ServiceCryptographyAlgorithms)
-	}
-	if layers.Has(LayerGeo) {
-		services = append(services, scanoss.ServiceGeoprovenanceOrigin)
-	}
+func Enrich(ctx context.Context, client *scanoss.Client, inv *sbom.Inventory, services []scanoss.Service, reporter scanoss.DecorationReporter) {
 	if len(services) == 0 {
 		return
 	}
@@ -347,7 +323,17 @@ func Enrich(ctx context.Context, client *scanoss.Client, inv *sbom.Inventory, la
 		comps = append(comps, scanoss.Component{Purl: c.Purl, Requirement: c.Version})
 	}
 
-	res, err := client.DecorationPipeline(services...).Run(ctx, comps)
+	// Announce every layer before starting, so each is on screen from the outset rather than
+	// appearing when its first response lands. The services run concurrently but answer at very
+	// different speeds — one endpoint can take ten times longer per request than another — and a
+	// layer that only shows up once it has an answer looks like a layer that started late.
+	if reporter != nil {
+		for _, svc := range services {
+			reporter.Decorating(svc.Name, 0, len(comps))
+		}
+	}
+
+	res, err := client.DecorationPipeline(services...).Run(ctx, comps, scanoss.WithDecorationReporter(reporter))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: decoration pipeline failed: %v\n", err)
 		return

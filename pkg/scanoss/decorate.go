@@ -112,7 +112,8 @@ func purlsOf(components []Component) []string {
 // decorate splits components into chunks and queries the given batch service
 // concurrently, merging the responses. It is the batch engine behind the plural
 // per-service methods (e.g. Vulnerabilities).
-func (c *Client) decorate(ctx context.Context, svc Service, components []Component) (*Result, error) {
+func (c *Client) decorate(ctx context.Context, svc Service, components []Component, opts ...DecorateOption) (*Result, error) {
+	o := resolveDecorateOptions(opts)
 	if svc.endpoint == "" {
 		return nil, fmt.Errorf("service %q has no endpoint", svc.Name)
 	}
@@ -177,13 +178,8 @@ func (c *Client) decorate(ctx context.Context, svc Service, components []Compone
 	for n := 0; n < len(chunks); n++ {
 		r := <-resultsCh
 		done += len(chunks[r.idx])
-		if c.onProgress != nil {
-			c.onProgress(Progress{
-				Service: svc.Name,
-				Done:    done,
-				Total:   len(components),
-				Unit:    "purls",
-			})
+		if o.reporter != nil {
+			o.reporter.Decorating(svc.Name, done, len(components))
 		}
 		if r.err != nil {
 			res.Failed = append(res.Failed, ChunkError{Index: r.idx, Err: r.err})
@@ -206,20 +202,27 @@ func (c *Client) decorate(ctx context.Context, svc Service, components []Compone
 // purl (and optional requirement) as query parameters, wrapping the response in a
 // *Result. It is the single path behind the singular per-service methods (e.g.
 // Vulnerability). No chunking or worker pool — single is one request.
-func (c *Client) decorateOne(ctx context.Context, svc Service, comp Component) (*Result, error) {
+func (c *Client) decorateOne(ctx context.Context, svc Service, comp Component, opts ...DecorateOption) (*Result, error) {
 	if svc.endpoint == "" {
 		return nil, fmt.Errorf("service %q has no endpoint", svc.Name)
 	}
 	if comp.Purl == "" {
 		return nil, fmt.Errorf("no component to query")
 	}
+	o := resolveDecorateOptions(opts)
 
 	q := url.Values{}
 	q.Set("purl", comp.Purl)
 	if comp.Requirement != "" {
 		q.Set("requirement", comp.Requirement)
 	}
-	return c.getResult(ctx, svc.endpoint, q)
+	res, err := c.getResult(ctx, svc.endpoint, q)
+	// One component is one unit of work: report it done so a caller drawing a bar sees the same
+	// shape here as from the batch path, rather than a bar that never moves.
+	if err == nil && o.reporter != nil {
+		o.reporter.Decorating(svc.Name, 1, 1)
+	}
+	return res, err
 }
 
 // getResult issues a GET to endpoint with the given query parameters and wraps the

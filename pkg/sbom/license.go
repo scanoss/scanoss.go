@@ -108,11 +108,28 @@ func licenseRefsIn(id string) []string {
 	return refs
 }
 
-// isCompound reports whether an expression has operators, and therefore needs
-// parentheses before being joined with another one — "A OR B" AND "C" is not the
-// same as "A OR (B AND C)".
+// isCompound reports whether an expression needs parentheses before being joined with another —
+// "A OR B" AND "C" is not the same as "A OR (B AND C)".
+//
+// WITH is not here, and that is not an oversight: it binds tighter than AND and OR, so
+// "A WITH B AND C" already means "(A WITH B) AND C" and parenthesising it changes nothing.
+// Whether an expression may appear where only a bare identifier is allowed is a different
+// question — see isExpression.
 func isCompound(expr string) bool {
 	for _, op := range []string{" AND ", " OR "} {
+		if strings.Contains(expr, op) {
+			return true
+		}
+	}
+	return false
+}
+
+// isExpression reports whether expr carries any operator, and so is an SPDX expression rather than
+// a single identifier. Every operator counts, WITH included: a field restricted to the SPDX
+// identifier list rejects "GPL-2.0-only WITH Classpath-exception-2.0" as surely as it rejects
+// "MIT OR Apache-2.0", and one such value invalidates the whole document.
+func isExpression(expr string) bool {
+	for _, op := range []string{" AND ", " OR ", " WITH "} {
 		if strings.Contains(expr, op) {
 			return true
 		}

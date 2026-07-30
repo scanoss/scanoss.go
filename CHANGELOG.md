@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The scan progress bar no longer runs backwards.** The server scans in passes that each restart
+  their own counter, and the bar was fed those numbers directly: it reached 100%, dropped back, and
+  finished a successful scan drawn near empty.
+- **A scan whose session expired no longer hangs.** `expired` is terminal, but was treated as "still
+  running", so the CLI polled a dead session until interrupted.
+- Enrichment layers appear when they start rather than when their first response arrives.
+
+### Changed
+
+- **BREAKING — progress is reported per stage.** `Progress`, `ProgressFunc`, `WithProgress`,
+  `PipelineProgress`, `DecorationPipeline.OnProgress` and `.Snapshot` are removed. Use
+  `ScanReporter` and `DecorationReporter`, registered per call with `WithScanReporter` and
+  `WithDecorationReporter`; every decoration method takes `opts ...DecorateOption`.
+- **BREAKING — `pkg/scanpipeline` reports every layer through `Options.OnProgress`**, replacing
+  `OnCollect`, `OnFingerprint`, `OnDependencies` and the SDK's separate callback.
+- **BREAKING — `pkg/scanpipeline` no longer parses `--include`.** `Layer`, `Set` and `ParseLayers`
+  moved to the CLI; `Options` takes `Services` and `SourceDeclared`; `Build` and `Enrich` changed
+  signature.
+- **BREAKING — `--default-filters` is replaced by `--all-extensions` and `--all-folders`** on `scan`
+  and `wfp`. In the library, `filter.Options.Defaults` splits into `FileDefaults` and
+  `FolderDefaults`.
+- The scan status is polled every 2 seconds rather than 5.
+
 ## [0.4.0] - 2026-07-29
 
 ### Added

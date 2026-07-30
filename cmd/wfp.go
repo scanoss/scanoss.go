@@ -60,9 +60,10 @@ func init() {
 	wfpCmd.Flags().Int64("min-size", filter.DefaultMinFileSize, "Minimum file size in bytes to scan")
 	wfpCmd.Flags().Int64("max-size", filter.DefaultMaxFileSize, "Maximum file size in bytes to scan (0 = unlimited)")
 	wfpCmd.Flags().String("settings", "", "Path to settings file (scanoss.json/settings.json)")
-	wfpCmd.Flags().Bool("default-filters", true, "Apply the built-in default file filters")
+	wfpCmd.Flags().Bool("all-extensions", false, "Fingerprint every file extension: do not apply the built-in file skip lists")
+	wfpCmd.Flags().Bool("all-folders", false, "Fingerprint every folder: do not apply the built-in directory skip lists")
 	wfpCmd.Flags().Bool("gitignore", true, "Honor .gitignore files when collecting files")
-	wfpCmd.Flags().Bool("all-hidden", false, "Include hidden files and folders (.git is always excluded)")
+	wfpCmd.Flags().Bool("all-hidden", false, "Include hidden files and folders, version-control metadata included")
 }
 
 func runWFP(cmd *cobra.Command, args []string) error {
@@ -83,7 +84,8 @@ func runWFP(cmd *cobra.Command, args []string) error {
 	minSize, _ := cmd.Flags().GetInt64("min-size")
 	maxSize, _ := cmd.Flags().GetInt64("max-size")
 	settingsFlag, _ := cmd.Flags().GetString("settings")
-	applyDefaultFilters, _ := cmd.Flags().GetBool("default-filters")
+	allExtensions, _ := cmd.Flags().GetBool("all-extensions")
+	allFolders, _ := cmd.Flags().GetBool("all-folders")
 	applyGitignore, _ := cmd.Flags().GetBool("gitignore")
 	allHidden, _ := cmd.Flags().GetBool("all-hidden")
 
@@ -116,7 +118,8 @@ func runWFP(cmd *cobra.Command, args []string) error {
 	// covers exactly the files a scan of the same tree would upload.
 	collectOpts := filter.FingerprintOptions()
 	collectOpts.MinSize, collectOpts.MaxSize = minSize, maxSize
-	collectOpts.Defaults, collectOpts.GitIgnore = applyDefaultFilters, applyGitignore
+	collectOpts.FileDefaults, collectOpts.FolderDefaults = !allExtensions, !allFolders
+	collectOpts.GitIgnore = applyGitignore
 	collectOpts.IncludeHidden = allHidden
 	collectOpts.Settings = wfpSettings.FingerprintFilter()
 	res, err := scanner.CollectFilesWithOptions(targetPath, collectOpts)

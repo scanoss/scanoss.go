@@ -37,19 +37,6 @@ import (
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
 )
 
-func TestParseLayers(t *testing.T) {
-	set, err := ParseLayers([]string{"deps", " vulns ", ""})
-	if err != nil {
-		t.Fatalf("ParseLayers: %v", err)
-	}
-	if !set.Has(LayerDeps) || !set.Has(LayerVulns) || len(set) != 2 {
-		t.Errorf("got %v, want {deps, vulns}", set)
-	}
-	if _, err := ParseLayers([]string{"bogus"}); err == nil {
-		t.Error("expected an error for an unknown layer")
-	}
-}
-
 // decorationServer answers the licenses, vulnerabilities, dependency-resolve, cryptography,
 // geoprovenance and copyright endpoints with canned responses so Build can be exercised
 // without a live API.
@@ -115,7 +102,7 @@ func TestBuildEnrichesDetected(t *testing.T) {
 	defer srv.Close()
 	client := scanoss.New(scanoss.WithAPIURL(srv.URL), scanoss.WithAPIKey("x"))
 
-	inv, err := Build(context.Background(), client, detectedResult(), Set{LayerLicenses: true, LayerVulns: true}, nil)
+	inv, err := Build(context.Background(), client, detectedResult(), []scanoss.Service{scanoss.ServiceLicenses, scanoss.ServiceVulnerabilities}, false, nil, nil)
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -143,7 +130,7 @@ func TestEnrichHandBuiltInventory(t *testing.T) {
 	inv := sbom.Inventory{Components: []sbom.Component{
 		{Purl: "pkg:npm/lodash", Version: "4.17.20"},
 	}}
-	Enrich(context.Background(), client, &inv, Set{LayerLicenses: true, LayerVulns: true})
+	Enrich(context.Background(), client, &inv, []scanoss.Service{scanoss.ServiceLicenses, scanoss.ServiceVulnerabilities}, nil)
 
 	lodash := findComponent(inv, "pkg:npm/lodash")
 	if lodash == nil {
@@ -164,7 +151,7 @@ func TestBuildLayersAreOptIn(t *testing.T) {
 	defer srv.Close()
 	client := scanoss.New(scanoss.WithAPIURL(srv.URL), scanoss.WithAPIKey("x"))
 
-	inv, err := Build(context.Background(), client, detectedResult(), Set{}, nil)
+	inv, err := Build(context.Background(), client, detectedResult(), nil, false, nil, nil)
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -188,7 +175,7 @@ func TestBuildDepsDrivenByLayer(t *testing.T) {
 	client := scanoss.New(scanoss.WithAPIURL(srv.URL), scanoss.WithAPIKey("x"))
 
 	// deps NOT requested: the declared input is ignored.
-	inv, err := Build(context.Background(), client, detectedResult(), Set{}, declaredLeftPad())
+	inv, err := Build(context.Background(), client, detectedResult(), nil, false, declaredLeftPad(), nil)
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -198,7 +185,7 @@ func TestBuildDepsDrivenByLayer(t *testing.T) {
 
 	// deps requested: the declared dependency is sourced straight from the manifest (no service
 	// call), so a package.json-only entry keeps its version range rather than a resolved version.
-	inv, err = Build(context.Background(), client, detectedResult(), Set{LayerDeps: true}, declaredLeftPad())
+	inv, err = Build(context.Background(), client, detectedResult(), nil, true, declaredLeftPad(), nil)
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -224,7 +211,7 @@ func TestBuildDeclaredEnrichedForVulns(t *testing.T) {
 	defer srv.Close()
 	client := scanoss.New(scanoss.WithAPIURL(srv.URL), scanoss.WithAPIKey("x"))
 
-	inv, err := Build(context.Background(), client, detectedResult(), Set{LayerDeps: true, LayerVulns: true}, declaredLeftPad())
+	inv, err := Build(context.Background(), client, detectedResult(), []scanoss.Service{scanoss.ServiceVulnerabilities}, true, declaredLeftPad(), nil)
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -255,7 +242,7 @@ func TestBuildDepsWithoutDetectedMatches(t *testing.T) {
 	defer srv.Close()
 	client := scanoss.New(scanoss.WithAPIURL(srv.URL), scanoss.WithAPIKey("x"))
 
-	inv, err := Build(context.Background(), client, &scanossapi.ScanResult{}, Set{LayerDeps: true}, declaredLeftPad())
+	inv, err := Build(context.Background(), client, &scanossapi.ScanResult{}, nil, true, declaredLeftPad(), nil)
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -331,7 +318,7 @@ func TestBuildEnrichesAllPurlLayers(t *testing.T) {
 	defer srv.Close()
 	client := scanoss.New(scanoss.WithAPIURL(srv.URL), scanoss.WithAPIKey("x"))
 
-	inv, err := Build(context.Background(), client, detectedResult(), Set{LayerCrypto: true, LayerGeo: true}, nil)
+	inv, err := Build(context.Background(), client, detectedResult(), []scanoss.Service{scanoss.ServiceCryptographyAlgorithms, scanoss.ServiceGeoprovenanceOrigin}, false, nil, nil)
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}

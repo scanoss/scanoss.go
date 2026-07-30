@@ -37,9 +37,6 @@ type DecorationPipeline struct {
 	client   *Client
 	services []Service // ordered, deduped by Service.Name
 
-	mu         sync.Mutex
-	snapshot   map[string]Progress // per-service latest progress (during Run)
-	onProgress func(PipelineProgress)
 }
 
 // DecorationPipeline creates a pipeline bound to this client, seeded with the given
@@ -69,33 +66,6 @@ func (p *DecorationPipeline) Remove(services ...Service) *DecorationPipeline {
 	return p
 }
 
-// OnProgress registers a callback that receives a per-service progress snapshot
-// as the pipeline runs. The pipeline aggregates progress internally and invokes
-// the callback SERIALLY, so the consumer needs no locking. Do not call other
-// DecorationPipeline methods (e.g. Snapshot) from within the callback. Chainable.
-func (p *DecorationPipeline) OnProgress(fn func(PipelineProgress)) *DecorationPipeline {
-	p.mu.Lock()
-	p.onProgress = fn
-	p.mu.Unlock()
-	return p
-}
-
-// Snapshot returns a thread-safe copy of the current per-service progress. Useful
-// for UIs that render on a tick rather than via OnProgress.
-func (p *DecorationPipeline) Snapshot() PipelineProgress {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.snapshotLocked()
-}
-
-func (p *DecorationPipeline) snapshotLocked() PipelineProgress {
-	cp := make(map[string]Progress, len(p.snapshot))
-	for k, v := range p.snapshot {
-		cp[k] = v
-	}
-	return PipelineProgress{Services: cp}
-}
-
 // Services returns a copy of the configured service set, in order.
 func (p *DecorationPipeline) Services() []Service {
 	out := make([]Service, len(p.services))
@@ -118,32 +88,11 @@ func (p *DecorationPipeline) indexOf(name string) int {
 //
 // Run returns an error only if every service failed; otherwise it returns the
 // PipelineResult with any per-service failures recorded in PipelineResult.Errors.
-func (p *DecorationPipeline) Run(ctx context.Context, components []Component) (*PipelineResult, error) {
+func (p *DecorationPipeline) Run(ctx context.Context, components []Component, opts ...DecorateOption) (*PipelineResult, error) {
 	if len(p.services) == 0 {
 		return nil, fmt.Errorf("pipeline has no services")
 	}
 	p.client.log.Debug("decoration pipeline run", "services", len(p.services), "components", len(components))
-
-	// Reset the progress snapshot and build a derived client whose progress hook
-	// feeds the per-service aggregator. Service-tagged events from all parallel
-	// services land here; the consumer callback is invoked serially under mu.
-	p.mu.Lock()
-	p.snapshot = make(map[string]Progress)
-	p.mu.Unlock()
-
-	orig := p.client.onProgress
-	pc := *p.client // shallow copy: same transport/config, our own progress hook
-	pc.onProgress = func(pr Progress) {
-		if orig != nil {
-			orig(pr) // preserve any client-level WithProgress (raw, per-service)
-		}
-		p.mu.Lock()
-		p.snapshot[pr.Service] = pr
-		if p.onProgress != nil {
-			p.onProgress(p.snapshotLocked()) // serial: delivered while holding mu
-		}
-		p.mu.Unlock()
-	}
 
 	type outcome struct {
 		name string
@@ -157,7 +106,7 @@ func (p *DecorationPipeline) Run(ctx context.Context, components []Component) (*
 		wg.Add(1)
 		go func(svc Service) {
 			defer wg.Done()
-			res, err := pc.decorate(ctx, svc, components)
+			res, err := p.client.decorate(ctx, svc, components, opts...)
 			ch <- outcome{name: svc.Name, res: res, err: err}
 		}(svc)
 	}
@@ -180,12 +129,6 @@ func (p *DecorationPipeline) Run(ctx context.Context, components []Component) (*
 		return nil, fmt.Errorf("all %d pipeline service(s) failed", len(p.services))
 	}
 	return pr, nil
-}
-
-// PipelineProgress is a snapshot of every running service's progress, keyed by
-// service name. Suitable for rendering each service's progress individually.
-type PipelineProgress struct {
-	Services map[string]Progress // key = service name; value = its Done/Total/Unit
 }
 
 // PipelineResult holds each service's output, keyed by service name, plus any

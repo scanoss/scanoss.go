@@ -166,7 +166,7 @@ type Vulnerability struct {
 	Source   string   `json:"source,omitempty"`   // advisory source name, e.g. "NVD"
 	URL      string   `json:"url,omitempty"`      // advisory URL (optional)
 	Summary  string   `json:"summary,omitempty"`  // short description (optional)
-	Purls    []string `json:"purls,omitempty"`    // base PURLs of affected components (join key to Component.Purl)
+	Purls    []string `json:"purls,omitempty"`    // PURLs of the affected components, versioned when the source says which version
 
 	// Optional quantitative scoring. All fields are optional: when unset they are not
 	// rendered, and the output is identical to a severity-only vulnerability.

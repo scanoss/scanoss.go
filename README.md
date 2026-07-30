@@ -306,16 +306,26 @@ for svc, e := range res.Errors { // per-service failures are recorded, not fatal
 
 ### Per-service progress
 
-`OnProgress` delivers a snapshot keyed by service, serially (no locking needed):
+Implement `DecorationReporter` and hand it to the call. Every update carries the service that
+produced it, so one receiver renders them all — services run concurrently, so it must be safe for
+concurrent use:
 
 ```go
-pipe.OnProgress(func(pp scanoss.PipelineProgress) {
-    for name, p := range pp.Services {
-        fmt.Printf("%-26s %d/%d %s\n", name, p.Done, p.Total, p.Unit)
-    }
-})
-res, _ := pipe.Run(ctx, comps)
-snapshot := pipe.Snapshot() // or pull the current state on a render tick
+type bars struct{ mu sync.Mutex }
+
+func (b *bars) Decorating(service string, done, total int) {
+    b.mu.Lock()
+    defer b.mu.Unlock()
+    fmt.Printf("%-26s %d/%d purls\n", service, done, total)
+}
+
+res, err := pipe.Run(ctx, comps, scanoss.WithDecorationReporter(&bars{}))
+```
+
+The per-service methods take it too:
+
+```go
+res, err := client.Vulnerabilities.Components(ctx, comps, scanoss.WithDecorationReporter(&bars{}))
 ```
 
 ### Version requirements

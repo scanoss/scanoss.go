@@ -81,7 +81,7 @@ func runResults(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	if layers.Has(scanpipeline.LayerDeps) {
+	if layers.Has(LayerDeps) {
 		warnf("the deps layer needs a source tree; ignored when resuming a scan by id")
 	}
 	outputFormat, _ := cmd.Flags().GetString("format")
@@ -94,11 +94,11 @@ func runResults(cmd *cobra.Command, args []string) error {
 	}
 
 	prog := &scanProgress{}
+	rep := scanpipeline.NewReporter(prog.layer)
 	client := scanoss.New(
 		scanoss.WithAPIURL(api.URL),
 		scanoss.WithAPIKey(api.Key),
 		scanoss.WithHTTPClient(httpClient),
-		scanoss.WithProgress(prog.fn),
 	)
 
 	infof("Retrieving results for scan %s", scanID)
@@ -106,7 +106,7 @@ func runResults(cmd *cobra.Command, args []string) error {
 	ctx, cancel := createCancellableContext()
 	defer cancel()
 
-	res, err := client.Scan.Wait(ctx, scanID, scanoss.WithPollInterval(pollInterval))
+	res, err := client.Scan.Wait(ctx, scanID, scanoss.WithPollInterval(pollInterval), scanoss.WithScanReporter(rep))
 	if err != nil {
 		return renderAPIError(fmt.Errorf("failed to retrieve results: %w", err))
 	}
@@ -118,7 +118,7 @@ func runResults(cmd *cobra.Command, args []string) error {
 	// same deliverable: the raw envelope carries schema_version and metadata, and
 	// the SBOM formats are convertible by `sbom`. Emitting the API response
 	// verbatim made a resumed scan a dead end.
-	inv, err := scanpipeline.Build(ctx, client, res.Result, layers, nil)
+	inv, err := scanpipeline.Build(ctx, client, res.Result, servicesFor(layers), layers.Has(LayerDeps), nil, rep)
 	if err != nil {
 		return renderAPIError(err)
 	}

@@ -32,24 +32,24 @@ import (
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
 )
 
-func callCryptoAlgorithms(c *scanoss.Client, ctx context.Context, comps []scanoss.Component) (*scanossapi.CryptoAlgorithmsResponse, error) {
-	return c.Cryptography.Algorithms(ctx, comps)
+func callCryptoAlgorithms(c *scanoss.Client, ctx context.Context, comps []scanoss.Component, opts ...scanoss.DecorateOption) (*scanossapi.CryptoAlgorithmsResponse, error) {
+	return c.Cryptography.Algorithms(ctx, comps, opts...)
 }
 
-func callCryptoAlgorithmsRange(c *scanoss.Client, ctx context.Context, comps []scanoss.Component) (*scanossapi.CryptoAlgorithmsInRangeResponse, error) {
-	return c.Cryptography.AlgorithmsInRange(ctx, comps)
+func callCryptoAlgorithmsRange(c *scanoss.Client, ctx context.Context, comps []scanoss.Component, opts ...scanoss.DecorateOption) (*scanossapi.CryptoAlgorithmsInRangeResponse, error) {
+	return c.Cryptography.AlgorithmsInRange(ctx, comps, opts...)
 }
 
-func callCryptoVersionsRange(c *scanoss.Client, ctx context.Context, comps []scanoss.Component) (*scanossapi.CryptoVersionsInRangeResponse, error) {
-	return c.Cryptography.VersionsInRange(ctx, comps)
+func callCryptoVersionsRange(c *scanoss.Client, ctx context.Context, comps []scanoss.Component, opts ...scanoss.DecorateOption) (*scanossapi.CryptoVersionsInRangeResponse, error) {
+	return c.Cryptography.VersionsInRange(ctx, comps, opts...)
 }
 
-func callCryptoHints(c *scanoss.Client, ctx context.Context, comps []scanoss.Component) (*scanossapi.CryptoHintsResponse, error) {
-	return c.Cryptography.Hints(ctx, comps)
+func callCryptoHints(c *scanoss.Client, ctx context.Context, comps []scanoss.Component, opts ...scanoss.DecorateOption) (*scanossapi.CryptoHintsResponse, error) {
+	return c.Cryptography.Hints(ctx, comps, opts...)
 }
 
-func callCryptoHintsRange(c *scanoss.Client, ctx context.Context, comps []scanoss.Component) (*scanossapi.CryptoHintsInRangeResponse, error) {
-	return c.Cryptography.HintsInRange(ctx, comps)
+func callCryptoHintsRange(c *scanoss.Client, ctx context.Context, comps []scanoss.Component, opts ...scanoss.DecorateOption) (*scanossapi.CryptoHintsInRangeResponse, error) {
+	return c.Cryptography.HintsInRange(ctx, comps, opts...)
 }
 
 var cryptographyCmd = &cobra.Command{

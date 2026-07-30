@@ -57,8 +57,8 @@ type ComponentSearch struct {
 type ComponentsAPI interface {
 	Search(ctx context.Context, q ComponentSearch) (*scanossapi.ComponentsSearchResponse, error)
 	Versions(ctx context.Context, purl string, limit int) (*scanossapi.ComponentVersionsResponse, error)
-	Status(ctx context.Context, comps []Component) (*scanossapi.ComponentsStatusResponse, error)
-	StatusOne(ctx context.Context, comp Component) (*scanossapi.ComponentsStatusResponse, error)
+	Status(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.ComponentsStatusResponse, error)
+	StatusOne(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.ComponentsStatusResponse, error)
 }
 
 type componentsService struct{ c *Client }
@@ -114,8 +114,8 @@ func (s componentsService) Versions(ctx context.Context, purl string, limit int)
 }
 
 // Status resolves the lifecycle status for the given components (batch).
-func (s componentsService) Status(ctx context.Context, comps []Component) (*scanossapi.ComponentsStatusResponse, error) {
-	res, err := s.c.decorate(ctx, ServiceComponentsStatus, comps)
+func (s componentsService) Status(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.ComponentsStatusResponse, error) {
+	res, err := s.c.decorate(ctx, ServiceComponentsStatus, comps, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -123,8 +123,8 @@ func (s componentsService) Status(ctx context.Context, comps []Component) (*scan
 }
 
 // StatusOne resolves the lifecycle status for a single component.
-func (s componentsService) StatusOne(ctx context.Context, comp Component) (*scanossapi.ComponentsStatusResponse, error) {
-	res, err := s.c.decorateOne(ctx, ServiceComponentStatus, comp)
+func (s componentsService) StatusOne(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.ComponentsStatusResponse, error) {
+	res, err := s.c.decorateOne(ctx, ServiceComponentStatus, comp, opts...)
 	if err != nil {
 		return nil, err
 	}

@@ -176,7 +176,16 @@ func VulnerabilitiesFrom(resp *scanossapi.VulnerabilitiesResponse) []sbom.Vulner
 		if ci.Purl == nil || ci.Vulnerabilities == nil {
 			continue
 		}
+		// The version this entry answers for, not the bare PURL. The service reports per version —
+		// asked about two releases of the same component it returned 43 advisories for one and 14
+		// for the other — so dropping it and keying on the PURL alone imputes every advisory to
+		// every version of that component.
 		purl := *ci.Purl
+		if version := strVal(ci.Version); version != "" {
+			purl += "@" + version
+		} else if req := strVal(ci.Requirement); req != "" {
+			purl += "@" + req
+		}
 		for _, v := range *ci.Vulnerabilities {
 			id := strVal(v.Id)
 			if id == "" {
