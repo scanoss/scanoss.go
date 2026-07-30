@@ -34,6 +34,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/scanoss/scanoss.go/pkg/filter"
+	"github.com/scanoss/scanoss.go/pkg/postprocess"
 	"github.com/scanoss/scanoss.go/pkg/scanner"
 	"github.com/scanoss/scanoss.go/pkg/settings"
 )
@@ -111,11 +112,11 @@ func WithFilters(f filter.Options) ScanOption {
 	return func(o *scanOptions) { o.filters = f }
 }
 
-// WithBOM applies the scan's bill-of-materials rules to the result. Today it runs
-// bom.remove (with bom.include as precedence) post-scan: matching file matches are
-// neutralized and unreferenced components pruned. The whole BOM is passed so future
-// behaviors (pre-scan include/identify context, post-scan replace) extend this same
-// option. A nil BOM is a no-op.
+// WithBOM applies the scan's bill-of-materials rules to the result, post-scan and in order:
+// bom.remove (with bom.include as precedence) neutralizes matching file matches, then
+// bom.replace re-points the survivors it covers at their replace_with component;
+// unreferenced components are pruned. The whole BOM is passed so the rules still to come
+// (pre-scan include/identify context, ignore) extend this same option. A nil BOM is a no-op.
 func WithBOM(bom *settings.BOM) ScanOption {
 	return func(o *scanOptions) { o.bom = bom }
 }
@@ -183,13 +184,9 @@ func (s scanService) scan(ctx context.Context, wfp []byte, o scanOptions) (scano
 	if err != nil {
 		return scanossapi.ScanEnvelope{}, err
 	}
-	// Apply BOM rules on the result (post-scan). Remove before replace: relabelling a match that
-	// is about to be dismissed is wasted, and the other order would let a replacement reintroduce
-	// a removed component under a new PURL.
 	if o.bom != nil && env.Result != nil {
 		s.c.log.Debug("applying BOM rules to scan result")
-		ApplyBOMRemove(env.Result, o.bom)
-		ApplyBOMReplace(env.Result, o.bom)
+		postprocess.Apply(env.Result, o.bom)
 	}
 	s.c.log.Info("scan complete", "scanID", scanID)
 	return env, nil

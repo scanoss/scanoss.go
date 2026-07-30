@@ -21,7 +21,7 @@
  * THE SOFTWARE.
  */
 
-package scanoss
+package postprocess
 
 import (
 	scanossapi "github.com/scanoss/scanoss.api-sdk"
@@ -91,7 +91,7 @@ func fileByPath(result *scanossapi.ScanResult, path string) scanossapi.FileResul
 	return scanossapi.FileResult{}
 }
 
-func TestApplyBOMRemove(t *testing.T) {
+func TestApplyRemove(t *testing.T) {
 	result := &scanossapi.ScanResult{
 		Files: []scanossapi.FileResult{
 			{Path: "/keep.c", FileHash: "a", MatchType: "file", Matches: []scanossapi.MatchResult{{UrlHash: "h1"}}},
@@ -105,7 +105,7 @@ func TestApplyBOMRemove(t *testing.T) {
 
 	bom := &settings.BOM{Remove: []settings.BOMEntry{{Purl: "pkg:github/drop/y"}}}
 
-	ApplyBOMRemove(result, bom)
+	applyRemove(result, bom)
 
 	// /keep.c untouched.
 	if fileByPath(result, "/keep.c").MatchType != "file" {
@@ -128,7 +128,7 @@ func TestApplyBOMRemove(t *testing.T) {
 	}
 }
 
-func TestApplyBOMRemove_AnyMatchNeutralizes(t *testing.T) {
+func TestApplyRemove_AnyMatchNeutralizes(t *testing.T) {
 	// /multi.c matches two components; one matches a remove rule, so the WHOLE
 	// file is neutralized. h1 is also referenced by /other.c, so it survives the
 	// prune; h2 (only referenced by the neutralized file) is pruned.
@@ -144,7 +144,7 @@ func TestApplyBOMRemove_AnyMatchNeutralizes(t *testing.T) {
 	}
 	bom := &settings.BOM{Remove: []settings.BOMEntry{{Purl: "pkg:b/drop"}}}
 
-	ApplyBOMRemove(result, bom)
+	applyRemove(result, bom)
 
 	multi := fileByPath(result, "/multi.c")
 	if multi.MatchType != "none" || len(multi.Matches) != 0 {
@@ -161,7 +161,7 @@ func TestApplyBOMRemove_AnyMatchNeutralizes(t *testing.T) {
 	}
 }
 
-func TestApplyBOMRemove_IncludeProtects(t *testing.T) {
+func TestApplyRemove_IncludeProtects(t *testing.T) {
 	result := &scanossapi.ScanResult{
 		Files: []scanossapi.FileResult{
 			{Path: "/f.c", FileHash: "a", MatchType: "file", Matches: []scanossapi.MatchResult{{UrlHash: "h1"}}},
@@ -174,14 +174,14 @@ func TestApplyBOMRemove_IncludeProtects(t *testing.T) {
 		Remove:  []settings.BOMEntry{{Purl: "pkg:github/x/y"}},
 		Include: []settings.BOMEntry{{Purl: "pkg:github/x/y"}},
 	}
-	ApplyBOMRemove(result, bom)
+	applyRemove(result, bom)
 	// include protects → match stays.
 	if fileByPath(result, "/f.c").MatchType != "file" {
 		t.Errorf("include should protect from removal; got %+v", fileByPath(result, "/f.c"))
 	}
 }
 
-func TestApplyBOMRemove_MultiMatchKept(t *testing.T) {
+func TestApplyRemove_MultiMatchKept(t *testing.T) {
 	// A file matching two components, neither matching a remove rule, is left
 	// intact (both matches preserved) and both components survive the prune.
 	result := &scanossapi.ScanResult{
@@ -195,7 +195,7 @@ func TestApplyBOMRemove_MultiMatchKept(t *testing.T) {
 	}
 	bom := &settings.BOM{Remove: []settings.BOMEntry{{Purl: "pkg:c/other"}}}
 
-	ApplyBOMRemove(result, bom)
+	applyRemove(result, bom)
 
 	multi := fileByPath(result, "/multi.c")
 	if multi.MatchType != "snippet" || len(multi.Matches) != 2 {

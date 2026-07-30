@@ -21,7 +21,7 @@
  * THE SOFTWARE.
  */
 
-package scanoss
+package postprocess
 
 import (
 	"testing"
@@ -55,7 +55,7 @@ func purlOf(t *testing.T, res *scanossapi.ScanResult, file int) []string {
 
 func TestReplaceRepointsMatchToTheNamedComponent(t *testing.T) {
 	res := replaceFixture()
-	ApplyBOMReplace(res, &settings.BOM{Replace: []settings.BOMEntry{
+	applyReplace(res, &settings.BOM{Replace: []settings.BOMEntry{
 		{Purl: "pkg:github/wrong/lib", ReplaceWith: "pkg:github/right/lib@2.1.0"},
 	}})
 
@@ -77,7 +77,7 @@ func TestReplaceRepointsMatchToTheNamedComponent(t *testing.T) {
 // observed has to survive, or the replacement would be laundering evidence.
 func TestReplaceKeepsWhatTheScanObserved(t *testing.T) {
 	res := replaceFixture()
-	ApplyBOMReplace(res, &settings.BOM{Replace: []settings.BOMEntry{
+	applyReplace(res, &settings.BOM{Replace: []settings.BOMEntry{
 		{Purl: "pkg:github/wrong/lib", ReplaceWith: "pkg:github/right/lib"},
 	}})
 
@@ -105,7 +105,7 @@ func TestReplacePicksTheMostSpecificRule(t *testing.T) {
 	// Same rules, reversed: the outcome must not depend on the order they are listed in.
 	for _, order := range [][]settings.BOMEntry{rules, {rules[2], rules[1], rules[0]}} {
 		res := replaceFixture()
-		ApplyBOMReplace(res, &settings.BOM{Replace: order})
+		applyReplace(res, &settings.BOM{Replace: order})
 		if got := purlOf(t, res, 0); len(got) != 1 || got[0] != "pkg:github/by-both/lib" {
 			t.Errorf("the purl+path rule must win, got %v", got)
 		}
@@ -115,7 +115,7 @@ func TestReplacePicksTheMostSpecificRule(t *testing.T) {
 // Between rules of equal specificity the narrower path is the one that meant this file.
 func TestReplacePrefersTheLongerPath(t *testing.T) {
 	res := replaceFixture()
-	ApplyBOMReplace(res, &settings.BOM{Replace: []settings.BOMEntry{
+	applyReplace(res, &settings.BOM{Replace: []settings.BOMEntry{
 		{Path: "vendor/", ReplaceWith: "pkg:github/broad/lib"},
 		{Path: "vendor/lib.c", ReplaceWith: "pkg:github/narrow/lib"},
 	}})
@@ -136,7 +136,7 @@ func TestReplaceReusesAnExistingComponent(t *testing.T) {
 		Purls: []string{"pkg:github/right/lib"}, Component: "lib", Vendor: "right", Url: "https://example.test/lib",
 	}
 
-	ApplyBOMReplace(res, &settings.BOM{Replace: []settings.BOMEntry{
+	applyReplace(res, &settings.BOM{Replace: []settings.BOMEntry{
 		{Purl: "pkg:github/wrong/lib", ReplaceWith: "pkg:github/right/lib"},
 	}})
 
@@ -151,21 +151,24 @@ func TestReplaceReusesAnExistingComponent(t *testing.T) {
 	}
 }
 
-// A file whose match remove already dismissed is not a candidate: replace must not resurrect it.
-func TestReplaceSkipsRemovedMatches(t *testing.T) {
+// Apply's contract is the order, so this is the test that earns it a single entry point.
+//
+// The remove rule names the PURL the scan found; the replace rule is scoped by path, so it covers
+// the same file without mentioning that PURL. Run the other way round, the replacement rewrites
+// the PURL first, the remove rule then matches nothing, and a component the user dismissed is
+// reported under its new name with neither rule having failed.
+func TestApplyRemovesBeforeReplacing(t *testing.T) {
 	res := replaceFixture()
-	bom := &settings.BOM{
+	Apply(res, &settings.BOM{
 		Remove:  []settings.BOMEntry{{Purl: "pkg:github/wrong/lib"}},
 		Replace: []settings.BOMEntry{{Path: "vendor/", ReplaceWith: "pkg:github/right/lib"}},
-	}
-	ApplyBOMRemove(res, bom)
-	ApplyBOMReplace(res, bom)
+	})
 
 	if mt := res.Files[0].MatchType; mt != "none" {
-		t.Errorf("the file stays dismissed, got match type %q", mt)
+		t.Errorf("the dismissed file must stay dismissed, got match type %q", mt)
 	}
 	if len(res.Components) != 0 {
-		t.Errorf("no component should be reported, got %v", res.Components)
+		t.Errorf("nothing should be reported, got %v", res.Components)
 	}
 }
 
@@ -185,14 +188,14 @@ func TestReplaceNoOps(t *testing.T) {
 	for name, bom := range cases {
 		t.Run(name, func(t *testing.T) {
 			res := replaceFixture()
-			ApplyBOMReplace(res, bom)
+			applyReplace(res, bom)
 			if got := purlOf(t, res, 0); len(got) != 1 || got[0] != "pkg:github/wrong/lib" {
 				t.Errorf("result should be untouched, got %v", got)
 			}
 		})
 	}
 
-	ApplyBOMReplace(nil, &settings.BOM{Replace: []settings.BOMEntry{{Purl: "x", ReplaceWith: "y"}}})
+	applyReplace(nil, &settings.BOM{Replace: []settings.BOMEntry{{Purl: "x", ReplaceWith: "y"}}})
 }
 
 // A rule written against one release still covers the component, and a scoped npm namespace is
@@ -201,7 +204,7 @@ func TestReplaceNoOps(t *testing.T) {
 func TestReplaceVersionHandling(t *testing.T) {
 	t.Run("rule with a version covers the component", func(t *testing.T) {
 		res := replaceFixture()
-		ApplyBOMReplace(res, &settings.BOM{Replace: []settings.BOMEntry{
+		applyReplace(res, &settings.BOM{Replace: []settings.BOMEntry{
 			{Purl: "pkg:github/wrong/lib@1.0.0", ReplaceWith: "pkg:github/right/lib"},
 		}})
 		if got := purlOf(t, res, 0); len(got) != 1 || got[0] != "pkg:github/right/lib" {
