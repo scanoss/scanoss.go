@@ -68,7 +68,7 @@ func init() {
 
 func runWFP(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
-		return cmd.Help()
+		return usageError(cmd, "a path to fingerprint is required")
 	}
 	targetPath := args[0]
 

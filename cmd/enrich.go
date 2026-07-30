@@ -70,9 +70,8 @@ func init() {
 // the scan pipeline's format-blind tail stage (scanpipeline.Enrich) run on an inventory the
 // command parsed itself.
 func runEnrich(cmd *cobra.Command, args []string) error {
-	// No input given: show usage instead of a terse arg error.
 	if len(args) == 0 {
-		return cmd.Help()
+		return usageError(cmd, "an SBOM file to enrich is required")
 	}
 	if err := checkAuth(cmd); err != nil {
 		return err
