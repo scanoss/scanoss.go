@@ -33,8 +33,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-
-	"github.com/scanoss/scanoss.go/internal/models"
 )
 
 const (
@@ -95,7 +93,7 @@ func minHash(hashes []uint32) uint32 {
 // GenerateFingerprint generates the WFP fingerprint of a file. The file is read from
 // filePath; root, when non-empty, makes the WFP "file=" label relative to it (so the
 // scan result reports paths relative to the scanned folder, not absolute local paths).
-func GenerateFingerprint(filePath string, root string) (*models.FileFingerprint, error) {
+func GenerateFingerprint(filePath string, root string) (*FileFingerprint, error) {
 	// No filtering here: which files are worth fingerprinting is decided once,
 	// during collection (pkg/filter), which is the only stage that reports what
 	// it skipped. Deciding again at this depth would drop files the caller has
@@ -178,7 +176,7 @@ func GenerateFingerprint(filePath string, root string) (*models.FileFingerprint,
 		}
 	}
 
-	return &models.FileFingerprint{
+	return &FileFingerprint{
 		Path:        label,
 		Hash:        hashHex,
 		Size:        len(f),
