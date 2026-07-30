@@ -96,6 +96,13 @@ type Result struct {
 // file set (when the deps layer is requested), and gather + enrich into an Inventory. It owns
 // everything from file collection onward; the caller supplies only flag-derived configuration.
 func Run(ctx context.Context, opts Options) (Result, error) {
+	// Checked here rather than left to the first dereference: the client is used inside the scan
+	// goroutine below, where a nil panics on a stack the caller cannot recover from, and Run's own
+	// deferred Wait would hand back a nil error while the process is already being torn down.
+	if opts.Client == nil {
+		return Result{}, fmt.Errorf("a client is required (Options.Client)")
+	}
+
 	r := NewReporter(opts.OnProgress)
 	emit := r.emit
 
