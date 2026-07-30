@@ -9,70 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **A scan whose session expired no longer hangs.** The status endpoint reports six states; the SDK
-  recognised two. `expired` is terminal — the session is gone and its id cannot be retried — but it
-  fell through to "still running", so an expired scan was polled until the caller gave up. For the
-  CLI that meant hanging until Ctrl-C, and `results <old-id>` never returned. A state this client
-  does not recognise still means "keep waiting", so a server that adds one breaks nothing.
-
-- **The scan progress bar no longer runs backwards.** The server scans in passes, each counting its
-  own units from zero — files, then the subset needing snippet matching, then component lookups —
-  and the bar was fed those numbers directly, so it reached 100%, dropped to 2%, and finished a
-  successful scan drawn at 0%. It also kept the first pass's total forever, so the later passes were
-  drawn against the wrong denominator. Each pass now owns a share of the bar, which only grows.
-- **Every enrichment layer appears when it starts**, not when its first response arrives. They run
-  concurrently but answer at very different speeds — one endpoint measured 6-10s per request against
-  ~500ms for the others — so a layer that only showed up once it had an answer looked like one that
-  had not started.
+- **The scan progress bar no longer runs backwards.** The server scans in passes that each restart
+  their own counter, and the bar was fed those numbers directly: it reached 100%, dropped back, and
+  finished a successful scan drawn near empty.
+- **A scan whose session expired no longer hangs.** `expired` is terminal, but was treated as "still
+  running", so the CLI polled a dead session until interrupted.
+- Enrichment layers appear when they start rather than when their first response arrives.
 
 ### Changed
 
-- **BREAKING — progress is reported per stage, through typed contracts.** `Progress`, `ProgressFunc`
-  and `WithProgress` are gone, and with them `PipelineProgress`, `DecorationPipeline.OnProgress` and
-  `DecorationPipeline.Snapshot`. Two interfaces replace them:
-
-  ```go
-  type ScanReporter interface {
-      Fingerprinting(done, total int)
-      Uploading(done, total int)
-      Scanning(env scanossapi.ScanEnvelope)   // the server's envelope, whole
-  }
-
-  type DecorationReporter interface { Decorating(service string, done, total int) }
-  ```
-
-  Each stage now has the signature of what it actually has, rather than being told apart by a unit
-  string. They are registered **per call**, not per client — `WithScanReporter` is a `ScanOption`,
-  `WithDecorationReporter` a new `DecorateOption` — because a client is long-lived and shared while
-  an observer belongs to one operation. Every decoration method takes `opts ...DecorateOption`.
-- **BREAKING — `pkg/scanpipeline` reports every layer through one channel**, `Options.OnProgress`,
-  replacing `OnCollect`, `OnFingerprint`, `OnDependencies` and the SDK's separate callback. Each
-  update carries a layer, a status and a counter that only grows, whichever layer produced it.
-- **BREAKING — `pkg/scanpipeline` no longer knows about flags.** `Layer`, `Set` and `ParseLayers`
-  moved to the CLI: `--include` values are the CLI's vocabulary. `Options` takes `Services
-  []scanoss.Service` and `SourceDeclared bool`; `Build` and `Enrich` take the services and a
-  reporter.
+- **BREAKING — progress is reported per stage.** `Progress`, `ProgressFunc`, `WithProgress`,
+  `PipelineProgress`, `DecorationPipeline.OnProgress` and `.Snapshot` are removed. Use
+  `ScanReporter` and `DecorationReporter`, registered per call with `WithScanReporter` and
+  `WithDecorationReporter`; every decoration method takes `opts ...DecorateOption`.
+- **BREAKING — `pkg/scanpipeline` reports every layer through `Options.OnProgress`**, replacing
+  `OnCollect`, `OnFingerprint`, `OnDependencies` and the SDK's separate callback.
+- **BREAKING — `pkg/scanpipeline` no longer parses `--include`.** `Layer`, `Set` and `ParseLayers`
+  moved to the CLI; `Options` takes `Services` and `SourceDeclared`; `Build` and `Enrich` changed
+  signature.
 - **BREAKING — `--default-filters` is replaced by `--all-extensions` and `--all-folders`** on `scan`
-  and `wfp`. The built-in lists exclude very different amounts — measured on a 7586-file tree,
-  dropping the file rules admitted 4489 more files and dropping the directory rules 110 — so one
-  switch for both was too blunt. `--all-extensions` covers extensions, name endings and exact names
-  together. In the library, `filter.Options.Defaults` splits into `FileDefaults` and
+  and `wfp`. In the library, `filter.Options.Defaults` splits into `FileDefaults` and
   `FolderDefaults`.
-- **BREAKING — `--all-hidden` now reaches version-control metadata.** `.git` and friends are
-  excluded because they are hidden, like any other dotted entry, so the flag includes them. This
-  reverses the 0.4.0 note that version-control metadata is never collected: it is now the caller's
-  choice, and matches the reference implementation, where the same flag has the same reach. What a
-  scan uploads is fingerprints — hashes and paths, not contents.
-- The scan status is polled every **2 seconds** rather than 5. A whole pass could pass between two
-  polls, freezing the display for stretches that read as a hang.
-- `Filtered N files` is now written through the progress channel, so it no longer appears when the
-  output is not a terminal. See the known issue below.
-
-### Known issues
-
-- Output written through the progress renderer — `Filtered N files` and the `Scan id` block — is not
-  emitted when stderr is not a terminal, so it is missing from CI logs. The scan id is the handle
-  for resuming an interrupted scan.
+- The scan status is polled every 2 seconds rather than 5.
 
 ## [0.4.0] - 2026-07-29
 
