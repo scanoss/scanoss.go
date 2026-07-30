@@ -68,7 +68,7 @@ func Execute() {
 }
 
 func init() {
-	// `scanoss-cli --version` → "scanoss-cli v0.9.1"
+	// `scanoss-cli --version` → "scanoss-cli <version>"
 	rootCmd.SetVersionTemplate("scanoss-cli {{.Version}}\n")
 	rootCmd.PersistentFlags().BoolP("verbose", "v", false, "Enable verbose output")
 }

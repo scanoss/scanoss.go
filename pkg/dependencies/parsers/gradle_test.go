@@ -112,7 +112,7 @@ func TestParseBuildGradleSourceLocation(t *testing.T) {
 				if got.Line != w.Line {
 					t.Errorf("[%d] Line: got %d, want %d", i, got.Line, w.Line)
 				}
-				// Always check DeclaredText exactly when the want value is set
+				// Checked exactly, but only when the case bothers to state one
 				if w.DeclaredText != "" && got.DeclaredText != w.DeclaredText {
 					t.Errorf("[%d] DeclaredText: got %q, want %q", i, got.DeclaredText, w.DeclaredText)
 				}

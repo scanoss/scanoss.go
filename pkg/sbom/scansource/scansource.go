@@ -21,10 +21,10 @@
  * THE SOFTWARE.
  */
 
-// Package scansource adapts SCANOSS SDK values (a v3 scan result and a vulnerabilities
-// decoration response) into the neutral sbom.Inventory consumed by the sbom package.
-// It is the only SBOM code that depends on the scan SDK; the sbom package itself stays
-// SDK-free.
+// Package scansource adapts SCANOSS SDK values — a v3 scan result and the licenses,
+// vulnerabilities, cryptography and geoprovenance decoration responses — into the
+// neutral sbom.Inventory consumed by the sbom package. It is the only SBOM code that
+// depends on the scan SDK; the sbom package itself stays SDK-free.
 package scansource
 
 import (

@@ -23,17 +23,12 @@
 
 package cmd
 
-// Characterisation tests for the filter unification.
+// Characterisation tests for file collection: they record what each operation
+// collects, so that a change to the shared filter rules cannot alter it unnoticed.
+// Every expectation below is a literal file list, on purpose: a test that
+// recomputed the answer from the same lists the code uses would agree with any
+// bug those lists contain.
 //
-// These record what each operation collects TODAY, before any rule moves. They
-// are not a statement that the current behaviour is right — only that the
-// refactor must not change it. Every expectation below is a literal file list,
-// on purpose: a test that recomputed the answer from the same lists the code
-// uses would agree with any bug those lists contain.
-//
-// If one of these fails during the refactor, the refactor changed behaviour.
-// Fix the code, not the expectation — unless the SDD says that task is the one
-// that deliberately changes it.
 
 import (
 	"os"
@@ -49,7 +44,7 @@ import (
 	"github.com/scanoss/scanoss.go/pkg/settings"
 )
 
-// baselineTree builds a fixture that exercises every axis the refactor touches:
+// baselineTree builds a fixture that exercises every axis the filters touch:
 // directories the two operations disagree on (venv, examples, dist), manifests
 // hidden behind skipped extensions (.json, .mod, .xml), a file skipped only by
 // extension (a.png), one skipped by name (Makefile), one by ending (README), a
@@ -107,7 +102,7 @@ func assertSet(t *testing.T, what string, got, want []string) {
 	if strings.Join(got, "\n") == strings.Join(want, "\n") {
 		return
 	}
-	t.Errorf("%s changed.\n got: %v\nwant: %v\n\nIf this is the task that is meant to change it, update the expectation and say so in the commit; otherwise the refactor altered behaviour.",
+	t.Errorf("%s changed.\n got: %v\nwant: %v\n\nIf the change is intended, update the expectation and say so in the commit; otherwise a filter rule altered behaviour.",
 		what, got, want)
 }
 
@@ -138,8 +133,8 @@ func TestBaselineScanCollection(t *testing.T) {
 }
 
 // The same, with the built-in lists off. Note a.png is absent even though
-// nothing in the collection excludes it — pkg/fingerprint/wfp drops it later.
-// That is the bug the refactor fixes; recorded here so the fix is visible.
+// nothing in the collection excludes it — pkg/fingerprint/wfp drops it later,
+// so turning the lists off does not reach it.
 func TestBaselineScanCollectionNoDefaults(t *testing.T) {
 	root := baselineTree(t)
 	res, err := scanner.CollectFilesWithOptions(root, filter.Options{
@@ -167,15 +162,14 @@ func TestBaselineScanCollectionNoDefaults(t *testing.T) {
 	})
 }
 
-// What `dependencies` collects, now through the shared filter.
+// What `dependencies` collects, through the shared filter.
 //
-// This expectation was updated deliberately — the one change allowed to alter it.
-// The candidate list is smaller because the default extension, name and ending
-// lists now apply: Makefile, README, a.png and scanoss.json are gone. None of
-// them was ever a manifest, so the parser's output is unchanged; only the
-// candidate set it is handed shrank.
+// The candidate list is smaller than the tree because the default extension, name
+// and ending lists apply: Makefile, README, a.png and scanoss.json are absent.
+// None of them is a manifest, so the parser's output is unaffected; only the
+// candidate set it is handed is narrower.
 //
-// What did NOT change is the part that matters: every manifest is still here,
+// The part that matters is that every manifest is here,
 // including the ones behind skipped extensions (go.mod, pom.xml) and the one
 // under examples/, which dependency collection deliberately does not prune.
 // ignored/gen.go is still present too: .gitignore does not decide what is a
@@ -198,9 +192,9 @@ func TestBaselineDependencyCollection(t *testing.T) {
 	})
 }
 
-// The parser's output is what users see, and it must be identical to what the
-// old walk produced. Asserting on the manifests rather than on the candidate
-// list is what proves the change hit the route and not the result.
+// The parser's output is what users see. Asserting on the manifests rather than
+// on the candidate list is what proves the shared filter narrowed the route
+// without changing the result.
 func TestDependencyManifestsUnchanged(t *testing.T) {
 	root := baselineTree(t)
 	files, _, err := collectDependencyFiles(root, "")
@@ -216,8 +210,8 @@ func TestDependencyManifestsUnchanged(t *testing.T) {
 	})
 }
 
-// scanoss.json's dependencies section now takes effect. It is part of the
-// published schema and did nothing before.
+// scanoss.json's dependencies section takes effect: it is part of the published
+// schema, so a pattern listed there must prune dependency collection too.
 func TestDependencySkipPatternsHonoured(t *testing.T) {
 	root := baselineTree(t)
 	cfg := `{"settings":{"skip":{"patterns":{"dependencies":["examples/**"]}}}}`

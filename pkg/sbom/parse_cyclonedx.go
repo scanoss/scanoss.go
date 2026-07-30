@@ -66,7 +66,8 @@ func ParseCycloneDX(data []byte) (Inventory, error) {
 func cycloneDXToComponent(c cdx.Component) Component {
 	version := normalizeAssertion(c.Version)
 
-	// The writer stores the base PURL in Name and purl[@version] in PackageURL/BOMRef.
+	// The writer stores the display name in Name and purl[@version] in PackageURL/BOMRef,
+	// so the base PURL has to be recovered by stripping the version back off.
 	purl := c.PackageURL
 	if version != "" {
 		purl = strings.TrimSuffix(purl, "@"+version)

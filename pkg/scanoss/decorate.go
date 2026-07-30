@@ -111,7 +111,7 @@ func purlsOf(components []Component) []string {
 
 // decorate splits components into chunks and queries the given batch service
 // concurrently, merging the responses. It is the batch engine behind the plural
-// per-service methods (e.g. Vulnerabilities).
+// per-service methods (e.g. client.Vulnerabilities.Components).
 func (c *Client) decorate(ctx context.Context, svc Service, components []Component, opts ...DecorateOption) (*Result, error) {
 	o := resolveDecorateOptions(opts)
 	if svc.endpoint == "" {
@@ -201,7 +201,7 @@ func (c *Client) decorate(ctx context.Context, svc Service, components []Compone
 // decorateOne queries a single-component service: one GET with the component's
 // purl (and optional requirement) as query parameters, wrapping the response in a
 // *Result. It is the single path behind the singular per-service methods (e.g.
-// Vulnerability). No chunking or worker pool — single is one request.
+// client.Vulnerabilities.Component). No chunking or worker pool — single is one request.
 func (c *Client) decorateOne(ctx context.Context, svc Service, comp Component, opts ...DecorateOption) (*Result, error) {
 	if svc.endpoint == "" {
 		return nil, fmt.Errorf("service %q has no endpoint", svc.Name)

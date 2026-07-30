@@ -46,7 +46,8 @@ const (
 	filePerm fs.FileMode = 0o600
 )
 
-// without depending on HOME/USERPROFILE semantics per platform.
+// homeDir is a variable so tests can redirect the config location without
+// depending on HOME/USERPROFILE semantics per platform.
 var homeDir = os.UserHomeDir
 
 // Path returns the absolute path of the settings file, whether or not it exists.

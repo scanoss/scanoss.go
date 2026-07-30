@@ -68,9 +68,7 @@ func runWFPTree(t *testing.T, root string, allExtensions, gitignore string) stri
 	return string(b)
 }
 
-// --all-extensions keeps a file the built-in file rules would drop. The fixture is "Makefile",
-// which the default name list drops: the flag covers extensions, name endings and exact names
-// together, the same three the reference implementation gates with its own --all-extensions.
+// TestWFPAllExtensionsFlag --all-extensions keeps a file the built-in file rules would drop.
 func TestWFPAllExtensionsFlag(t *testing.T) {
 	root := t.TempDir()
 	writeTreeFile(t, filepath.Join(root, "main.go"), 200)

@@ -227,10 +227,10 @@ func TestScanningDirSetUnchanged(t *testing.T) {
 	got := append([]string(nil), StdDefaults().Dirs...)
 	sort.Strings(got)
 
-	// .git is deliberately absent: version-control metadata is excluded by
-	// UnscannableSource, which no option can switch off. Listing it here as well
-	// would put the same rule in two places — and the one place a caller can
-	// disable is exactly where it must not live.
+	// .git is deliberately absent: it is excluded by the hidden rule, like any other
+	// dotted entry. Listing it here as well would put the same rule in two places,
+	// and the two are not equivalent — this list is what --all-folders switches off,
+	// the hidden rule is what --all-hidden switches off.
 	want := []string{
 		"__pycache__", "__pypackages__", "_yardoc", "eggs", "example",
 		"examples", "htmlcov", "nbbuild", "nbdist", "nbproject",
