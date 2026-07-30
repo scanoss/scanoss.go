@@ -31,7 +31,7 @@ import (
 )
 
 func TestParseLayers(t *testing.T) {
-	set, err := ParseLayers([]string{"deps", " vulns ", ""})
+	set, err := ParseLayers([]string{"deps", " vulns ", ""}, AllLayers())
 	if err != nil {
 		t.Fatalf("ParseLayers: %v", err)
 	}
@@ -41,15 +41,45 @@ func TestParseLayers(t *testing.T) {
 	if set.Has(LayerLicenses) {
 		t.Error("licenses was not requested but is in the set")
 	}
-	if _, err := ParseLayers([]string{"bogus"}); err == nil {
+	if _, err := ParseLayers([]string{"bogus"}, AllLayers()); err == nil {
 		t.Error("ParseLayers accepted an unknown layer")
+	}
+}
+
+// A command that cannot gather a layer must not offer it. enrich works from an SBOM file, so
+// declared dependencies — read from manifests in a scanned tree — are out of reach; listing deps
+// as valid and then refusing it told the user two different things, the second one only after
+// they had tried it.
+func TestParseLayersRejectsWhatTheCommandCannotGather(t *testing.T) {
+	_, err := ParseLayers([]string{"deps"}, PurlLayers())
+	if err == nil {
+		t.Fatal("deps was accepted for a PURL-only command")
+	}
+	// Assert on the valid list alone: "deps" also appears in the rejected-value part of the
+	// message, so searching the whole string would pass however wrong the list is.
+	_, valid, found := strings.Cut(err.Error(), "valid: ")
+	if !found {
+		t.Fatalf("error does not list the valid layers: %v", err)
+	}
+	if strings.Contains(valid, "deps") {
+		t.Errorf("the valid list offers deps to a command that cannot gather it: %q", valid)
+	}
+	for _, want := range []string{"crypto", "geo", "licenses", "vulns"} {
+		if !strings.Contains(valid, want) {
+			t.Errorf("valid list %q does not mention %q", valid, want)
+		}
+	}
+
+	// The same values are still accepted where they can be gathered.
+	if _, err := ParseLayers([]string{"deps"}, AllLayers()); err != nil {
+		t.Errorf("deps must stay valid for a command that scans a tree: %v", err)
 	}
 }
 
 // The error has to name the layers that would have worked, and name them in a stable order:
 // ranging a map is randomised, so an unsorted list reshuffles between runs.
 func TestParseLayersErrorListsValidLayers(t *testing.T) {
-	_, err := ParseLayers([]string{"vulnz"})
+	_, err := ParseLayers([]string{"vulnz"}, AllLayers())
 	if err == nil {
 		t.Fatal("ParseLayers accepted an unknown layer")
 	}
@@ -61,7 +91,7 @@ func TestParseLayersErrorListsValidLayers(t *testing.T) {
 	// The list is built by ranging a map, which Go randomises: without an explicit sort the
 	// wording differs between runs, so repeat it enough times to catch that.
 	for i := 0; i < 20; i++ {
-		_, again := ParseLayers([]string{"vulnz"})
+		_, again := ParseLayers([]string{"vulnz"}, AllLayers())
 		if again.Error() != err.Error() {
 			t.Fatalf("the error wording changed between runs:\n %q\n %q", err, again)
 		}

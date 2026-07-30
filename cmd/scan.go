@@ -341,7 +341,11 @@ func init() {
 	scanCmd.PersistentFlags().String("settings", "", "Path to settings file (scanoss.json/settings.json)")
 	scanCmd.PersistentFlags().Int("chunk-size", scanoss.DefaultScanChunkBytes, "WFP upload chunk size in bytes")
 	scanCmd.PersistentFlags().Duration("poll-interval", scanoss.DefaultScanPollInterval, "How often to poll for scan status")
-	scanCmd.PersistentFlags().StringSlice("include", nil, "Output layers to gather (comma-separated): deps, vulns, licenses, crypto, geo")
+
+	// --include is declared per command rather than inherited: the two accept different layers, and
+	// an inherited help text would offer `wfp` a layer it cannot gather.
+	scanCmd.Flags().StringSlice("include", nil, "Output layers to gather (comma-separated): deps, vulns, licenses, crypto, geo")
+	scanWFPCmd.Flags().StringSlice("include", nil, "Output layers to gather (comma-separated): vulns, licenses, crypto, geo")
 
 	// Fingerprinting flags (apply to `scan <path>` only).
 	scanCmd.Flags().IntP("threads", "t", config.DefaultThreads, "Number of parallel fingerprint workers")
@@ -463,12 +467,13 @@ func runScanWFP(cmd *cobra.Command, args []string) error {
 	if err := validateOutputFormat(cmd); err != nil {
 		return err
 	}
-	layers, err := scanLayers(cmd)
+	// A bare WFP has no source tree, so declared dependencies cannot be sourced. Rejecting deps
+	// beats warning and carrying on: the output is an inventory the caller keeps, and one missing
+	// the layer they asked for should not leave with a success code.
+	values, _ := cmd.Flags().GetStringSlice("include")
+	layers, err := ParseLayers(values, PurlLayers())
 	if err != nil {
 		return err
-	}
-	if layers.Has(LayerDeps) {
-		warnf("the deps layer needs a source tree; ignored when scanning a WFP file")
 	}
 	outputFormat, _ := cmd.Flags().GetString("format")
 	reportSkippedLayers(outputFormat, layers)
@@ -600,9 +605,13 @@ func emitInventory(cmd *cobra.Command, inv sbom.Inventory, scanPath string) erro
 
 // scanLayers reads and validates the --include flag into a scanpipeline layer set. Gathering
 // is driven by this set — never by the output format.
+//
+// Only `scan <path>` accepts every layer: it walks a tree, so declared dependencies can be read
+// from the manifests in it. The commands that start from a result or an SBOM parse their own,
+// against the PURL-keyed layers alone.
 func scanLayers(cmd *cobra.Command) (Set, error) {
 	values, _ := cmd.Flags().GetStringSlice("include")
-	return ParseLayers(values)
+	return ParseLayers(values, AllLayers())
 }
 
 // renderInventory renders a gathered inventory in the requested format. raw wraps the inventory

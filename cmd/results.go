@@ -77,12 +77,12 @@ func runResults(cmd *cobra.Command, args []string) error {
 	}
 	pollInterval, _ := cmd.Flags().GetDuration("poll-interval")
 
-	layers, err := scanLayers(cmd)
+	// Resuming by id reaches the server's result, not the tree that produced it, so declared
+	// dependencies cannot be sourced. Its own help never offered deps; now the parser agrees.
+	values, _ := cmd.Flags().GetStringSlice("include")
+	layers, err := ParseLayers(values, PurlLayers())
 	if err != nil {
 		return err
-	}
-	if layers.Has(LayerDeps) {
-		warnf("the deps layer needs a source tree; ignored when resuming a scan by id")
 	}
 	outputFormat, _ := cmd.Flags().GetString("format")
 	reportSkippedLayers(outputFormat, layers)
