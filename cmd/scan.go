@@ -397,8 +397,8 @@ func runScan(cmd *cobra.Command, args []string) error {
 	applyGitignore, _ := cmd.Flags().GetBool("gitignore")
 	allHidden, _ := cmd.Flags().GetBool("all-hidden")
 
-	// Settings drive file filtering. Of the BOM rules, only bom.remove is applied (SDK-side,
-	// post-scan, via WithBOM); identify/ignore/replace are not applied.
+	// Settings drive file filtering. Of the BOM rules, bom.remove and bom.replace are applied
+	// (SDK-side, post-scan, via WithBOM); identify/ignore are not.
 	scanSettings, err := settings.Resolve(settingsFlag, targetPath)
 	if err != nil {
 		return fmt.Errorf("error loading settings: %w", err)
