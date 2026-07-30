@@ -142,6 +142,11 @@ func TestWFPRejectsInvalidSizeBounds(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			// Cobra keeps flag values on the command between Execute calls, and an earlier test
+			// leaves --output pointing into a temp directory that is gone by now. This case is
+			// about the size bounds, so it must start from no flags rather than inherit one that
+			// fails first for an unrelated reason.
+			clearFlags(rootCmd)
 			rootCmd.SetArgs([]string{"wfp", root, "--min-size", tc.min, "--max-size", tc.max})
 			err := rootCmd.Execute()
 			if err == nil {

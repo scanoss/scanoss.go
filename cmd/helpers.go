@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -50,6 +51,33 @@ func usageError(cmd *cobra.Command, format string, args ...any) error {
 	_ = cmd.Help()
 	cmd.SetOut(restore)
 	return fmt.Errorf(format, args...)
+}
+
+// validateOutputTarget rejects an --output path that cannot be written to.
+//
+// It runs from the root's PersistentPreRunE, so every command is covered without each one
+// remembering to ask — which is how `scan` came to fingerprint, upload and poll a whole tree
+// before discovering the directory did not exist, throwing away the time, the API call and the
+// result it had just computed. A command with no --output flag reads an empty path and passes.
+//
+// The file is not created here. A run that fails later should leave nothing behind rather than an
+// empty file where results were expected. Only the directory is checked — the mistake that
+// actually happens is a typo, or a directory nobody made — so this is a pre-flight check and not a
+// promise: permissions can still refuse the write when it comes.
+func validateOutputTarget(cmd *cobra.Command) error {
+	path, _ := cmd.Flags().GetString("output")
+	if path == "" {
+		return nil // stdout, or a command with no --output at all
+	}
+	dir := filepath.Dir(path)
+	info, err := os.Stat(dir)
+	if err != nil {
+		return fmt.Errorf("cannot write to %s: %w", path, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("cannot write to %s: %s is not a directory", path, dir)
+	}
+	return nil
 }
 
 // createCancellableContext creates a context that can be cancelled with CTRL+C

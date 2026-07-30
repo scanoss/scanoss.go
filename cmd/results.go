@@ -77,6 +77,12 @@ func runResults(cmd *cobra.Command, args []string) error {
 	}
 	pollInterval, _ := cmd.Flags().GetDuration("poll-interval")
 
+	// Checked before the scan is polled: waiting for a scan to finish only to reject a format that
+	// was wrong from the start spends the wait for nothing.
+	if err := validateOutputFormat(cmd); err != nil {
+		return err
+	}
+
 	// Resuming by id reaches the server's result, not the tree that produced it, so declared
 	// dependencies cannot be sourced. Its own help never offered deps; now the parser agrees.
 	values, _ := cmd.Flags().GetStringSlice("include")
