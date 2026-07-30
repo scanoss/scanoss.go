@@ -3,14 +3,33 @@ updates:
   - package-ecosystem: gomod
     directory: "/"
     schedule:
-      interval: monthly
+      interval: weekly
+    # Only what go.mod requires by name. Go's minimal version selection already pins an indirect
+    # dependency to what its parent asks for, so bumping one on its own means overruling the module
+    # that depends on it: upgrading anchore/go-struct-converter past what spdx/tools-golang supports
+    # broke the build here once. Security updates ignore this setting, so vulnerable indirect
+    # dependencies are still reported.
+    allow:
+      - dependency-type: "direct"
+    # One pull request rather than one per module, so a weekly cadence stays reviewable.
+    groups:
+      go:
+        patterns:
+          - "*"
 
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
-      interval: monthly
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"
 
+  # The Node binding declares one dependency and carries no lockfile, so its "^" range already
+  # accepts every minor and patch at install time and Dependabot has nothing to raise until koffi
+  # releases a major. No grouping: there is nothing to group.
   - package-ecosystem: npm
     directory: "/libscanoss/nodejs"
     schedule:
-      interval: monthly
+      interval: weekly
