@@ -84,7 +84,7 @@ func runEnrich(cmd *cobra.Command, args []string) error {
 	}
 	// deps is not a valid enrich layer: dependency analysis needs a manifest/source tree and
 	// cannot be derived from a flat components list. Reject it up front rather than silently drop.
-	if layers.Has(scanpipeline.LayerDeps) {
+	if layers.Has(LayerDeps) {
 		return fmt.Errorf("--include deps is not supported by enrich: dependencies cannot be analysed over a components list (valid: vulns, licenses, crypto, geo)")
 	}
 
@@ -123,7 +123,7 @@ func runEnrich(cmd *cobra.Command, args []string) error {
 	ctx, cancel := createCancellableContext()
 	defer cancel()
 
-	scanpipeline.Enrich(ctx, client, &inv, layers)
+	scanpipeline.Enrich(ctx, client, &inv, servicesFor(layers), scanpipeline.NewReporter(prog.layer))
 	prog.finish()
 
 	return emitInventory(cmd, inv, args[0])

@@ -55,13 +55,18 @@ type Options struct {
 	MinSize int64 // minimum file size in bytes; 0 imposes no minimum
 	MaxSize int64 // maximum file size in bytes; 0 imposes no maximum (unlimited)
 
-	Defaults  bool // apply the built-in default skip lists
+	// FolderDefaults applies the built-in directory skip lists (node_modules, vendor, build output,
+	// …). FileDefaults applies the built-in file rules — extensions, name endings and exact names —
+	// which answer one question together: is this file worth fingerprinting.
+	FolderDefaults bool
+	FileDefaults   bool
+
 	GitIgnore bool // honor .gitignore
 
-	// IncludeHidden collects entries whose name begins with a dot. They are
-	// excluded by default: a scan wants the project's source, not its tooling.
-	// Version-control metadata (.git and friends) stays excluded either way — see
-	// UnscannableSource, which no option can switch off.
+	// IncludeHidden collects entries whose name begins with a dot. They are excluded by default: a
+	// scan wants the project's source, not its tooling. Setting it reaches version-control
+	// metadata too — .git and friends are dotted like anything else — which matches the reference
+	// implementation, where the equivalent flag has the same reach.
 	IncludeHidden bool
 
 	// Settings is the scanoss.json skip/folders rules, already resolved to a
@@ -75,18 +80,17 @@ type Options struct {
 	// everything else. Fingerprint scanning leaves this false — manifests are
 	// not useful for matching. Default false → unchanged behavior.
 	PreserveDependencyManifests bool
-
-	HFH bool // reserved: high-file-hashing (folder hashing) variants; not yet used
 }
 
 // DefaultOptions returns the common-case Options: the built-in default skip
 // lists and .gitignore are applied, with no scanoss.json.
 func DefaultOptions() Options {
 	return Options{
-		Defaults:  true,
-		GitIgnore: true,
-		MinSize:   DefaultMinFileSize,
-		MaxSize:   DefaultMaxFileSize,
+		FolderDefaults: true,
+		FileDefaults:   true,
+		GitIgnore:      true,
+		MinSize:        DefaultMinFileSize,
+		MaxSize:        DefaultMaxFileSize,
 	}
 }
 
@@ -95,10 +99,11 @@ func DefaultOptions() Options {
 // useful for matching). Alias of DefaultOptions, named for intent.
 func ScanOptions() Options {
 	return Options{
-		Defaults:  true,
-		GitIgnore: true,
-		MinSize:   DefaultMinFileSize,
-		MaxSize:   DefaultMaxFileSize,
+		FolderDefaults: true,
+		FileDefaults:   true,
+		GitIgnore:      true,
+		MinSize:        DefaultMinFileSize,
+		MaxSize:        DefaultMaxFileSize,
 	}
 }
 
@@ -121,7 +126,8 @@ func FingerprintOptions() Options {
 //     project uses, and losing a declaration is worse than analysing one extra.
 func DependencyOptions() Options {
 	return Options{
-		Defaults:                    true,
+		FolderDefaults:              true,
+		FileDefaults:                true,
 		GitIgnore:                   false,
 		MinSize:                     DefaultMinFileSize,
 		MaxSize:                     DefaultMaxFileSize,
@@ -193,8 +199,11 @@ func Collect(root string, o Options) (*CollectResult, error) {
 	if !o.IncludeHidden {
 		sources = append(sources, HiddenSource())
 	}
-	if o.Defaults {
-		sources = append(sources, DefaultSource(o.defaults()))
+	if o.FolderDefaults {
+		sources = append(sources, FolderDefaultSource(o.defaults()))
+	}
+	if o.FileDefaults {
+		sources = append(sources, FileDefaultSource(o.defaults()))
 	}
 	if sz := SizeSource(o.MinSize, o.MaxSize); sz != nil {
 		sources = append(sources, sz)

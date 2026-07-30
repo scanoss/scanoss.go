@@ -32,12 +32,12 @@ import (
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
 )
 
-func callGeoOrigin(c *scanoss.Client, ctx context.Context, comps []scanoss.Component) (*scanossapi.GeoOriginResponse, error) {
-	return c.Geoprovenance.Origins(ctx, comps)
+func callGeoOrigin(c *scanoss.Client, ctx context.Context, comps []scanoss.Component, opts ...scanoss.DecorateOption) (*scanossapi.GeoOriginResponse, error) {
+	return c.Geoprovenance.Origins(ctx, comps, opts...)
 }
 
-func callGeoCountries(c *scanoss.Client, ctx context.Context, comps []scanoss.Component) (*scanossapi.GeoContributorsResponse, error) {
-	return c.Geoprovenance.Countries(ctx, comps)
+func callGeoCountries(c *scanoss.Client, ctx context.Context, comps []scanoss.Component, opts ...scanoss.DecorateOption) (*scanossapi.GeoContributorsResponse, error) {
+	return c.Geoprovenance.Countries(ctx, comps, opts...)
 }
 
 var geoprovenanceCmd = &cobra.Command{

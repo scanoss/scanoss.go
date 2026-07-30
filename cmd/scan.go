@@ -42,54 +42,61 @@ import (
 	"github.com/vbauerster/mpb/v8"
 )
 
-// scanProgress adapts scanoss.Progress updates to terminal progress bars. Every phase — the scan
-// (fingerprint, upload, server) and each purl-keyed service (declared-dependency resolution and
-// the enrichment layers) — is a bar in one shared mpb container, so phases that run concurrently
-// render side by side. The SDK may call it from several goroutines, so it is mutex-guarded.
+// scanProgress draws pipeline layers as terminal progress bars, one bar per layer in a shared mpb
+// container, so layers that run concurrently render side by side. Layers are reported from several
+// goroutines, so it is mutex-guarded.
 type scanProgress struct {
 	mu   sync.Mutex
 	p    *mpb.Progress       // shared multi-bar container (lazily created on first update)
 	bars map[string]*mpb.Bar // one live bar per phase/service, keyed by phase key or Service name
 }
 
-// fingerprint renders fingerprinting progress. The pipeline calls it as fingerprinting proceeds;
-// it is one bar among the phases, and can render alongside the dependency phase running in parallel.
-func (s *scanProgress) fingerprint(done, total int) {
+// layer renders one pipeline layer as a bar. Every layer is drawn the same way — the pipeline
+// reports them all in the same shape, including the scan, whose server-side passes it has already
+// folded into a counter that only grows.
+func (s *scanProgress) layer(p scanpipeline.Progress) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.barLocked("fingerprint", "Fingerprinting", total).SetCurrent(int64(done))
+
+	// Collection is reported as a layer like any other, but there is nothing to watch: it reports
+	// once, on completion. Say what it excluded instead of drawing a bar that is born full.
+	if p.Layer == scanpipeline.LayerCollect {
+		if skipped := p.Total - p.Done; skipped > 0 {
+			s.initLocked()
+			_, _ = fmt.Fprintln(s.p, infoLine("Filtered %d files", skipped))
+		}
+		return
+	}
+
+	// The enrichment layers run after the scan; separate the two groups with a blank line the
+	// first time one appears.
+	if isEnrichmentLayer(p.Layer) {
+		s.spacerLocked()
+	}
+
+	bar := s.barLocked(p.Layer, layerLabel(p.Layer), p.Total)
+	if p.Total > 0 {
+		bar.SetTotal(int64(p.Total), false)
+	}
+	bar.SetCurrent(int64(p.Done))
+
+	// The status is what says a layer finished, not its counters: the scan is sampled by polling,
+	// so its last pass is routinely still mid-count when the server reports the scan complete.
+	if p.Status == scanpipeline.StatusCompleted && p.Total > 0 {
+		bar.SetCurrent(int64(p.Total))
+	}
 }
 
-// dependencies renders dependency-manifest parsing progress as a bar in the shared container,
-// alongside the scan phases. Parsing is local (no API), so it fills quickly.
-func (s *scanProgress) dependencies(done, total int) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.barLocked("deps", "Parsing dependencies", total).SetCurrent(int64(done))
-}
-
-// fn renders the SDK's per-service progress in the shared container: the scan (upload chunks,
-// then server phase) and every purl-keyed service (declared-dependency resolution and each
-// enrichment layer, Unit "purls"), keyed by Service. Each bar fills independently, so the scan
-// and dependency phases render side by side while they run in parallel.
-func (s *scanProgress) fn(p scanoss.Progress) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	switch p.Unit {
-	case "chunks":
-		s.barLocked("upload", "Uploading WFP", p.Total).SetCurrent(int64(p.Done))
-	case "phase":
-		s.barLocked("server", "Scanning", p.Total).SetCurrent(int64(p.Done))
-	case "purls":
-		if p.Service == "" {
-			return
-		}
-		// The enrichment layers start after the scan phase (dependency resolution is part of that
-		// phase); separate the two groups with a blank line the first time a layer appears.
-		if p.Service != scanoss.ServiceDependencies.Name {
-			s.spacerLocked()
-		}
-		s.barLocked(p.Service, layerLabel(p.Service), p.Total).SetCurrent(int64(p.Done))
+// isEnrichmentLayer reports whether a layer is one of the purl-keyed enrichment services, which
+// render below the scan rather than beside it. They are exactly the layers the pipeline names
+// after an API service.
+func isEnrichmentLayer(layer string) bool {
+	switch layer {
+	case scanpipeline.LayerFingerprint, scanpipeline.LayerManifests,
+		scanpipeline.LayerUpload, scanpipeline.LayerScan:
+		return false
+	default:
+		return layer != scanoss.ServiceDependencies.Name
 	}
 }
 
@@ -153,18 +160,27 @@ func (s *scanProgress) finish() {
 	p.Wait()
 }
 
-// layerLabel maps a decoration service name to a human phrase for the "Gathered …" progress line.
+// layerLabel maps a pipeline layer to the phrase shown on its bar. Naming is the CLI's business:
+// the pipeline reports stable layer ids and says nothing about how they should read.
 func layerLabel(service string) string {
 	switch service {
-	case "licenses":
+	case scanpipeline.LayerFingerprint:
+		return "Fingerprinting"
+	case scanpipeline.LayerManifests:
+		return "Parsing dependencies"
+	case scanpipeline.LayerUpload:
+		return "Uploading WFP"
+	case scanpipeline.LayerScan:
+		return "Scanning"
+	case scanoss.ServiceLicenses.Name:
 		return "Licenses"
-	case "vulnerabilities":
+	case scanoss.ServiceVulnerabilities.Name:
 		return "Vulnerabilities"
-	case "cryptography.algorithms":
+	case scanoss.ServiceCryptographyAlgorithms.Name:
 		return "Cryptography"
-	case "geoprovenance.origin":
+	case scanoss.ServiceGeoprovenanceOrigin.Name:
 		return "Geoprovenance"
-	case "dependencies":
+	case scanoss.ServiceDependencies.Name:
 		return "Resolving dependencies"
 	default:
 		return service
@@ -174,22 +190,22 @@ func layerLabel(service string) string {
 // formatLayers lists which --include layers each output format can render. deps and licenses are
 // representable everywhere (as components / package licenses); vulnerabilities in raw + cyclonedx;
 // cryptography and geoprovenance only in raw.
-var formatLayers = map[string]map[scanpipeline.Layer]bool{
-	config.FormatRaw:       {scanpipeline.LayerDeps: true, scanpipeline.LayerLicenses: true, scanpipeline.LayerVulns: true, scanpipeline.LayerCrypto: true, scanpipeline.LayerGeo: true},
-	config.FormatCycloneDX: {scanpipeline.LayerDeps: true, scanpipeline.LayerLicenses: true, scanpipeline.LayerVulns: true},
-	config.FormatSPDX:      {scanpipeline.LayerDeps: true, scanpipeline.LayerLicenses: true},
+var formatLayers = map[string]map[Layer]bool{
+	config.FormatRaw:       {LayerDeps: true, LayerLicenses: true, LayerVulns: true, LayerCrypto: true, LayerGeo: true},
+	config.FormatCycloneDX: {LayerDeps: true, LayerLicenses: true, LayerVulns: true},
+	config.FormatSPDX:      {LayerDeps: true, LayerLicenses: true},
 }
 
 // layerName is the readable name of a layer, for warnings.
-func layerName(l scanpipeline.Layer) string {
+func layerName(l Layer) string {
 	switch l {
-	case scanpipeline.LayerVulns:
+	case LayerVulns:
 		return "vulnerabilities"
-	case scanpipeline.LayerCrypto:
+	case LayerCrypto:
 		return "cryptography"
-	case scanpipeline.LayerGeo:
+	case LayerGeo:
 		return "geoprovenance"
-	case scanpipeline.LayerDeps:
+	case LayerDeps:
 		return "dependencies"
 	default:
 		return string(l) // licenses
@@ -197,10 +213,10 @@ func layerName(l scanpipeline.Layer) string {
 }
 
 // unsupportedLayers returns the requested layers the format cannot render, in a stable order.
-func unsupportedLayers(format string, layers scanpipeline.Set) []scanpipeline.Layer {
+func unsupportedLayers(format string, layers Set) []Layer {
 	caps := formatLayers[format]
-	var out []scanpipeline.Layer
-	for _, l := range []scanpipeline.Layer{scanpipeline.LayerDeps, scanpipeline.LayerLicenses, scanpipeline.LayerVulns, scanpipeline.LayerCrypto, scanpipeline.LayerGeo} {
+	var out []Layer
+	for _, l := range []Layer{LayerDeps, LayerLicenses, LayerVulns, LayerCrypto, LayerGeo} {
 		if layers.Has(l) && !caps[l] {
 			out = append(out, l)
 		}
@@ -211,9 +227,9 @@ func unsupportedLayers(format string, layers scanpipeline.Set) []scanpipeline.La
 // effectiveLayers returns the requested layers the format can actually render
 // (requested ∩ capabilities) — the set the fused scan command gathers, so it never fetches a
 // layer this format would drop.
-func effectiveLayers(format string, layers scanpipeline.Set) scanpipeline.Set {
+func effectiveLayers(format string, layers Set) Set {
 	caps := formatLayers[format]
-	eff := make(scanpipeline.Set, len(layers))
+	eff := make(Set, len(layers))
 	for l := range layers {
 		if caps[l] {
 			eff[l] = true
@@ -225,7 +241,7 @@ func effectiveLayers(format string, layers scanpipeline.Set) scanpipeline.Set {
 // reportSkippedLayers tells the user, up front, which requested layers the chosen format cannot
 // represent and so will not be gathered — grouped into a single warning rather than one line per
 // layer.
-func reportSkippedLayers(format string, layers scanpipeline.Set) {
+func reportSkippedLayers(format string, layers Set) {
 	skipped := unsupportedLayers(format, layers)
 	if len(skipped) == 0 {
 		return
@@ -332,9 +348,10 @@ func init() {
 	scanCmd.Flags().String("save-wfp", "", "Save WFP fingerprints to file before sending to API")
 	scanCmd.Flags().Int64("min-size", filter.DefaultMinFileSize, "Minimum file size in bytes to scan")
 	scanCmd.Flags().Int64("max-size", filter.DefaultMaxFileSize, "Maximum file size in bytes to scan (0 = unlimited)")
-	scanCmd.Flags().Bool("default-filters", true, "Apply the built-in default file filters")
+	scanCmd.Flags().Bool("all-extensions", false, "Fingerprint every file extension: do not apply the built-in file skip lists")
+	scanCmd.Flags().Bool("all-folders", false, "Fingerprint every folder: do not apply the built-in directory skip lists")
 	scanCmd.Flags().Bool("gitignore", true, "Honor .gitignore files when collecting files")
-	scanCmd.Flags().Bool("all-hidden", false, "Include hidden files and folders (.git is always excluded)")
+	scanCmd.Flags().Bool("all-hidden", false, "Include hidden files and folders, version-control metadata included")
 }
 
 // runScan fingerprints a file or folder and scans it. Collection, fingerprinting, the scan, and
@@ -375,7 +392,8 @@ func runScan(cmd *cobra.Command, args []string) error {
 	if err := validateSizeBounds(minSize, maxSize); err != nil {
 		return err
 	}
-	applyDefaultFilters, _ := cmd.Flags().GetBool("default-filters")
+	allExtensions, _ := cmd.Flags().GetBool("all-extensions")
+	allFolders, _ := cmd.Flags().GetBool("all-folders")
 	applyGitignore, _ := cmd.Flags().GetBool("gitignore")
 	allHidden, _ := cmd.Flags().GetBool("all-hidden")
 
@@ -398,25 +416,21 @@ func runScan(cmd *cobra.Command, args []string) error {
 	// The profile says which rules apply; the flags say what the user asked for.
 	collectOpts := filter.ScanOptions()
 	collectOpts.MinSize, collectOpts.MaxSize = minSize, maxSize
-	collectOpts.Defaults, collectOpts.GitIgnore = applyDefaultFilters, applyGitignore
+	collectOpts.FileDefaults, collectOpts.FolderDefaults = !allExtensions, !allFolders
+	collectOpts.GitIgnore = applyGitignore
 	collectOpts.IncludeHidden = allHidden
 	collectOpts.Settings = scanSettings.ScanFilter()
 
 	result, err := scanpipeline.Run(ctx, scanpipeline.Options{
 		Client:             client,
-		Layers:             layers,
+		Services:           servicesFor(layers),
+		SourceDeclared:     layers.Has(LayerDeps),
 		SourcePath:         targetPath,
 		Threads:            threads,
 		Filter:             collectOpts,
 		DependencySettings: scanSettings.DependencyFilter(),
 		ScanOptions:        scanTuning(cmd, scanSettings),
-		OnCollect: func(skipped int) {
-			if skipped > 0 {
-				infof("Filtered %d files", skipped)
-			}
-		},
-		OnFingerprint:  prog.fingerprint,
-		OnDependencies: prog.dependencies,
+		OnProgress:         prog.layer,
 	})
 	prog.finish()
 	if err != nil {
@@ -453,7 +467,7 @@ func runScanWFP(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	if layers.Has(scanpipeline.LayerDeps) {
+	if layers.Has(LayerDeps) {
 		warnf("the deps layer needs a source tree; ignored when scanning a WFP file")
 	}
 	outputFormat, _ := cmd.Flags().GetString("format")
@@ -491,7 +505,12 @@ func runScanWFP(cmd *cobra.Command, args []string) error {
 	ctx, cancel := createCancellableContext()
 	defer cancel()
 
-	res, err := client.Scan.WFP(ctx, wfp, scanTuning(cmd, scanSettings)...)
+	// One reporter for both halves: the scan's upload and server passes, and the enrichment that
+	// follows. Without it this path draws the enrichment bars and nothing for the scan itself.
+	rep := scanpipeline.NewReporter(prog.layer)
+
+	scanOpts := append(scanTuning(cmd, scanSettings), scanoss.WithScanReporter(rep))
+	res, err := client.Scan.WFP(ctx, wfp, scanOpts...)
 	if err != nil {
 		return renderAPIError(fmt.Errorf("scan failed: %w", err))
 	}
@@ -499,7 +518,7 @@ func runScanWFP(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("scan completed without a result")
 	}
 
-	inv, err := scanpipeline.Build(ctx, client, res.Result, layers, nil)
+	inv, err := scanpipeline.Build(ctx, client, res.Result, servicesFor(layers), layers.Has(LayerDeps), nil, rep)
 	prog.finish()
 	if err != nil {
 		return err
@@ -507,8 +526,9 @@ func runScanWFP(cmd *cobra.Command, args []string) error {
 	return emitInventory(cmd, inv, wfpPath)
 }
 
-// buildScanClient constructs the SDK client from the shared scan flags, wiring the progress
-// renderer (scan + per-layer, keyed by Service) and the scan-id notify hook.
+// buildScanClient constructs the SDK client from the shared scan flags. Progress is not wired
+// here: reporters travel with each call, so a caller registers one when it makes the call. The
+// only hook this attaches is the scan-id notification.
 func buildScanClient(cmd *cobra.Command, prog *scanProgress) (*scanoss.Client, error) {
 	api, err := cliconfig.ResolveAPI(cmd.Flags())
 	if err != nil {
@@ -523,7 +543,6 @@ func buildScanClient(cmd *cobra.Command, prog *scanProgress) (*scanoss.Client, e
 		scanoss.WithAPIURL(api.URL),
 		scanoss.WithAPIKey(api.Key),
 		scanoss.WithHTTPClient(httpClient),
-		scanoss.WithProgress(prog.fn),
 		scanoss.WithScanIDNotify(func(id string) {
 			prog.writeLine("") // separate the scan-id block from the filter/skip notices above
 			prog.writeLine(infoLine("Scan id: %s", id))
@@ -581,9 +600,9 @@ func emitInventory(cmd *cobra.Command, inv sbom.Inventory, scanPath string) erro
 
 // scanLayers reads and validates the --include flag into a scanpipeline layer set. Gathering
 // is driven by this set — never by the output format.
-func scanLayers(cmd *cobra.Command) (scanpipeline.Set, error) {
+func scanLayers(cmd *cobra.Command) (Set, error) {
 	values, _ := cmd.Flags().GetStringSlice("include")
-	return scanpipeline.ParseLayers(values)
+	return ParseLayers(values)
 }
 
 // renderInventory renders a gathered inventory in the requested format. raw wraps the inventory

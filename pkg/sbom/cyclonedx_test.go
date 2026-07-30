@@ -24,6 +24,7 @@
 package sbom
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -311,5 +312,51 @@ func TestCycloneDX_Empty(t *testing.T) {
 	}
 	if bom.Vulnerabilities != nil {
 		t.Errorf("want no vulnerabilities, got %v", bom.Vulnerabilities)
+	}
+}
+
+// affects[] must name the versions an advisory actually applies to. Resolving on the bare PURL
+// attached every advisory to every release of a component, so a document reported CVEs against
+// versions that were never vulnerable.
+func TestCycloneDXAffectsOnlyTheAffectedVersions(t *testing.T) {
+	purl := "pkg:github/denoland/deno"
+	inv := Inventory{
+		Components: []Component{
+			{Purl: purl, Name: "deno", Version: "v1.24.0"},
+			{Purl: purl, Name: "deno", Version: "v2.7.8"},
+		},
+		Vulnerabilities: []Vulnerability{
+			{ID: "CVE-2024-27931", Purls: []string{purl + "@v1.24.0"}},
+			{ID: "CVE-2023-0001", Purls: []string{purl + "@v1.24.0", purl + "@v2.7.8"}},
+		},
+	}
+
+	doc, err := Generate(inv, FormatCycloneDX)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Vulnerabilities []struct {
+			ID      string `json:"id"`
+			Affects []struct {
+				Ref string `json:"ref"`
+			} `json:"affects"`
+		} `json:"vulnerabilities"`
+	}
+	if err := json.Unmarshal([]byte(doc), &got); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, v := range got.Vulnerabilities {
+		switch v.ID {
+		case "CVE-2024-27931":
+			if len(v.Affects) != 1 || v.Affects[0].Ref != purl+"@v1.24.0" {
+				t.Errorf("%s affects %v, want only v1.24.0", v.ID, v.Affects)
+			}
+		case "CVE-2023-0001":
+			if len(v.Affects) != 2 {
+				t.Errorf("%s affects %d refs, want 2", v.ID, len(v.Affects))
+			}
+		}
 	}
 }

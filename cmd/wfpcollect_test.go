@@ -45,7 +45,7 @@ func writeTreeFile(t *testing.T, path string, size int) {
 // runWFPTree runs the real wfp command over root and returns the WFP it wrote.
 // Every collection flag is passed explicitly: cobra keeps flag values between
 // Execute calls in one process, so an omitted flag would inherit the last run's.
-func runWFPTree(t *testing.T, root string, defaults, gitignore string) string {
+func runWFPTree(t *testing.T, root string, allExtensions, gitignore string) string {
 	t.Helper()
 	rootCmd.SetOut(io.Discard)
 	rootCmd.SetErr(io.Discard)
@@ -56,7 +56,7 @@ func runWFPTree(t *testing.T, root string, defaults, gitignore string) string {
 	rootCmd.SetArgs([]string{
 		"wfp", root, "--output", out,
 		"--min-size", "0", "--max-size", "0",
-		"--default-filters=" + defaults, "--gitignore=" + gitignore,
+		"--all-extensions=" + allExtensions, "--gitignore=" + gitignore,
 	})
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("wfp: %v", err)
@@ -68,23 +68,19 @@ func runWFPTree(t *testing.T, root string, defaults, gitignore string) string {
 	return string(b)
 }
 
-// --default-filters=false keeps a file the built-in skip lists would drop.
-//
-// The fixture is "Makefile" (dropped by the default file-name list) rather than
-// something like "a.png", because pkg/fingerprint/wfp keeps its own copy of the
-// skipped-extension list and re-applies it in the worker, after collection — so
-// an extension-skipped file stays out of the WFP even with the defaults off.
-// That second list is not something this command can override.
-func TestWFPDefaultFiltersFlag(t *testing.T) {
+// --all-extensions keeps a file the built-in file rules would drop. The fixture is "Makefile",
+// which the default name list drops: the flag covers extensions, name endings and exact names
+// together, the same three the reference implementation gates with its own --all-extensions.
+func TestWFPAllExtensionsFlag(t *testing.T) {
 	root := t.TempDir()
 	writeTreeFile(t, filepath.Join(root, "main.go"), 200)
 	writeTreeFile(t, filepath.Join(root, "Makefile"), 200)
 
-	if got := runWFPTree(t, root, "true", "true"); strings.Contains(got, "Makefile") {
-		t.Errorf("with default filters, Makefile should be skipped; got:\n%s", got)
+	if got := runWFPTree(t, root, "false", "true"); strings.Contains(got, "Makefile") {
+		t.Errorf("with the built-in file rules on, Makefile should be skipped; got:\n%s", got)
 	}
-	if got := runWFPTree(t, root, "false", "true"); !strings.Contains(got, "Makefile") {
-		t.Errorf("with --default-filters=false, Makefile should be kept; got:\n%s", got)
+	if got := runWFPTree(t, root, "true", "true"); !strings.Contains(got, "Makefile") {
+		t.Errorf("with --all-extensions, Makefile should be kept; got:\n%s", got)
 	}
 }
 
@@ -97,10 +93,12 @@ func TestWFPGitignoreFlag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := runWFPTree(t, root, "true", "true"); strings.Contains(got, "out.go") {
+	// Only --gitignore changes between the two runs: the other flag stays put, or this would be
+	// testing the two of them at once and passing for the wrong reason.
+	if got := runWFPTree(t, root, "false", "true"); strings.Contains(got, "out.go") {
 		t.Errorf("gen/out.go is gitignored and should be skipped; got:\n%s", got)
 	}
-	if got := runWFPTree(t, root, "true", "false"); !strings.Contains(got, "out.go") {
+	if got := runWFPTree(t, root, "false", "false"); !strings.Contains(got, "out.go") {
 		t.Errorf("with --gitignore=false, gen/out.go should be kept; got:\n%s", got)
 	}
 }

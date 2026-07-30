@@ -158,3 +158,37 @@ func TestCycloneDXLicenseFieldChoice(t *testing.T) {
 		})
 	}
 }
+
+// A field restricted to the SPDX identifier list rejects every expression, WITH included. One
+// component licensed "GPL-2.0-only WITH Classpath-exception-2.0" — a common Java combination —
+// used to reach CycloneDX's license.id and invalidate the whole document.
+func TestExpressionsNeverReachAnIdentifierField(t *testing.T) {
+	for _, expr := range []string{
+		"GPL-2.0-only WITH Classpath-exception-2.0",
+		"Apache-2.0 OR MIT",
+		"MIT AND BSD-3-Clause",
+		"(MIT OR Apache-2.0) AND GPL-2.0-only WITH Classpath-exception-2.0",
+	} {
+		if !isExpression(expr) {
+			t.Errorf("isExpression(%q) = false: it would be written to a field that only accepts identifiers", expr)
+		}
+	}
+	for _, id := range []string{"MIT", "Apache-2.0", "GPL-2.0-only", "LicenseRef-Custom"} {
+		if isExpression(id) {
+			t.Errorf("isExpression(%q) = true: a single identifier is not an expression", id)
+		}
+	}
+}
+
+// Parenthesising is a narrower question than being an expression: WITH binds tighter than AND and
+// OR, so it needs none.
+func TestOnlyAndOrNeedParentheses(t *testing.T) {
+	if isCompound("GPL-2.0-only WITH Classpath-exception-2.0") {
+		t.Error("WITH binds tighter than AND/OR, so it does not need parentheses when joined")
+	}
+	for _, expr := range []string{"Apache-2.0 OR MIT", "MIT AND BSD-3-Clause"} {
+		if !isCompound(expr) {
+			t.Errorf("isCompound(%q) = false, want true", expr)
+		}
+	}
+}

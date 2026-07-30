@@ -256,3 +256,53 @@ func TestVulnerabilitiesFrom_Nil(t *testing.T) {
 		t.Errorf("nil resp should yield nil, got %v", v)
 	}
 }
+
+// The service answers per version — asked about two releases of one component it returns different
+// advisories for each — so an advisory has to record which version it came back for. Keying on the
+// bare PURL attached every advisory to every version, reporting vulnerabilities a release did not
+// have.
+func TestVulnerabilitiesKeepTheVersionTheyAnswerFor(t *testing.T) {
+	old, recent := "v1.24.0", "v2.7.8"
+	purl := "pkg:github/denoland/deno"
+	cveOld, cveBoth := "CVE-2024-27931", "CVE-2023-0001"
+
+	resp := &scanossapi.VulnerabilitiesResponse{
+		Components: []scanossapi.ComponentVulnerabilityInfo{
+			{
+				Purl: &purl, Version: &old,
+				Vulnerabilities: &[]scanossapi.Vulnerability{{Cve: &cveOld}, {Cve: &cveBoth}},
+			},
+			{
+				Purl: &purl, Version: &recent,
+				Vulnerabilities: &[]scanossapi.Vulnerability{{Cve: &cveBoth}},
+			},
+		},
+	}
+
+	byID := map[string][]string{}
+	for _, v := range VulnerabilitiesFrom(resp) {
+		byID[v.ID] = v.Purls
+	}
+
+	if got := byID[cveOld]; len(got) != 1 || got[0] != purl+"@"+old {
+		t.Errorf("%s affects %v, want only %s@%s — it was not reported for the newer release",
+			cveOld, got, purl, old)
+	}
+	if got := byID[cveBoth]; len(got) != 2 {
+		t.Errorf("%s affects %v, want both releases", cveBoth, got)
+	}
+}
+
+// Without a version the entry still has to land somewhere: the bare PURL, as before.
+func TestVulnerabilitiesWithoutAVersionKeepTheBarePurl(t *testing.T) {
+	purl, cve := "pkg:npm/lodash", "CVE-2020-0001"
+	resp := &scanossapi.VulnerabilitiesResponse{
+		Components: []scanossapi.ComponentVulnerabilityInfo{
+			{Purl: &purl, Vulnerabilities: &[]scanossapi.Vulnerability{{Cve: &cve}}},
+		},
+	}
+	got := VulnerabilitiesFrom(resp)
+	if len(got) != 1 || len(got[0].Purls) != 1 || got[0].Purls[0] != purl {
+		t.Errorf("purls = %v, want [%s]", got, purl)
+	}
+}

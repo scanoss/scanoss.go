@@ -120,7 +120,7 @@ func TestBaselineScanCollection(t *testing.T) {
 	}
 
 	res, err := scanner.CollectFilesWithOptions(root, filter.Options{
-		Defaults:  true,
+		FolderDefaults: true, FileDefaults: true,
 		GitIgnore: true,
 		Settings:  st.ScanFilter(),
 	})
@@ -143,7 +143,7 @@ func TestBaselineScanCollection(t *testing.T) {
 func TestBaselineScanCollectionNoDefaults(t *testing.T) {
 	root := baselineTree(t)
 	res, err := scanner.CollectFilesWithOptions(root, filter.Options{
-		Defaults:  false,
+		FolderDefaults: false, FileDefaults: false,
 		GitIgnore: true,
 	})
 	if err != nil {

@@ -55,14 +55,24 @@ scanoss-cli scan ./my-project --api-url https://scanoss.internal.example.com
 
 ## TLS / certificates
 
-For self-signed or internal endpoints you can skip TLS verification. There are no
-proxy/PAC/custom-CA options — only:
+For self-signed or internal endpoints:
 
 ```bash
+# Add a CA to the system pool — verification stays on
+scanoss-cli scan ./my-project \
+  --api-url https://scanoss.internal.example.com \
+  --ca-cert /path/to/internal-ca.pem
+
+# Or skip verification entirely
 scanoss-cli scan ./my-project \
   --api-url https://scanoss.internal.example.com \
   --ignore-cert-errors        # INSECURE: disables TLS verification
 ```
+
+`--proxy` overrides `HTTP_PROXY`/`HTTPS_PROXY` for one run and honours `NO_PROXY`.
+PAC files are not supported. Both flags are available on every command that
+reaches the API, and can be stored with `config set` — see
+[README](README.md#proxy-and-custom-ca).
 
 ## Fingerprinting (`wfp`)
 
@@ -82,8 +92,9 @@ scanoss-cli wfp ./my-project --threads 20
 scanoss-cli wfp ./my-project --min-size 100
 ```
 
-Flags: `-t, --threads` (10), `-o, --output`, `--min-size` (bytes, default 0),
-`--max-size` (0 = unlimited).
+Flags: `-t, --threads` (10), `-o, --output`, `--settings`, `--gitignore` (true),
+`--min-size` (bytes, default 0), `--max-size` (0 = unlimited), `--all-extensions`,
+`--all-folders`, `--all-hidden`.
 
 The size bounds mean the same here as on `scan` — see
 [Skipping files](#skipping-files).
@@ -135,9 +146,10 @@ scanoss-cli scan wfp project.wfp --api-key "$SCANOSS_API_KEY"
 Flags (persistent flags are shared with `scan wfp`): `--api-url`, `--api-key`,
 `-f, --format` (`raw`/`spdx`/`cyclonedx`), `--include` (extra output layers — see
 [Output layers](#output-layers---include)), `-o, --output`, `--settings`,
-`--chunk-size` (1 MiB), `--ignore-cert-errors`, `-t, --threads` (10),
-`--save-wfp`, `--min-size` (bytes, default 0), `--max-size` (0 = unlimited),
-`--default-filters` (true), `--gitignore` (true).
+`--chunk-size` (1 MiB), `--poll-interval` (2s), `--proxy`, `--ca-cert`,
+`--ignore-cert-errors`, `-t, --threads` (10), `--save-wfp`, `--min-size` (bytes,
+default 0), `--max-size` (0 = unlimited), `--gitignore` (true),
+`--all-extensions`, `--all-folders`, `--all-hidden`.
 
 ### Skipping files
 
@@ -162,15 +174,25 @@ scanoss-cli scan ./my-project \
 ```
 
 ```bash
-# Disable the built-in default filters and .gitignore
+# Fingerprint everything the built-in lists would drop, and ignore .gitignore
 scanoss-cli scan ./my-project \
   --api-key "$SCANOSS_API_KEY" \
-  --default-filters=false \
+  --all-extensions \
+  --all-folders \
   --gitignore=false
 ```
 
-The size bounds are independent of `--default-filters`: they are what you asked
-for, not a built-in, so they still apply when the built-in skip lists are off.
+`--all-extensions` drops the built-in *file* rules — extensions, name endings and
+exact names — and `--all-folders` the *directory* ones. They are separate switches
+because the two exclude very different amounts: a caller who wants every folder
+scanned rarely also wants every binary fingerprinted.
+
+`--all-hidden` includes entries whose name begins with a dot, version-control
+metadata among them: `.git` is excluded for being hidden, like any other dotted
+entry, so asking for every hidden entry gets a scan of the repository objects too.
+
+The size bounds are independent of all three: they are what you asked for, not a
+built-in, so they still apply when the built-in skip lists are off.
 
 The two bounds read differently. `--min-size` is literal: `--min-size 0` — the
 default — admits every file, because every file is at least 0 bytes. `--max-size`
@@ -483,6 +505,8 @@ with `--settings`. It carries BOM context and file-skip rules.
 | `--threads` (scan/wfp) | `10` | Fingerprint workers |
 | `--format` | `raw` | `raw` / `spdx` / `cyclonedx` |
 | `--chunk-size` (scan) | `1048576` | WFP upload block size (bytes) |
+| `--poll-interval` (scan) | `2s` | Scan status poll cadence |
+| `--min-size` / `--max-size` | `0` / `0` | Literal minimum; `0` max means unlimited |
 | `--chunk-size` (decoration) | `10` | PURLs per request |
 | `--workers` (decoration) | `5` | Max concurrent requests |
 | `--depth` / `--limit` (deps) | `10` / `10` | Transitive only |

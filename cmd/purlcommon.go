@@ -60,7 +60,7 @@ func addPurlServiceFlags(cmd *cobra.Command) {
 
 // typedDecorateFunc is a typed per-service batch method (e.g. Vulnerabilities.Components),
 // returning the OpenAPI response model instead of a raw *Result.
-type typedDecorateFunc[T any] func(*scanoss.Client, context.Context, []scanoss.Component) (*T, error)
+type typedDecorateFunc[T any] func(*scanoss.Client, context.Context, []scanoss.Component, ...scanoss.DecorateOption) (*T, error)
 
 // newPurlServiceCmdTyped builds a PURL-list subcommand backed by a typed SDK method.
 func newPurlServiceCmdTyped[T any](use, short, long string, call typedDecorateFunc[T]) *cobra.Command {
@@ -185,9 +185,16 @@ func newClient(cmd *cobra.Command) (*scanoss.Client, error) {
 	return scanoss.New(opts...), nil
 }
 
-// newProgressClient builds an SDK client wired to a stderr progress bar, and a
-// finish func to flush the bar once the call returns.
-func newProgressClient(cmd *cobra.Command) (*scanoss.Client, func(), error) {
+// purlBar renders decoration progress onto a single bar. The purl commands query one service at a
+// time, so which service reported is not shown — unlike a scan, where several run at once.
+type purlBar struct{ draw func(done, total int) }
+
+func (b purlBar) Decorating(service string, done, total int) { b.draw(done, total) }
+
+// newProgressClient builds an SDK client, the option that reports this command's progress onto a
+// stderr bar, and a finish func to flush that bar once the call returns. The option is returned
+// rather than baked into the client because a reporter belongs to the call.
+func newProgressClient(cmd *cobra.Command) (*scanoss.Client, scanoss.DecorateOption, func(), error) {
 	var (
 		mu    sync.Mutex
 		prog  *mpb.Progress
@@ -196,19 +203,23 @@ func newProgressClient(cmd *cobra.Command) (*scanoss.Client, func(), error) {
 	)
 	base, err := clientOptions(cmd)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	opts := append(base, scanoss.WithProgress(func(p scanoss.Progress) {
-		mu.Lock()
-		defer mu.Unlock()
-		if bar == nil {
-			prog = newProgress()
-			bar = addBar(prog, p.Total, "Querying "+p.Unit)
-			total = p.Total
-		}
-		bar.SetCurrent(int64(p.Done))
-	}))
-	return scanoss.New(opts...), func() {
+	// These commands only decorate — they query PURLs and never scan — so they implement the one
+	// contract that concerns them, and hand it to the call rather than to the client.
+	reporter := scanoss.WithDecorationReporter(purlBar{
+		draw: func(done, t int) {
+			mu.Lock()
+			defer mu.Unlock()
+			if bar == nil {
+				prog = newProgress()
+				bar = addBar(prog, t, "Querying purls")
+				total = t
+			}
+			bar.SetCurrent(int64(done))
+		},
+	})
+	return scanoss.New(base...), reporter, func() {
 		mu.Lock()
 		defer mu.Unlock()
 		if bar != nil {
@@ -245,11 +256,11 @@ func runPurlServiceTyped[T any](cmd *cobra.Command, call typedDecorateFunc[T]) e
 	if err != nil {
 		return err
 	}
-	client, finish, err := newProgressClient(cmd)
+	client, reportProgress, finish, err := newProgressClient(cmd)
 	if err != nil {
 		return err
 	}
-	v, err := call(client, cmd.Context(), components)
+	v, err := call(client, cmd.Context(), components, reportProgress)
 	if err != nil {
 		return renderAPIError(err)
 	}

@@ -42,10 +42,10 @@ var (
 // from the OpenAPI v3 contract; the compiler enforces that vulnerabilityService
 // implements every method (see the var _ below).
 type VulnerabilityAPI interface {
-	Components(ctx context.Context, comps []Component) (*scanossapi.VulnerabilitiesResponse, error)
-	Component(ctx context.Context, comp Component) (*scanossapi.VulnerabilitiesResponse, error)
-	Cpes(ctx context.Context, comps []Component) (*scanossapi.CpesResponse, error)
-	Cpe(ctx context.Context, comp Component) (*scanossapi.CpesResponse, error)
+	Components(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.VulnerabilitiesResponse, error)
+	Component(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.VulnerabilitiesResponse, error)
+	Cpes(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.CpesResponse, error)
+	Cpe(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.CpesResponse, error)
 }
 
 type vulnerabilityService struct{ c *Client }
@@ -53,8 +53,8 @@ type vulnerabilityService struct{ c *Client }
 var _ VulnerabilityAPI = vulnerabilityService{}
 
 // Components returns known vulnerabilities for the given components (batch).
-func (s vulnerabilityService) Components(ctx context.Context, comps []Component) (*scanossapi.VulnerabilitiesResponse, error) {
-	res, err := s.c.decorate(ctx, ServiceVulnerabilities, comps)
+func (s vulnerabilityService) Components(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.VulnerabilitiesResponse, error) {
+	res, err := s.c.decorate(ctx, ServiceVulnerabilities, comps, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -62,8 +62,8 @@ func (s vulnerabilityService) Components(ctx context.Context, comps []Component)
 }
 
 // Component returns known vulnerabilities for a single component.
-func (s vulnerabilityService) Component(ctx context.Context, comp Component) (*scanossapi.VulnerabilitiesResponse, error) {
-	res, err := s.c.decorateOne(ctx, ServiceVulnerability, comp)
+func (s vulnerabilityService) Component(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.VulnerabilitiesResponse, error) {
+	res, err := s.c.decorateOne(ctx, ServiceVulnerability, comp, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -71,8 +71,8 @@ func (s vulnerabilityService) Component(ctx context.Context, comp Component) (*s
 }
 
 // Cpes returns CPEs for the given components (batch).
-func (s vulnerabilityService) Cpes(ctx context.Context, comps []Component) (*scanossapi.CpesResponse, error) {
-	res, err := s.c.decorate(ctx, ServiceVulnerabilityCpes, comps)
+func (s vulnerabilityService) Cpes(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.CpesResponse, error) {
+	res, err := s.c.decorate(ctx, ServiceVulnerabilityCpes, comps, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -80,8 +80,8 @@ func (s vulnerabilityService) Cpes(ctx context.Context, comps []Component) (*sca
 }
 
 // Cpe returns CPEs for a single component.
-func (s vulnerabilityService) Cpe(ctx context.Context, comp Component) (*scanossapi.CpesResponse, error) {
-	res, err := s.c.decorateOne(ctx, ServiceVulnerabilityCpe, comp)
+func (s vulnerabilityService) Cpe(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.CpesResponse, error) {
+	res, err := s.c.decorateOne(ctx, ServiceVulnerabilityCpe, comp, opts...)
 	if err != nil {
 		return nil, err
 	}

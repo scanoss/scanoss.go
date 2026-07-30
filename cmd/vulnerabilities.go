@@ -32,12 +32,12 @@ import (
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
 )
 
-func callVulnComponents(c *scanoss.Client, ctx context.Context, comps []scanoss.Component) (*scanossapi.VulnerabilitiesResponse, error) {
-	return c.Vulnerabilities.Components(ctx, comps)
+func callVulnComponents(c *scanoss.Client, ctx context.Context, comps []scanoss.Component, opts ...scanoss.DecorateOption) (*scanossapi.VulnerabilitiesResponse, error) {
+	return c.Vulnerabilities.Components(ctx, comps, opts...)
 }
 
-func callVulnCpes(c *scanoss.Client, ctx context.Context, comps []scanoss.Component) (*scanossapi.CpesResponse, error) {
-	return c.Vulnerabilities.Cpes(ctx, comps)
+func callVulnCpes(c *scanoss.Client, ctx context.Context, comps []scanoss.Component, opts ...scanoss.DecorateOption) (*scanossapi.CpesResponse, error) {
+	return c.Vulnerabilities.Cpes(ctx, comps, opts...)
 }
 
 var vulnerabilitiesCmd = &cobra.Command{

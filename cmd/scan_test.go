@@ -30,7 +30,6 @@ import (
 	scanossapi "github.com/scanoss/scanoss.api-sdk"
 
 	"github.com/scanoss/scanoss.go/pkg/sbom"
-	"github.com/scanoss/scanoss.go/pkg/scanpipeline"
 	"github.com/spf13/cobra"
 )
 
@@ -117,19 +116,19 @@ func TestRenderInventory_UnknownFormat(t *testing.T) {
 }
 
 func TestUnsupportedLayers(t *testing.T) {
-	all := scanpipeline.Set{
-		scanpipeline.LayerDeps: true, scanpipeline.LayerVulns: true, scanpipeline.LayerLicenses: true,
-		scanpipeline.LayerCrypto: true, scanpipeline.LayerGeo: true,
+	all := Set{
+		LayerDeps: true, LayerVulns: true, LayerLicenses: true,
+		LayerCrypto: true, LayerGeo: true,
 	}
 	cases := []struct {
 		format string
-		layers scanpipeline.Set
-		want   []scanpipeline.Layer
+		layers Set
+		want   []Layer
 	}{
 		{"raw", all, nil},
-		{"cyclonedx", all, []scanpipeline.Layer{scanpipeline.LayerCrypto, scanpipeline.LayerGeo}},
-		{"spdx", all, []scanpipeline.Layer{scanpipeline.LayerVulns, scanpipeline.LayerCrypto, scanpipeline.LayerGeo}},
-		{"spdx", scanpipeline.Set{scanpipeline.LayerDeps: true, scanpipeline.LayerLicenses: true}, nil},
+		{"cyclonedx", all, []Layer{LayerCrypto, LayerGeo}},
+		{"spdx", all, []Layer{LayerVulns, LayerCrypto, LayerGeo}},
+		{"spdx", Set{LayerDeps: true, LayerLicenses: true}, nil},
 	}
 	for _, c := range cases {
 		got := unsupportedLayers(c.format, c.layers)
@@ -147,17 +146,17 @@ func TestUnsupportedLayers(t *testing.T) {
 }
 
 func TestEffectiveLayers(t *testing.T) {
-	all := scanpipeline.Set{
-		scanpipeline.LayerDeps: true, scanpipeline.LayerVulns: true, scanpipeline.LayerLicenses: true,
-		scanpipeline.LayerCrypto: true, scanpipeline.LayerGeo: true,
+	all := Set{
+		LayerDeps: true, LayerVulns: true, LayerLicenses: true,
+		LayerCrypto: true, LayerGeo: true,
 	}
 	// spdx keeps only deps + licenses; the rest are not gathered.
 	eff := effectiveLayers("spdx", all)
-	if len(eff) != 2 || !eff.Has(scanpipeline.LayerDeps) || !eff.Has(scanpipeline.LayerLicenses) {
+	if len(eff) != 2 || !eff.Has(LayerDeps) || !eff.Has(LayerLicenses) {
 		t.Errorf("spdx effective = %v, want {deps, licenses}", eff)
 	}
 	// cyclonedx additionally keeps vulns.
-	if eff := effectiveLayers("cyclonedx", all); len(eff) != 3 || eff.Has(scanpipeline.LayerCrypto) || eff.Has(scanpipeline.LayerGeo) {
+	if eff := effectiveLayers("cyclonedx", all); len(eff) != 3 || eff.Has(LayerCrypto) || eff.Has(LayerGeo) {
 		t.Errorf("cyclonedx effective = %v, want {deps, licenses, vulns}", eff)
 	}
 	// raw keeps everything.
@@ -180,7 +179,7 @@ func TestScanLayers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scanLayers: %v", err)
 	}
-	if !set[scanpipeline.LayerDeps] || !set[scanpipeline.LayerVulns] || len(set) != 2 {
+	if !set[LayerDeps] || !set[LayerVulns] || len(set) != 2 {
 		t.Errorf("got %v, want {deps, vulns}", set)
 	}
 

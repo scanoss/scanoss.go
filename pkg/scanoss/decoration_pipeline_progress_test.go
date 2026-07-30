@@ -33,51 +33,6 @@ import (
 	"time"
 )
 
-func TestPipelineOnProgressSnapshot(t *testing.T) {
-	srv := httptest.NewServer(echoServer(""))
-	defer srv.Close()
-
-	client := New(WithAPIURL(srv.URL), WithChunkSize(5), WithWorkers(4))
-	p := client.DecorationPipeline(ServiceVulnerabilities, ServiceLicenses, ServiceGeoprovenanceOrigin)
-
-	// Serial delivery: a plain map write with no lock must be race-free.
-	var lastByService map[string]Progress
-	p.OnProgress(func(pp PipelineProgress) {
-		lastByService = pp.Services // no mutex needed — serial delivery
-	})
-
-	purls := make([]string, 12) // 12 purls / chunk 5 -> 3 chunks per service
-	for i := range purls {
-		purls[i] = "pkg:test/c"
-	}
-
-	if _, err := p.Run(context.Background(), Components(purls...)); err != nil {
-		t.Fatalf("Run error: %v", err)
-	}
-
-	// Final snapshot has every service at Done==Total==12 purls.
-	snap := p.Snapshot()
-	if len(snap.Services) != 3 {
-		t.Fatalf("snapshot services = %d, want 3", len(snap.Services))
-	}
-	for _, name := range []string{"vulnerabilities", "licenses", "geoprovenance.origin"} {
-		pr, ok := snap.Services[name]
-		if !ok {
-			t.Errorf("missing %q in snapshot", name)
-			continue
-		}
-		if pr.Done != 12 || pr.Total != 12 {
-			t.Errorf("%s progress = %d/%d, want 12/12", name, pr.Done, pr.Total)
-		}
-		if pr.Unit != "purls" {
-			t.Errorf("%s unit = %q, want purls", name, pr.Unit)
-		}
-	}
-	if len(lastByService) == 0 {
-		t.Error("OnProgress was never called")
-	}
-}
-
 func TestPipelineRunsInParallel(t *testing.T) {
 	// Barrier: each handler blocks until `want` requests are concurrently in
 	// flight, which deterministically proves the services overlap.
@@ -122,5 +77,80 @@ func TestPipelineRunsInParallel(t *testing.T) {
 	}
 	if atomic.LoadInt32(&maxInFlight) < want {
 		t.Errorf("expected services to run in parallel (max in-flight ≥ %d), got %d", want, maxInFlight)
+	}
+}
+
+// recorder records decoration progress per service, for tests that assert what each service
+// reported. Services run concurrently, so it guards its map.
+type recorder struct {
+	mu   sync.Mutex
+	last map[string][2]int // service -> {done, total}
+	sawN int
+}
+
+func newRecorder() *recorder { return &recorder{last: map[string][2]int{}} }
+
+func (r *recorder) Decorating(service string, done, total int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.last[service] = [2]int{done, total}
+	r.sawN++
+}
+
+func (r *recorder) snapshot() map[string][2]int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make(map[string][2]int, len(r.last))
+	for k, v := range r.last {
+		out[k] = v
+	}
+	return out
+}
+
+func (r *recorder) calls() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.sawN
+}
+
+// Every service in a pipeline reports its own advance, ending at Done == Total. The pipeline used
+// to aggregate this into a snapshot of its own; it no longer does, because the client's decoration
+// reporter already carries the service name on every update.
+func TestPipelineReportsEachServiceToCompletion(t *testing.T) {
+	srv := httptest.NewServer(echoServer(""))
+	defer srv.Close()
+
+	rec := newRecorder()
+	client := New(
+		WithAPIURL(srv.URL),
+		WithChunkSize(5),
+		WithWorkers(4),
+	)
+	p := client.DecorationPipeline(ServiceVulnerabilities, ServiceLicenses, ServiceGeoprovenanceOrigin)
+
+	purls := make([]string, 12) // 12 purls / chunk 5 -> 3 chunks per service
+	for i := range purls {
+		purls[i] = "pkg:test/c"
+	}
+	if _, err := p.Run(context.Background(), Components(purls...), WithDecorationReporter(rec)); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+
+	got := rec.snapshot()
+	if len(got) != 3 {
+		t.Fatalf("services reported = %d, want 3: %v", len(got), got)
+	}
+	for _, name := range []string{"vulnerabilities", "licenses", "geoprovenance.origin"} {
+		dt, ok := got[name]
+		if !ok {
+			t.Errorf("%q never reported", name)
+			continue
+		}
+		if dt[0] != 12 || dt[1] != 12 {
+			t.Errorf("%s ended at %d/%d, want 12/12", name, dt[0], dt[1])
+		}
+	}
+	if rec.calls() < 3 {
+		t.Errorf("progress was reported %d times, want at least one per service", rec.calls())
 	}
 }

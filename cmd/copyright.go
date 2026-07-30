@@ -32,12 +32,12 @@ import (
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
 )
 
-func callCopyrightEvidence(c *scanoss.Client, ctx context.Context, comps []scanoss.Component) (*scanossapi.CopyrightEvidenceResponse, error) {
-	return c.Copyright.Evidence(ctx, comps)
+func callCopyrightEvidence(c *scanoss.Client, ctx context.Context, comps []scanoss.Component, opts ...scanoss.DecorateOption) (*scanossapi.CopyrightEvidenceResponse, error) {
+	return c.Copyright.Evidence(ctx, comps, opts...)
 }
 
-func callCopyrightHolders(c *scanoss.Client, ctx context.Context, comps []scanoss.Component) (*scanossapi.CopyrightHoldersResponse, error) {
-	return c.Copyright.Holders(ctx, comps)
+func callCopyrightHolders(c *scanoss.Client, ctx context.Context, comps []scanoss.Component, opts ...scanoss.DecorateOption) (*scanossapi.CopyrightHoldersResponse, error) {
+	return c.Copyright.Holders(ctx, comps, opts...)
 }
 
 var copyrightCmd = &cobra.Command{

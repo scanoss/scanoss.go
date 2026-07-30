@@ -80,15 +80,12 @@ func ExampleClient_DecorationPipeline() {
 	)
 	pipe.Add(scanoss.ServiceCryptographyAlgorithms, scanoss.ServiceGeoprovenanceOrigin)
 
-	// OnProgress is delivered serially: render each service's row, no locking.
-	pipe.OnProgress(func(pp scanoss.PipelineProgress) {
-		for name, p := range pp.Services {
-			fmt.Printf("%-26s %d/%d %s\n", name, p.Done, p.Total, p.Unit)
-		}
-	})
-
 	// scanoss.Components turns a list of PURLs into the []Component input.
-	res, err := pipe.Run(context.Background(), scanoss.Components("pkg:npm/lodash", "pkg:pypi/requests"))
+	// The reporter travels with the call: every update carries the service that produced it, so one
+	// receiver renders them all.
+	res, err := pipe.Run(context.Background(),
+		scanoss.Components("pkg:npm/lodash", "pkg:pypi/requests"),
+		scanoss.WithDecorationReporter(serviceRows{}))
 	if err != nil {
 		panic(err)
 	}
@@ -97,4 +94,12 @@ func ExampleClient_DecorationPipeline() {
 	for svc, e := range res.Errors {
 		fmt.Printf("%s failed: %v\n", svc, e)
 	}
+}
+
+// serviceRows renders one line per decoration update. Services run concurrently, so a real
+// implementation would guard whatever it draws into.
+type serviceRows struct{}
+
+func (serviceRows) Decorating(service string, done, total int) {
+	fmt.Printf("%-26s %d/%d purls\n", service, done, total)
 }

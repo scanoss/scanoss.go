@@ -177,7 +177,7 @@ func cycloneDXLicense(l License) cdx.License {
 	lic := cdx.License{Acknowledgement: cdxAcknowledgement(l.Acknowledgement)}
 	canonical, ok := normalizeLicense(l.ID)
 	switch {
-	case ok && !isCompound(canonical) && !strings.HasPrefix(canonical, "LicenseRef-"):
+	case ok && !isExpression(canonical) && !strings.HasPrefix(canonical, "LicenseRef-"):
 		lic.ID = canonical
 	case ok:
 		// A valid expression, or a LicenseRef: both are legal here, but not in "id".
@@ -248,9 +248,16 @@ func cycloneDXVulnerabilities(inv Inventory) []cdx.Vulnerability {
 		return nil
 	}
 
-	refsByPurl := make(map[string][]string, len(inv.Components))
+	// Indexed by versioned PURL first and bare PURL second, because an advisory names the version
+	// it applies to whenever the source knew it. Resolving on the bare PURL alone would attach every
+	// advisory to every version of that component — reporting vulnerabilities a release does not have.
+	refsByPurl := make(map[string][]string, len(inv.Components)*2)
 	for _, c := range inv.Components {
-		refsByPurl[c.Purl] = append(refsByPurl[c.Purl], cdxPurl(c))
+		ref := cdxPurl(c)
+		refsByPurl[ref] = append(refsByPurl[ref], ref)
+		if ref != c.Purl {
+			refsByPurl[c.Purl] = append(refsByPurl[c.Purl], ref)
+		}
 	}
 
 	out := make([]cdx.Vulnerability, 0, len(inv.Vulnerabilities))

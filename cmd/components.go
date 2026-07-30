@@ -33,8 +33,8 @@ import (
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
 )
 
-func callComponentsStatus(c *scanoss.Client, ctx context.Context, comps []scanoss.Component) (*scanossapi.ComponentsStatusResponse, error) {
-	return c.Components.Status(ctx, comps)
+func callComponentsStatus(c *scanoss.Client, ctx context.Context, comps []scanoss.Component, opts ...scanoss.DecorateOption) (*scanossapi.ComponentsStatusResponse, error) {
+	return c.Components.Status(ctx, comps, opts...)
 }
 
 // writeTyped marshals a typed response model to indented JSON and writes it to

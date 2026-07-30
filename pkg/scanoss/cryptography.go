@@ -49,16 +49,16 @@ var (
 // hints, each exact-version and version-range, plus algorithm versions in range.
 // Responses are typed from the OpenAPI v3 contract.
 type CryptographyAPI interface {
-	Algorithms(ctx context.Context, comps []Component) (*scanossapi.CryptoAlgorithmsResponse, error)
-	Algorithm(ctx context.Context, comp Component) (*scanossapi.CryptoAlgorithmsResponse, error)
-	AlgorithmsInRange(ctx context.Context, comps []Component) (*scanossapi.CryptoAlgorithmsInRangeResponse, error)
-	AlgorithmInRange(ctx context.Context, comp Component) (*scanossapi.CryptoAlgorithmsInRangeResponse, error)
-	VersionsInRange(ctx context.Context, comps []Component) (*scanossapi.CryptoVersionsInRangeResponse, error)
-	VersionInRange(ctx context.Context, comp Component) (*scanossapi.CryptoVersionsInRangeResponse, error)
-	Hints(ctx context.Context, comps []Component) (*scanossapi.CryptoHintsResponse, error)
-	Hint(ctx context.Context, comp Component) (*scanossapi.CryptoHintsResponse, error)
-	HintsInRange(ctx context.Context, comps []Component) (*scanossapi.CryptoHintsInRangeResponse, error)
-	HintInRange(ctx context.Context, comp Component) (*scanossapi.CryptoHintsInRangeResponse, error)
+	Algorithms(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.CryptoAlgorithmsResponse, error)
+	Algorithm(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.CryptoAlgorithmsResponse, error)
+	AlgorithmsInRange(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.CryptoAlgorithmsInRangeResponse, error)
+	AlgorithmInRange(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.CryptoAlgorithmsInRangeResponse, error)
+	VersionsInRange(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.CryptoVersionsInRangeResponse, error)
+	VersionInRange(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.CryptoVersionsInRangeResponse, error)
+	Hints(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.CryptoHintsResponse, error)
+	Hint(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.CryptoHintsResponse, error)
+	HintsInRange(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.CryptoHintsInRangeResponse, error)
+	HintInRange(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.CryptoHintsInRangeResponse, error)
 }
 
 type cryptographyService struct{ c *Client }
@@ -66,8 +66,8 @@ type cryptographyService struct{ c *Client }
 var _ CryptographyAPI = cryptographyService{}
 
 // Algorithms returns cryptographic algorithms for the given components (batch).
-func (s cryptographyService) Algorithms(ctx context.Context, comps []Component) (*scanossapi.CryptoAlgorithmsResponse, error) {
-	res, err := s.c.decorate(ctx, ServiceCryptographyAlgorithms, comps)
+func (s cryptographyService) Algorithms(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.CryptoAlgorithmsResponse, error) {
+	res, err := s.c.decorate(ctx, ServiceCryptographyAlgorithms, comps, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -75,8 +75,8 @@ func (s cryptographyService) Algorithms(ctx context.Context, comps []Component) 
 }
 
 // Algorithm returns cryptographic algorithms for a single component.
-func (s cryptographyService) Algorithm(ctx context.Context, comp Component) (*scanossapi.CryptoAlgorithmsResponse, error) {
-	res, err := s.c.decorateOne(ctx, ServiceCryptographyAlgorithm, comp)
+func (s cryptographyService) Algorithm(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.CryptoAlgorithmsResponse, error) {
+	res, err := s.c.decorateOne(ctx, ServiceCryptographyAlgorithm, comp, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -84,8 +84,8 @@ func (s cryptographyService) Algorithm(ctx context.Context, comp Component) (*sc
 }
 
 // AlgorithmsInRange returns algorithms across a version range (batch).
-func (s cryptographyService) AlgorithmsInRange(ctx context.Context, comps []Component) (*scanossapi.CryptoAlgorithmsInRangeResponse, error) {
-	res, err := s.c.decorate(ctx, ServiceCryptographyAlgorithmsInRange, comps)
+func (s cryptographyService) AlgorithmsInRange(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.CryptoAlgorithmsInRangeResponse, error) {
+	res, err := s.c.decorate(ctx, ServiceCryptographyAlgorithmsInRange, comps, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -93,8 +93,8 @@ func (s cryptographyService) AlgorithmsInRange(ctx context.Context, comps []Comp
 }
 
 // AlgorithmInRange returns algorithms across a version range for a single component.
-func (s cryptographyService) AlgorithmInRange(ctx context.Context, comp Component) (*scanossapi.CryptoAlgorithmsInRangeResponse, error) {
-	res, err := s.c.decorateOne(ctx, ServiceCryptographyAlgorithmInRange, comp)
+func (s cryptographyService) AlgorithmInRange(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.CryptoAlgorithmsInRangeResponse, error) {
+	res, err := s.c.decorateOne(ctx, ServiceCryptographyAlgorithmInRange, comp, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -102,8 +102,8 @@ func (s cryptographyService) AlgorithmInRange(ctx context.Context, comp Componen
 }
 
 // VersionsInRange returns algorithm versions across a range (batch).
-func (s cryptographyService) VersionsInRange(ctx context.Context, comps []Component) (*scanossapi.CryptoVersionsInRangeResponse, error) {
-	res, err := s.c.decorate(ctx, ServiceCryptographyVersionsInRange, comps)
+func (s cryptographyService) VersionsInRange(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.CryptoVersionsInRangeResponse, error) {
+	res, err := s.c.decorate(ctx, ServiceCryptographyVersionsInRange, comps, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -111,8 +111,8 @@ func (s cryptographyService) VersionsInRange(ctx context.Context, comps []Compon
 }
 
 // VersionInRange returns algorithm versions across a range for a single component.
-func (s cryptographyService) VersionInRange(ctx context.Context, comp Component) (*scanossapi.CryptoVersionsInRangeResponse, error) {
-	res, err := s.c.decorateOne(ctx, ServiceCryptographyVersionInRange, comp)
+func (s cryptographyService) VersionInRange(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.CryptoVersionsInRangeResponse, error) {
+	res, err := s.c.decorateOne(ctx, ServiceCryptographyVersionInRange, comp, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -120,8 +120,8 @@ func (s cryptographyService) VersionInRange(ctx context.Context, comp Component)
 }
 
 // Hints returns cryptographic library hints for the given components (batch).
-func (s cryptographyService) Hints(ctx context.Context, comps []Component) (*scanossapi.CryptoHintsResponse, error) {
-	res, err := s.c.decorate(ctx, ServiceCryptographyHints, comps)
+func (s cryptographyService) Hints(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.CryptoHintsResponse, error) {
+	res, err := s.c.decorate(ctx, ServiceCryptographyHints, comps, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -129,8 +129,8 @@ func (s cryptographyService) Hints(ctx context.Context, comps []Component) (*sca
 }
 
 // Hint returns cryptographic library hints for a single component.
-func (s cryptographyService) Hint(ctx context.Context, comp Component) (*scanossapi.CryptoHintsResponse, error) {
-	res, err := s.c.decorateOne(ctx, ServiceCryptographyHint, comp)
+func (s cryptographyService) Hint(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.CryptoHintsResponse, error) {
+	res, err := s.c.decorateOne(ctx, ServiceCryptographyHint, comp, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -138,8 +138,8 @@ func (s cryptographyService) Hint(ctx context.Context, comp Component) (*scanoss
 }
 
 // HintsInRange returns library hints across a version range (batch).
-func (s cryptographyService) HintsInRange(ctx context.Context, comps []Component) (*scanossapi.CryptoHintsInRangeResponse, error) {
-	res, err := s.c.decorate(ctx, ServiceCryptographyHintsInRange, comps)
+func (s cryptographyService) HintsInRange(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.CryptoHintsInRangeResponse, error) {
+	res, err := s.c.decorate(ctx, ServiceCryptographyHintsInRange, comps, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -147,8 +147,8 @@ func (s cryptographyService) HintsInRange(ctx context.Context, comps []Component
 }
 
 // HintInRange returns library hints across a version range for a single component.
-func (s cryptographyService) HintInRange(ctx context.Context, comp Component) (*scanossapi.CryptoHintsInRangeResponse, error) {
-	res, err := s.c.decorateOne(ctx, ServiceCryptographyHintInRange, comp)
+func (s cryptographyService) HintInRange(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.CryptoHintsInRangeResponse, error) {
+	res, err := s.c.decorateOne(ctx, ServiceCryptographyHintInRange, comp, opts...)
 	if err != nil {
 		return nil, err
 	}
