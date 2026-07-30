@@ -26,12 +26,12 @@ package batch
 import (
 	"testing"
 
-	"github.com/scanoss/scanoss.go/internal/models"
+	fingerprint "github.com/scanoss/scanoss.go/pkg/fingerprint/wfp"
 )
 
 // naiveCombine is the original O(n²) implementation, kept here as the reference
 // oracle: CombineFingerprints must produce byte-identical output.
-func naiveCombine(fps []*models.FileFingerprint) string {
+func naiveCombine(fps []*fingerprint.FileFingerprint) string {
 	var result string
 	for _, fp := range fps {
 		result += fp.Fingerprint //nolint // intentional: reference oracle for the O(n) builder
@@ -44,7 +44,7 @@ func naiveCombine(fps []*models.FileFingerprint) string {
 }
 
 func TestCombineFingerprintsParity(t *testing.T) {
-	cases := map[string][]*models.FileFingerprint{
+	cases := map[string][]*fingerprint.FileFingerprint{
 		"nil":                   nil,
 		"empty slice":           {},
 		"no trailing newline":   {{Fingerprint: "file=a.c,10,abc\n1=deadbeef"}},

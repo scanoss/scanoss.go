@@ -28,7 +28,6 @@ import (
 	"os"
 	"sync"
 
-	"github.com/scanoss/scanoss.go/internal/models"
 	"github.com/scanoss/scanoss.go/pkg/batch"
 	"github.com/scanoss/scanoss.go/pkg/filter"
 	fingerprint "github.com/scanoss/scanoss.go/pkg/fingerprint/wfp"
@@ -38,7 +37,7 @@ import (
 type WorkerPool struct {
 	numWorkers int
 	jobs       chan string
-	results    chan *models.FileFingerprint
+	results    chan *fingerprint.FileFingerprint
 	errors     chan error
 	wg         sync.WaitGroup
 	root       string // when set, WFP "file=" labels are made relative to it
@@ -49,7 +48,7 @@ func NewWorkerPool(numWorkers int) *WorkerPool {
 	return &WorkerPool{
 		numWorkers: numWorkers,
 		jobs:       make(chan string, numWorkers*2),
-		results:    make(chan *models.FileFingerprint, numWorkers*2),
+		results:    make(chan *fingerprint.FileFingerprint, numWorkers*2),
 		errors:     make(chan error, numWorkers*2),
 	}
 }
@@ -103,7 +102,7 @@ func (wp *WorkerPool) Close() {
 }
 
 // Results returns the results channel
-func (wp *WorkerPool) Results() <-chan *models.FileFingerprint {
+func (wp *WorkerPool) Results() <-chan *fingerprint.FileFingerprint {
 	return wp.results
 }
 
@@ -162,7 +161,7 @@ func GenerateWFP(files []string, workers int, root string, onProgress func(done,
 		}
 	}()
 
-	var fps []*models.FileFingerprint
+	var fps []*fingerprint.FileFingerprint
 	for fp := range pool.Results() {
 		fps = append(fps, fp)
 		if onProgress != nil {

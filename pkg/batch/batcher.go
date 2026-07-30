@@ -27,30 +27,30 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/scanoss/scanoss.go/internal/models"
+	fingerprint "github.com/scanoss/scanoss.go/pkg/fingerprint/wfp"
 )
 
 // Batcher groups fingerprints into batches according to a maximum size
 type Batcher struct {
 	maxSize      int
-	currentBatch []*models.FileFingerprint
+	currentBatch []*fingerprint.FileFingerprint
 	currentSize  int
-	batches      [][]*models.FileFingerprint
+	batches      [][]*fingerprint.FileFingerprint
 }
 
 // NewBatcher creates a new fingerprint batcher
 func NewBatcher(maxSize int) *Batcher {
 	return &Batcher{
 		maxSize:      maxSize,
-		currentBatch: make([]*models.FileFingerprint, 0),
+		currentBatch: make([]*fingerprint.FileFingerprint, 0),
 		currentSize:  0,
-		batches:      make([][]*models.FileFingerprint, 0),
+		batches:      make([][]*fingerprint.FileFingerprint, 0),
 	}
 }
 
 // Add adds a fingerprint to the batcher
 // If it exceeds the maximum size, creates a new batch
-func (b *Batcher) Add(fp *models.FileFingerprint) {
+func (b *Batcher) Add(fp *fingerprint.FileFingerprint) {
 	fpSize := len(fp.Fingerprint)
 
 	// If adding this fingerprint exceeds the limit, first save the current batch
@@ -67,13 +67,13 @@ func (b *Batcher) Add(fp *models.FileFingerprint) {
 func (b *Batcher) flush() {
 	if len(b.currentBatch) > 0 {
 		b.batches = append(b.batches, b.currentBatch)
-		b.currentBatch = make([]*models.FileFingerprint, 0)
+		b.currentBatch = make([]*fingerprint.FileFingerprint, 0)
 		b.currentSize = 0
 	}
 }
 
 // GetBatches returns all batches, including the current batch if not empty
-func (b *Batcher) GetBatches() [][]*models.FileFingerprint {
+func (b *Batcher) GetBatches() [][]*fingerprint.FileFingerprint {
 	// Ensure the last batch is saved
 	b.flush()
 	return b.batches
@@ -81,14 +81,14 @@ func (b *Batcher) GetBatches() [][]*models.FileFingerprint {
 
 // BatchWithMetadata wraps a batch with metadata about its position
 type BatchWithMetadata struct {
-	Data         []*models.FileFingerprint
+	Data         []*fingerprint.FileFingerprint
 	IsFinalChunk bool
 }
 
 // StreamingBatcher groups fingerprints and sends them to a channel when they reach the maximum size
 type StreamingBatcher struct {
 	maxSize      int
-	currentBatch []*models.FileFingerprint
+	currentBatch []*fingerprint.FileFingerprint
 	currentSize  int
 	output       chan BatchWithMetadata
 	mu           sync.Mutex
@@ -98,14 +98,14 @@ type StreamingBatcher struct {
 func NewStreamingBatcher(maxSize int) *StreamingBatcher {
 	return &StreamingBatcher{
 		maxSize:      maxSize,
-		currentBatch: make([]*models.FileFingerprint, 0),
+		currentBatch: make([]*fingerprint.FileFingerprint, 0),
 		currentSize:  0,
 		output:       make(chan BatchWithMetadata, 10),
 	}
 }
 
 // Add adds a fingerprint and sends the batch if it reaches the limit
-func (sb *StreamingBatcher) Add(fp *models.FileFingerprint) {
+func (sb *StreamingBatcher) Add(fp *fingerprint.FileFingerprint) {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
 
@@ -128,7 +128,7 @@ func (sb *StreamingBatcher) flushLocked() {
 			Data:         sb.currentBatch,
 			IsFinalChunk: false, // Will be updated on Close() for the final batch
 		}
-		sb.currentBatch = make([]*models.FileFingerprint, 0)
+		sb.currentBatch = make([]*fingerprint.FileFingerprint, 0)
 		sb.currentSize = 0
 	}
 }
@@ -142,7 +142,7 @@ func (sb *StreamingBatcher) Close() {
 			Data:         sb.currentBatch,
 			IsFinalChunk: true,
 		}
-		sb.currentBatch = make([]*models.FileFingerprint, 0)
+		sb.currentBatch = make([]*fingerprint.FileFingerprint, 0)
 		sb.currentSize = 0
 	}
 	sb.mu.Unlock()
@@ -161,7 +161,7 @@ func (sb *StreamingBatcher) Batches() <-chan BatchWithMetadata {
 // loop is O(n²) (each += copies the whole accumulated string), which dominated
 // wall-clock time for large scans — e.g. ~38s to assemble a 16 MB WFP from
 // ~8900 files. Builder grows amortized O(1), making this linear.
-func CombineFingerprints(fps []*models.FileFingerprint) string {
+func CombineFingerprints(fps []*fingerprint.FileFingerprint) string {
 	var total int
 	for _, fp := range fps {
 		// fingerprint + up to one missing trailing newline + one blank line
