@@ -54,8 +54,6 @@ func WithProjectName(name string) Option {
 	}
 }
 
-// WithTool sets the generating tool recorded in the document metadata. Empty values are
-// ignored (default: "<app>-<version>").
 // WithTool sets the generating tool recorded in the document metadata. The value
 // is taken literally: a caller passing "my-tool-1.4.0" gets exactly that, with no
 // version appended. Pass WithToolVersion as well to have CycloneDX record the

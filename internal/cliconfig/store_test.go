@@ -350,7 +350,7 @@ func TestSetRejectsUnrecognizedKey(t *testing.T) {
 	}
 }
 
-// FR-4a: a write must never persist a value that came from the environment.
+// A write must never persist a value that came from the environment.
 // viper.WriteConfig would, because it serializes the merged view — this is the
 // regression test for using it by mistake.
 func TestSetDoesNotPersistEnvironmentValues(t *testing.T) {

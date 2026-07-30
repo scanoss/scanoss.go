@@ -353,7 +353,7 @@ func TestWithPollInterval(t *testing.T) {
 
 func TestScanPollIntervalOverride(t *testing.T) {
 	// Wait needs 3 status polls to complete. With a 20ms override the whole wait
-	// finishes well under a second; at the 5s default it would take >10s. A generous
+	// finishes well under a second; at the 2s default it would take >4s. A generous
 	// 2s bound proves the override (and the initial-delay clamp) are honored without
 	// being flaky.
 	mock := &scanMock{completeAt: 3, result: json.RawMessage(`{"files":[],"components":{}}`)}
@@ -372,7 +372,7 @@ func TestScanPollIntervalOverride(t *testing.T) {
 		t.Fatalf("statusCalls = %d, want 3", got)
 	}
 	if elapsed > 2*time.Second {
-		t.Fatalf("Wait took %v; WithPollInterval override not honored (default 5s cadence)", elapsed)
+		t.Fatalf("Wait took %v; WithPollInterval override not honored (default 2s cadence)", elapsed)
 	}
 }
 

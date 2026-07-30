@@ -33,7 +33,7 @@ import (
 
 // License service endpoints (v3):
 //   - attribution / evidence: LICENSE-NOTICE files and per-file license evidence.
-//   - the papi License service under /v3/licenses: declared licenses for a
+//   - the License service under /v3/licenses: declared licenses for a
 //     component (single GET / batch POST), plus SPDX-registry details and OSADL
 //     obligations keyed by license id.
 var (

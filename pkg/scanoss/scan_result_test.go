@@ -30,7 +30,7 @@ import (
 	"testing"
 )
 
-// The fixtures in testdata/ are verbatim GET /v3/wfp/scan?id= envelopes captured
+// The fixtures in testdata/ are verbatim GET /v3/wfp/scan/{id} envelopes captured
 // from the v3 batch server, one per match_type the API emits. They guard the
 // result-body parsing (scanossapi.ScanEnvelope/scanossapi.ScanResult and friends) against schema drift:
 // if the server shape changes in a way parseScanEnvelope can't represent, these break.
@@ -108,7 +108,7 @@ func TestParseScanEnvelope_File(t *testing.T) {
 	if zlib.Matches[0].MatchPercentage != 0 || zlib.Matches[0].InputLineRanges != nil {
 		t.Fatalf("file match must not carry snippet fields: %+v", zlib.Matches[0])
 	}
-	// v0.4.4: source_hash equals file_hash for a file match; oss_file_path names
+	// Scan API v0.4.4: source_hash equals file_hash for a file match; oss_file_path names
 	// the matched file inside the OSS component.
 	if zlib.SourceHash != zlib.FileHash {
 		t.Fatalf("file-match source_hash = %q, want it to equal file_hash %q", zlib.SourceHash, zlib.FileHash)
@@ -194,7 +194,7 @@ func TestParseScanEnvelope_Snippet(t *testing.T) {
 	if _, ok := e.Result.Components[m.UrlHash]; !ok {
 		t.Fatalf("snippet match url_hash %q has no component entry", m.UrlHash)
 	}
-	// v0.4.4: for a snippet match source_hash (the input file) differs from
+	// Scan API v0.4.4: for a snippet match source_hash (the input file) differs from
 	// file_hash (the matched OSS file); oss_file_path names the matched OSS file.
 	if f.SourceHash == "" || f.SourceHash == f.FileHash {
 		t.Fatalf("snippet source_hash = %q, want non-empty and != file_hash %q", f.SourceHash, f.FileHash)

@@ -30,7 +30,7 @@ import (
 	scanossapi "github.com/scanoss/scanoss.api-sdk"
 )
 
-// Scan states reported by GET /v3/wfp/scan?id=.
+// Scan states reported by GET /v3/wfp/scan/{id}.
 //
 // The first three are terminal and stop the wait loop; the last three mean the scan is still
 // moving. A value in neither group is treated as still moving too — a server that grows a state

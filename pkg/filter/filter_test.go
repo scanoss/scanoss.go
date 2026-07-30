@@ -432,15 +432,7 @@ func TestCollectPrunesExcludedDirectories(t *testing.T) {
 	}
 }
 
-// Version-control metadata is never collected, whatever the options say. This is
-// not a preference: .git holds compressed objects nothing can match, and
-// .git/config can carry credentials in remote URLs — collecting it would upload
-// them. It survived --all-hidden only because the hidden rule happened to cover
-// it, which is exactly the kind of accident this test exists to prevent.
-
 // Version-control metadata is excluded like any other dotted entry — by the hidden rule — and so
-// IncludeHidden reaches it. That is deliberate parity with the reference implementation, where the
-// equivalent flag has the same reach: asking for every hidden entry means every hidden entry.
 func TestVCSMetadataFollowsTheHiddenRule(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "main.go"), 400)

@@ -76,8 +76,7 @@ func FolderDefaultSource(d Defaults) []Matcher {
 }
 
 // FileDefaultSource turns the default file skip lists into matchers: extensions, non-extension
-// name endings, and exact names. The three go together because they answer one question — is this
-// file worth fingerprinting — and because the reference implementation gates them with one switch.
+// name endings, and exact names.
 func FileDefaultSource(d Defaults) []Matcher {
 	var ms []Matcher
 	for _, name := range d.Files {
@@ -109,21 +108,7 @@ func FileDefaultSource(d Defaults) []Matcher {
 	return ms
 }
 
-// UnscannableSource skips entries there is no point fingerprinting, whatever the
-// other rules say. It is not configurable and applies on every collection,
-// independently of the default lists and of the size bounds — these are not
-// policy choices but statements about the entry:
-//
-//   - zero-byte files: no content to match, so the WFP entry carries a zero hash
-//     and no lines — bytes on the wire no scan can act on;
-//   - symbolic links: the target is collected on its own when it is inside the
-//     tree, so following the link would report the same content twice;
-//
-// Version-control metadata (.git and friends) is NOT here: it is excluded by the hidden rule like
-// any other dotted entry, so --all-hidden includes it. That matches the reference implementation,
-// where the same flag has the same reach. What travels is fingerprints — hashes and paths, not
-// contents — so asking for every hidden entry gets a scan of the repository's own objects: noisy,
-// unmatchable, and the caller's choice to make.
+// UnscannableSource skips entries there is no point fingerprinting
 func UnscannableSource() []Matcher {
 	return []Matcher{emptyFileMatcher{}, symlinkMatcher{}}
 }

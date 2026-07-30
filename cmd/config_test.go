@@ -253,7 +253,7 @@ func TestConfigSetRejectsUnrecognizedKey(t *testing.T) {
 
 // ignore-cert-errors travels with proxy and ca-cert on the command line, so it is the
 // key a user is most likely to try to store. Persisting "never verify certificates"
-// would outlive the reason for it, so it stays a per-run flag (FR-6).
+// would outlive the reason for it, so it stays a per-run flag.
 func TestConfigSetRejectsIgnoreCertErrors(t *testing.T) {
 	configHome(t)
 
