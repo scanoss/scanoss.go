@@ -33,13 +33,16 @@ import scanossapi "github.com/scanoss/scanoss.api-sdk"
 // never reports Fingerprinting, and Scan.Wait resumes an uploaded scan, so it only reports
 // Scanning. A stage that does not run simply never calls.
 //
-// Register an implementation with WithScanReporter. It may be called from the goroutine driving the
-// scan, so it must not block.
+// Register an implementation with WithScanReporter. Methods are called from whichever goroutine
+// reached that stage — Uploading from the upload workers, so from several — but never two at once:
+// the SDK serialises them, and each call happens before the next. An implementation therefore needs
+// no lock of its own. It must not block, since a slow reporter holds up the stage reporting it.
 type ScanReporter interface {
 	// Fingerprinting reports local hashing as files are hashed. done only ever grows.
 	Fingerprinting(done, total int)
 
-	// Uploading reports WFP blocks handed to the server. done only ever grows.
+	// Uploading reports WFP blocks handed to the server. done only ever grows: it counts 1..total,
+	// one call per block, and the last call carries total.
 	Uploading(done, total int)
 
 	// Scanning reports one status poll of a running scan, handing over the server's envelope
