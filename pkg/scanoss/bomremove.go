@@ -62,18 +62,7 @@ func ApplyBOMRemove(result *scanossapi.ScanResult, bom *settings.BOM) {
 		f.Matches = nil
 	}
 
-	// Prune components no longer referenced by any remaining file match.
-	referenced := make(map[string]bool)
-	for _, f := range result.Files {
-		for _, m := range f.Matches {
-			referenced[m.UrlHash] = true
-		}
-	}
-	for hash := range result.Components {
-		if !referenced[hash] {
-			delete(result.Components, hash)
-		}
-	}
+	pruneUnreferencedComponents(result)
 }
 
 // filePurls gathers the PURLs a file matched, by joining each match's url_hash to the
@@ -125,10 +114,21 @@ func shouldRemove(filePath string, entryPurls []string, removeRules []settings.B
 // e.g., "pkg:npm/lodash@4.17.21" -> "pkg:npm/lodash"
 // If no version is present, returns the PURL as-is.
 func stripVersion(purl string) string {
-	if idx := strings.LastIndex(purl, "@"); idx != -1 {
-		return purl[:idx]
+	bare, _ := splitPurlVersion(purl)
+	return bare
+}
+
+// splitPurlVersion splits a PURL into its versionless form and its version.
+//
+// The version is the part after the last "@", but only when that "@" comes after the last "/":
+// a scoped npm PURL carries one in its namespace ("pkg:npm/@babel/core"), and reading that as a
+// version would leave "pkg:npm/" behind and quietly match every npm package.
+func splitPurlVersion(purl string) (bare, version string) {
+	at := strings.LastIndex(purl, "@")
+	if at <= 0 || at < strings.LastIndex(purl, "/") {
+		return purl, ""
 	}
-	return purl
+	return purl[:at], purl[at+1:]
 }
 
 // matchPath checks if a file path matches a bom.remove path pattern.

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`bom.replace` is applied.** A scan result whose match is covered by a replace rule is now
+  re-pointed at the rule's `replace_with` component; previously the rule's PURL was sent to the API
+  but the result was never rewritten, so the section did half its job in silence. Rules are scoped
+  by `purl`, `path` or both, and where several cover one file the most specific wins. Applied after
+  `bom.remove`, and only to matches that survived it. The `license` field of a replace rule is not
+  supported yet.
+
 ### Fixed
 
 - **The scan progress bar no longer runs backwards.** The server scans in passes that each restart
