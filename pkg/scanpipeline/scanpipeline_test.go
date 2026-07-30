@@ -27,6 +27,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -378,5 +380,26 @@ func TestDedupeComponents(t *testing.T) {
 			t.Errorf("duplicate identity survived: %s", k)
 		}
 		seen[k] = true
+	}
+}
+
+// A nil Client used to reach the scan goroutine, where the panic was on a stack the caller could
+// not recover from — and Run, unwinding through its deferred Wait, still handed back a nil error.
+// A caller embedding the pipeline in a long-lived process lost the process and was told it went
+// fine. The check has to happen before anything is spawned, so the error is the caller's to handle.
+func TestRunRequiresAClient(t *testing.T) {
+	// The tree needs a file worth fingerprinting: with nothing to scan the goroutine returns on the
+	// empty WFP and never reaches the client, so an empty directory would pass either way.
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "main.go"), []byte("package main\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Run(context.Background(), Options{SourcePath: root})
+	if err == nil {
+		t.Fatal("Run with a nil Client returned no error")
+	}
+	if !strings.Contains(err.Error(), "client is required") {
+		t.Errorf("error should name the missing client, got: %v", err)
 	}
 }

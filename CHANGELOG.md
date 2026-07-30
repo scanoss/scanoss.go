@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   finished a successful scan drawn near empty.
 - **A scan whose session expired no longer hangs.** `expired` is terminal, but was treated as "still
   running", so the CLI polled a dead session until interrupted.
+- **`scanpipeline.Run` rejects a nil `Options.Client` instead of panicking.** The client was only
+  reached inside the scan goroutine, so the panic could not be recovered by the caller and `Run`
+  returned a nil error as the process was torn down.
 - **Upload progress is reported once per block, in order.** Every upload worker reported
   concurrently, so `ScanReporter.Uploading` received duplicated and out-of-order counts: an upload
   bar ran backwards and settled below 100% because the last report was not the highest. Calls are
