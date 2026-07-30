@@ -66,8 +66,18 @@ type Set map[Layer]bool
 // Has reports whether the layer was requested.
 func (s Set) Has(l Layer) bool { return s[l] }
 
-// ParseLayers validates a list of --include values into a Set.
-func ParseLayers(values []string) (Set, error) {
+// ParseLayers validates a list of --include values into a Set, accepting only the layers the
+// calling command can gather.
+//
+// The accepted set is a parameter rather than the full list of layers the CLI knows, because a
+// command that names a layer as valid and then refuses it has told the user two different things
+// — and the second one arrives only after they tried it.
+func ParseLayers(values []string, accepted []Layer) (Set, error) {
+	allowed := make(Set, len(accepted))
+	for _, l := range accepted {
+		allowed[l] = true
+	}
+
 	set := make(Set, len(values))
 	for _, v := range values {
 		v = strings.TrimSpace(v)
@@ -75,28 +85,39 @@ func ParseLayers(values []string) (Set, error) {
 			continue
 		}
 		l := Layer(v)
-		if !knownLayer(l) {
-			return nil, fmt.Errorf("unknown --include layer %q (valid: %s)", v, knownLayerList())
+		if !allowed[l] {
+			return nil, fmt.Errorf("unknown --include layer %q (valid: %s)", v, layerList(accepted))
 		}
 		set[l] = true
 	}
 	return set, nil
 }
 
-// knownLayer reports whether l is a layer a user may request.
-func knownLayer(l Layer) bool {
-	if l == LayerDeps {
-		return true
-	}
-	_, ok := layerServices[l]
-	return ok
+// AllLayers is every layer a user may request: the PURL-keyed ones plus declared dependencies.
+func AllLayers() []Layer {
+	return append(PurlLayers(), LayerDeps)
 }
 
-// knownLayerList names every requestable layer, for error messages. Sorted because ranging a map
-// is randomised, and an error whose wording reshuffles between runs is a bad error.
-func knownLayerList() string {
-	names := []string{string(LayerDeps)}
+// PurlLayers are the layers gathered from a decoration service keyed by PURL, so they can be
+// gathered over any component list — including one parsed from an SBOM file, with no scanned tree
+// behind it.
+//
+// LayerDeps is not among them: declared dependencies are read from the manifests in the tree that
+// was scanned, which an inventory on its own does not carry.
+func PurlLayers() []Layer {
+	out := make([]Layer, 0, len(layerServices))
 	for l := range layerServices {
+		out = append(out, l)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+// layerList names the given layers for an error message. Sorted because ranging a map is
+// randomised, and an error whose wording reshuffles between runs is a bad error.
+func layerList(layers []Layer) string {
+	names := make([]string, 0, len(layers))
+	for _, l := range layers {
 		names = append(names, string(l))
 	}
 	sort.Strings(names)

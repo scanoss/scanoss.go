@@ -77,14 +77,13 @@ func runEnrich(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	layers, err := scanLayers(cmd)
+	// Only the PURL-keyed layers: enrich works from an SBOM file, and declared dependencies come
+	// from manifests in a scanned tree it does not have. Stating that in the accepted set rather
+	// than rejecting deps afterwards is what stops the two from disagreeing.
+	values, _ := cmd.Flags().GetStringSlice("include")
+	layers, err := ParseLayers(values, PurlLayers())
 	if err != nil {
 		return err
-	}
-	// deps is not a valid enrich layer: dependency analysis needs a manifest/source tree and
-	// cannot be derived from a flat components list. Reject it up front rather than silently drop.
-	if layers.Has(LayerDeps) {
-		return fmt.Errorf("--include deps is not supported by enrich: dependencies cannot be analysed over a components list (valid: vulns, licenses, crypto, geo)")
 	}
 
 	data, err := os.ReadFile(args[0])
