@@ -228,7 +228,8 @@ pass `--settings`):
 {
   "bom": {
     "include": [{ "purl": "pkg:github/scanoss/engine" }],
-    "remove":  [{ "purl": "pkg:github/scanoss/scanoss" }]
+    "remove":  [{ "purl": "pkg:github/scanoss/scanoss" }],
+    "replace": [{ "purl": "pkg:github/wrong/lib", "replace_with": "pkg:github/right/lib@2.1.0" }]
   }
 }
 ```
@@ -238,10 +239,13 @@ scanoss-cli scan ./my-project --api-key "$SCANOSS_API_KEY"            # auto-det
 scanoss-cli scan ./my-project --api-key "$SCANOSS_API_KEY" --settings my-config.json
 ```
 
-> **Note:** only **`bom.remove`** is currently applied — client-side, after
-> results come back, matching components are dropped (`bom.include` only protects
-> its PURLs from that removal). `bom.include` is **not yet honored server-side**,
-> and `identify`/`ignore`/`replace` are not applied.
+> **Note:** `bom.remove` and `bom.replace` are applied client-side, after results
+> come back and in that order: matching components are dropped, then the
+> survivors covered by a replace rule are re-pointed at their `replace_with`
+> component. An entry may be scoped by `purl`, by `path`, or by both; where
+> several cover the same file the most specific one wins. `bom.include` only
+> protects its PURLs from removal and is **not yet honored server-side**;
+> `identify`/`ignore` are not applied.
 
 ### Output layers (`--include`)
 
@@ -479,7 +483,7 @@ with `--settings`. It carries BOM context and file-skip rules.
     "identify": [],
     "ignore":   [],
     "remove":   [{ "purl": "pkg:github/scanoss/scanoss" }],
-    "replace":  []
+    "replace":  [{ "purl": "pkg:github/wrong/lib", "replace_with": "pkg:github/right/lib@2.1.0" }]
   },
   "settings": {
     "skip": {
@@ -490,9 +494,10 @@ with `--settings`. It carries BOM context and file-skip rules.
 }
 ```
 
-- **`bom`** — only `bom.remove` is applied today (client-side, post-scan);
+- **`bom`** — `bom.remove` then `bom.replace` are applied client-side, post-scan.
+  Entries are scoped by `purl`, `path` or both, and the most specific match wins.
   `bom.include` protects its PURLs from removal but is not yet honored
-  server-side; `identify`/`ignore`/`replace` are not applied.
+  server-side; `identify`/`ignore` are not applied.
 - **`settings.skip`** — keyed by operation (`scanning`, `fingerprinting`,
   `dependencies`). `patterns` are gitignore-style globs; `sizes` set per-pattern
   byte bounds (`0` disables a bound).
