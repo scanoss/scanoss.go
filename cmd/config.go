@@ -37,11 +37,13 @@ var configCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Manage stored CLI settings",
 	Long: `The config command stores CLI settings in ~/.scanoss/settings.json so they do
-not have to be passed on every invocation. The keys are api-url and api-key — the same
-names as the flags. The file itself stores them snake_case (api_url, api_key).
+not have to be passed on every invocation. The keys are api-url, api-key, proxy and
+ca-cert — the same names as the flags. The file itself stores them snake_case
+(api_url, api_key, proxy, ca_cert). Run "config list" to see them all.
 
 Each setting is resolved as: flag > environment variable > config file > built-in
-default. The environment variables are SCANOSS_API_URL and SCANOSS_API_KEY.
+default. A key's environment variable is SCANOSS_ followed by its stored name in upper
+case: SCANOSS_API_URL, SCANOSS_API_KEY, SCANOSS_PROXY and SCANOSS_CA_CERT.
 
 The API key is never displayed: list and get render it as ******** and there is no
 flag that reveals it. To read the value, open the file itself

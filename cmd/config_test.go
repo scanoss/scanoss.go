@@ -556,8 +556,11 @@ func TestConfigCommandHelp(t *testing.T) {
 		t.Fatal("configCmd has no Long help text")
 	}
 	for _, want := range []string{
-		"api_url", "api_key",
-		"SCANOSS_API_URL", "SCANOSS_API_KEY",
+		// Every recognized key, and the environment variable of each: the help used to name
+		// two of the four, so a user reading it could not learn that proxy and ca-cert are
+		// storable at all.
+		"api_url", "api_key", "proxy", "ca_cert",
+		"SCANOSS_API_URL", "SCANOSS_API_KEY", "SCANOSS_PROXY", "SCANOSS_CA_CERT",
 		"flag > environment variable > config file",
 		"********",
 		"scanoss.json",
