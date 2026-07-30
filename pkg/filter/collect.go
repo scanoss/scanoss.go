@@ -94,9 +94,11 @@ func DefaultOptions() Options {
 	}
 }
 
-// ScanOptions returns the options for fingerprint scanning: the built-in
-// defaults and .gitignore, with dependency manifests skipped (they are not
-// useful for matching). Alias of DefaultOptions, named for intent.
+// ScanOptions returns the options for fingerprint scanning: the built-in defaults
+// and .gitignore. PreserveDependencyManifests stays off, so a manifest the default
+// lists exclude stays excluded — it is a declaration, not a file worth matching.
+// Same values as DefaultOptions today, named separately so each layer states which
+// profile it uses.
 func ScanOptions() Options {
 	return Options{
 		FolderDefaults: true,

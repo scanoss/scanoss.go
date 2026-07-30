@@ -22,8 +22,8 @@
  */
 
 // Package sbom generates SBOM documents (CycloneDX, SPDX Lite) from a neutral
-// inventory of components. It depends only on the CycloneDX library — never on the
-// scan SDK — so it can be reused by the CLI and by external consumers alike. Adapters
+// inventory of components. It depends on the CycloneDX and SPDX libraries — never on
+// the scan SDK — so it can be reused by the CLI and by external consumers alike. Adapters
 // that build an Inventory from a scan result live in the scansource subpackage.
 package sbom
 
@@ -83,8 +83,6 @@ const (
 	ScopeDeclared ComponentScope = "declared"
 )
 
-// IsDeclared reports whether the component is a declared dependency rather than a
-// scan-detected match. The zero-value scope counts as detected.
 // DisplayName is the component's name for an SBOM package entry.
 //
 // Detected components carry Name from the scan result; declared ones (sourced
@@ -106,6 +104,8 @@ func (c Component) DisplayName() string {
 	return name
 }
 
+// IsDeclared reports whether the component is a declared dependency rather than a
+// scan-detected match. The zero-value scope counts as detected.
 func (c Component) IsDeclared() bool {
 	return c.Scope == ScopeDeclared
 }

@@ -71,7 +71,8 @@ func TestRoundTrip_CycloneDX(t *testing.T) {
 }
 
 // TestRoundTrip_SPDX writes an Inventory to SPDX and reads it back. SPDX carries components
-// and licenses (and the MD5 checksum) but has no vulnerability model, so the inventory has
+// and licenses (and the url_hash, as an OTHER external reference) but has no vulnerability
+// model, so the inventory has
 // no vulnerabilities.
 func TestRoundTrip_SPDX(t *testing.T) {
 	inv := Inventory{

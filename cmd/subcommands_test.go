@@ -43,7 +43,7 @@ func findCmd(parent *cobra.Command, name string) *cobra.Command {
 	return nil
 }
 
-// T008 — every service command exposes the expected subcommands.
+// Every service command exposes the expected subcommands.
 func TestServiceSubcommandsRegistered(t *testing.T) {
 	cases := map[string][]string{
 		"vulnerabilities": {"components", "cpes"},
@@ -67,7 +67,7 @@ func TestServiceSubcommandsRegistered(t *testing.T) {
 	}
 }
 
-// T008 — a PURL-list subcommand inherits the shared flags from its parent.
+// A PURL-list subcommand inherits the shared flags from its parent.
 func TestSubcommandInheritsSharedFlags(t *testing.T) {
 	hints := findCmd(findCmd(rootCmd, "cryptography"), "hints")
 	if hints == nil {
@@ -80,7 +80,7 @@ func TestSubcommandInheritsSharedFlags(t *testing.T) {
 	}
 }
 
-// T009 — each subcommand routes to its v3 endpoint.
+// Each subcommand routes to its v3 endpoint.
 func TestSubcommandRouting(t *testing.T) {
 	var gotPath, gotQuery string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

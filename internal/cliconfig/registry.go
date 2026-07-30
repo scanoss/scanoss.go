@@ -93,7 +93,7 @@ func defaultOf(key string) string {
 }
 
 // recognizedKeys returns the recognized keys in their stored (snake_case) form,
-// sorted. Use CLIKeys for anything a user reads.
+// sorted.
 func recognizedKeys() []string {
 	return slices.Sorted(maps.Keys(registry))
 }
@@ -111,7 +111,7 @@ func cliKeys() []string {
 
 // StoredKey maps a command-line key to the form stored in the file: api-key →
 // api_key. There is exactly one accepted spelling per setting — the dashed one, as
-// listed by CLIKeys — so api_key, API-KEY and apikey are all reported as
+// listed by cliKeys — so api_key, API-KEY and apikey are all reported as
 // unrecognized. One vocabulary means one thing to document and one error to explain.
 //
 // Surrounding whitespace is trimmed: that is not a spelling, and leaving it in

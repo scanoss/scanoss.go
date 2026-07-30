@@ -599,7 +599,7 @@ func emitInventory(cmd *cobra.Command, inv sbom.Inventory, scanPath string) erro
 }
 
 // scanLayers reads and validates the --include flag into a scanpipeline layer set. Gathering
-// is driven by this set — never by the output format (FR-001).
+// is driven by this set — never by the output format.
 func scanLayers(cmd *cobra.Command) (Set, error) {
 	values, _ := cmd.Flags().GetStringSlice("include")
 	return ParseLayers(values)

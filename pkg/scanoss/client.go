@@ -41,7 +41,7 @@
 // The client also exposes a batch scan service that uploads WFP fingerprints and
 // returns match results:
 //
-//	res, err := client.Scan.Scan(ctx, wfp) // upload (parallel chunks) + poll
+//	res, err := client.Scan.WFP(ctx, wfp) // upload (parallel chunks) + poll
 //
 // Tune the upload block size per call with the WithChunkBytes scan option;
 // register WithScanIDNotify to capture the client-generated scan id for optional
@@ -76,9 +76,6 @@ type Client struct {
 	transport *httpTransport
 	// chunkSize is the number of PURLs per decoration request (WithChunkSize),
 	// shared by every decoration service.
-	// TODO: refactor so each decoration service can set its chunk size per call
-	// (a per-call DecorateOption, mirroring the scan WithChunkBytes option),
-	// instead of a single client-wide value.
 	chunkSize int
 	workers   int
 	onScanID  func(string)

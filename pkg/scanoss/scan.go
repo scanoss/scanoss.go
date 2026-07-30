@@ -105,8 +105,9 @@ func WithChunkBytes(n int) ScanOption {
 	}
 }
 
-// WithFilters sets the file-collection filters used by Folder (default skip
-// lists, .gitignore, size bounds, scanoss.json rules).
+// WithFilters sets the file-collection filters used by Folder: default skip lists,
+// .gitignore and size bounds. The default is filter.ScanOptions(), which leaves
+// Settings nil — pass scanoss.json rules here to have them applied.
 func WithFilters(f filter.Options) ScanOption {
 	return func(o *scanOptions) { o.filters = f }
 }
