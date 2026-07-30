@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A scan whose session expired no longer hangs.** The status endpoint reports six states; the SDK
+  recognised two. `expired` is terminal — the session is gone and its id cannot be retried — but it
+  fell through to "still running", so an expired scan was polled until the caller gave up. For the
+  CLI that meant hanging until Ctrl-C, and `results <old-id>` never returned. A state this client
+  does not recognise still means "keep waiting", so a server that adds one breaks nothing.
+
 ## [0.4.0] - 2026-07-29
 
 ### Added

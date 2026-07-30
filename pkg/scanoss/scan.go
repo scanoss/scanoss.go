@@ -380,6 +380,17 @@ func (s scanService) wait(ctx context.Context, scanID string, interval time.Dura
 			return e, nil
 		case scanStateFailed:
 			return scanossapi.ScanEnvelope{}, fmt.Errorf("scan %s failed (phase %q)", e.ScanId, e.Phase)
+		case scanStateExpired:
+			// Terminal, and unlike failed the id cannot be retried: the session is gone. Without
+			// this case an expired session falls through to the poll below and is polled until the
+			// caller's context is cancelled — which for the CLI means hanging until Ctrl-C.
+			return scanossapi.ScanEnvelope{}, fmt.Errorf("scan %s expired before it completed", e.ScanId)
+		case scanStateQueued, scanStateUploading, scanStateScanning:
+			// Still moving; wait for the next poll.
+		default:
+			// A state this client predates. Wait too rather than error: the alternative breaks
+			// every existing client the moment the server names a new state.
+			s.c.log.Debug("scan reported an unrecognised state", "scanID", e.ScanId, "status", e.Status)
 		}
 
 		select {

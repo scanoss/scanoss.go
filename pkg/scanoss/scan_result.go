@@ -30,11 +30,19 @@ import (
 	scanossapi "github.com/scanoss/scanoss.api-sdk"
 )
 
-// Terminal scan states reported by GET /v3/wfp/scan?id=. Any other value is
-// treated as "still in progress" and polling continues.
+// Scan states reported by GET /v3/wfp/scan?id=.
+//
+// The first three are terminal and stop the wait loop; the last three mean the scan is still
+// moving. A value in neither group is treated as still moving too — a server that grows a state
+// must not break a client that predates it.
 const (
 	scanStateCompleted = "completed"
 	scanStateFailed    = "failed"
+	scanStateExpired   = "expired"
+
+	scanStateQueued    = "queued"
+	scanStateUploading = "uploading"
+	scanStateScanning  = "scanning"
 )
 
 // parseScanEnvelope unmarshals the response body into a scanossapi.ScanEnvelope.
