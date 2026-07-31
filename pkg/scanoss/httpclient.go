@@ -98,6 +98,14 @@ func NewHTTPClient(opts HTTPClientOptions) (*http.Client, error) {
 	return &http.Client{Transport: transport}, nil
 }
 
+// insecureHTTPClient returns a client that skips certificate verification and changes
+// nothing else. Unlike NewHTTPClient it cannot fail: no proxy or CA file is read.
+func insecureHTTPClient() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	ensureTLSConfig(transport).InsecureSkipVerify = true
+	return &http.Client{Transport: transport}
+}
+
 // ensureTLSConfig returns transport's TLS config, creating it if absent. It never
 // replaces an existing one: that would drop DefaultTransport's NextProtos, and HTTP/2
 // with it.

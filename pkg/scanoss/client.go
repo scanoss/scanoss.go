@@ -149,22 +149,9 @@ func WithHTTPClient(h *http.Client) Option {
 // For self-signed or internal endpoints only — insecure, avoid in production.
 func WithInsecureTLS(insecure bool) Option {
 	return func(c *Client) {
-		if !insecure {
-			return
+		if insecure {
+			c.transport.httpClient = insecureHTTPClient()
 		}
-		// Built through NewHTTPClient rather than by hand. A hand-built
-		// http.Transport has a nil Proxy, which silently opts out of HTTP_PROXY and
-		// HTTPS_PROXY — so this option used to disable proxy support as a side
-		// effect. NewHTTPClient clones http.DefaultTransport and keeps it.
-		//
-		// The error cannot happen here: it only comes from a proxy or CA file, and
-		// neither is set. Callers who want those use NewHTTPClient with
-		// WithHTTPClient, where the error is theirs to see.
-		client, err := NewHTTPClient(HTTPClientOptions{Insecure: true})
-		if err != nil {
-			return
-		}
-		c.transport.httpClient = client
 	}
 }
 
