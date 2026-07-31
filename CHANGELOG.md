@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The inventory keeps a component's `rank`, `release_date` and `artifact_name`.** All
+  three were dropped, so two components matching the same file looked equally strong.
+
 ### Removed
 
 - **The `attributions` command** — `POST /sbom/attribution` is not in the v3 contract.

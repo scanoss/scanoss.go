@@ -52,6 +52,9 @@ type Component struct {
 	Version          string            `json:"version,omitempty"`           // resolved version; "" renders as "NOASSERTION"
 	URL              string            `json:"url,omitempty"`               // homepage / source URL ("" => no externalReference)
 	URLHash          string            `json:"url_hash,omitempty"`          // SCANOSS url_hash (SPDX package checksum)
+	Rank             int               `json:"rank,omitempty"`              // engine match ordering; lower is a stronger match
+	ReleaseDate      string            `json:"release_date,omitempty"`      // release date of Version (YYYY-MM-DD)
+	ArtifactName     string            `json:"artifact_name,omitempty"`     // release artifact holding this version, e.g. "v0.38.0.zip"
 	Licenses         []License         `json:"licenses,omitempty"`          // declared and/or concluded licenses (licenses layer)
 	Cryptography     []CryptoAlgorithm `json:"cryptography,omitempty"`      // cryptographic algorithms detected (crypto layer)
 	Geoprovenance    []GeoLocation     `json:"geoprovenance,omitempty"`     // contributor geographic origin (geo layer)

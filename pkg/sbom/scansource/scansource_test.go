@@ -51,11 +51,14 @@ func sampleResult() *scanossapi.ScanResult {
 		},
 		Components: map[string]scanossapi.ComponentResult{
 			"h1": {
-				Purls:     []string{"pkg:github/scanoss/engine"},
-				Vendor:    "scanoss",
-				Component: "engine",
-				Version:   "5.4.1",
-				Url:       "https://github.com/scanoss/engine",
+				Purls:       []string{"pkg:github/scanoss/engine"},
+				Vendor:      "scanoss",
+				Component:   "engine",
+				Version:     "5.4.1",
+				Url:         "https://github.com/scanoss/engine",
+				Rank:        6,
+				ReleaseDate: "2026-03-12",
+				File:        "v5.4.1.zip",
 			},
 			"h2": {
 				Purls:   []string{"pkg:npm/lodash"},
@@ -87,6 +90,39 @@ func TestFromScanResult_Extraction(t *testing.T) {
 	lodash := inv.Components[1]
 	if lodash.Version != "4.17.21" {
 		t.Errorf("component version should map through, got %q", lodash.Version)
+	}
+}
+
+// Every field the engine reports about a component reaches the inventory. Rank in
+// particular: two components matching the same file are told apart by nothing else.
+func TestFromScanResult_ComponentFieldsAreNotDropped(t *testing.T) {
+	engine := FromScanResult(sampleResult()).Components[0]
+
+	if engine.Rank != 6 {
+		t.Errorf("Rank = %d, want 6", engine.Rank)
+	}
+	if engine.ReleaseDate != "2026-03-12" {
+		t.Errorf("ReleaseDate = %q, want 2026-03-12", engine.ReleaseDate)
+	}
+	if engine.ArtifactName != "v5.4.1.zip" {
+		t.Errorf("ArtifactName = %q, want v5.4.1.zip", engine.ArtifactName)
+	}
+	if engine.URL != "https://github.com/scanoss/engine" || engine.URLHash != "h1" {
+		t.Errorf("URL/URLHash = %q/%q", engine.URL, engine.URLHash)
+	}
+	if engine.Name != "engine" {
+		t.Errorf("Name = %q, want engine", engine.Name)
+	}
+}
+
+// A component the engine reported without them leaves them empty rather than inventing a
+// value — the fields are omitempty, so an absent rank must not render as 0.
+func TestFromScanResult_AbsentComponentFieldsStayEmpty(t *testing.T) {
+	lodash := FromScanResult(sampleResult()).Components[1]
+
+	if lodash.Rank != 0 || lodash.ReleaseDate != "" || lodash.ArtifactName != "" {
+		t.Errorf("want the three unset, got rank=%d release=%q artifact=%q",
+			lodash.Rank, lodash.ReleaseDate, lodash.ArtifactName)
 	}
 }
 
@@ -127,7 +163,7 @@ func TestFromScanResult_MultiMatchFile(t *testing.T) {
 		},
 		Components: map[string]scanossapi.ComponentResult{
 			"h1": {Purls: []string{"pkg:github/scanoss/scanner.c", "pkg:npm/scanner"}, Vendor: "scanoss", Component: "scanner.c", Version: "v1.3.0", Url: "https://github.com/scanoss/scanner.c"},
-			"h2": {Purls: []string{"pkg:github/example/other-lib"}, Version: "2.0.1"}, // no url/release_date/file/rank
+			"h2": {Purls: []string{"pkg:github/example/other-lib"}, Version: "2.0.1"}, // only the purl and version: the optional fields stay empty
 		},
 	}
 
@@ -154,7 +190,7 @@ func TestFromScanResult_MultiMatchFile(t *testing.T) {
 	if got := inv.Components[1].Evidence[0].InputLineRanges; len(got) != 1 || got[0] != (sbom.LineRange{StartLine: 12, EndLine: 40}) {
 		t.Errorf("h2 evidence ranges = %v, want [{12 40}]", got)
 	}
-	// The minimal catalog entry (no url/release_date/file/rank) still maps cleanly.
+	// The minimal catalog entry — purl and version only — still maps cleanly.
 	other := inv.Components[1]
 	if other.Purl != "pkg:github/example/other-lib" || other.Version != "2.0.1" || other.URL != "" {
 		t.Errorf("minimal component mapped wrong: %+v", other)
