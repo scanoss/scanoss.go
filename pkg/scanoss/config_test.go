@@ -117,6 +117,37 @@ func TestConfigDefaultSharesDefaultTransport(t *testing.T) {
 	}
 }
 
+// Every request is bounded: an unset Timeout takes DefaultTimeout, on the plain path
+// and on the one that builds a transport.
+func TestConfigTimeout(t *testing.T) {
+	for name, tc := range map[string]struct {
+		cfg  Config
+		want time.Duration
+	}{
+		"unset takes the default":       {Config{}, DefaultTimeout},
+		"unset with a transport":        {Config{InsecureTLS: true}, DefaultTimeout},
+		"explicit wins":                 {Config{Timeout: 5 * time.Second}, 5 * time.Second},
+		"explicit with a transport":     {Config{InsecureTLS: true, Timeout: 5 * time.Second}, 5 * time.Second},
+		"negative disables it":          {Config{Timeout: -1}, 0},
+		"negative with a transport too": {Config{InsecureTLS: true, Timeout: -1}, 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := mustNew(t, tc.cfg)
+			if got := c.transport.httpClient.Timeout; got != tc.want {
+				t.Errorf("Timeout = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// A caller who brings their own client owns its timeout: the SDK does not overwrite it.
+func TestConfigHTTPClientKeepsItsOwnTimeout(t *testing.T) {
+	c := mustNew(t, Config{HTTPClient: &http.Client{Timeout: time.Second}, Timeout: time.Hour})
+	if c.transport.httpClient.Timeout != time.Second {
+		t.Errorf("Timeout = %v, want the supplied client's 1s", c.transport.httpClient.Timeout)
+	}
+}
+
 // HTTPClient takes precedence over the transport fields.
 func TestConfigHTTPClientWins(t *testing.T) {
 	mine := &http.Client{}

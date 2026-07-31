@@ -31,6 +31,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"golang.org/x/net/http/httpproxy"
 )
@@ -55,6 +56,23 @@ type HTTPClientOptions struct {
 	// Insecure disables certificate verification entirely. For self-signed or
 	// internal endpoints only; prefer CACertFile, which keeps verification on.
 	Insecure bool
+
+	// Timeout bounds one request, body transfer included (default DefaultTimeout).
+	// A negative value disables it.
+	Timeout time.Duration
+}
+
+// resolveTimeout maps a configured timeout onto what http.Client expects: unset takes
+// DefaultTimeout, negative means no timeout at all.
+func resolveTimeout(d time.Duration) time.Duration {
+	switch {
+	case d > 0:
+		return d
+	case d < 0:
+		return 0 // explicitly disabled
+	default:
+		return DefaultTimeout
+	}
 }
 
 // NewHTTPClient builds an *http.Client from opts, for use with WithHTTPClient:
@@ -95,7 +113,7 @@ func NewHTTPClient(opts HTTPClientOptions) (*http.Client, error) {
 		ensureTLSConfig(transport).InsecureSkipVerify = true
 	}
 
-	return &http.Client{Transport: transport}, nil
+	return &http.Client{Transport: transport, Timeout: resolveTimeout(opts.Timeout)}, nil
 }
 
 // ensureTLSConfig returns transport's TLS config, creating it if absent. It never

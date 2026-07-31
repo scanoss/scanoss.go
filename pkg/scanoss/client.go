@@ -70,6 +70,9 @@ const (
 	DefaultMaxRetries = 5
 	// DefaultMaxRetryAfter caps a single Retry-After wait.
 	DefaultMaxRetryAfter = 5 * time.Minute
+	// DefaultTimeout bounds one request attempt, body transfer included. Sized for the
+	// largest the SDK sends — a 1 MiB WFP chunk — over a poor link.
+	DefaultTimeout = 120 * time.Second
 )
 
 // Client is the SCANOSS SDK entry point. Create one with New and reuse it; it
@@ -120,6 +123,10 @@ type Config struct {
 	// InsecureTLS disables certificate verification entirely. For self-signed or
 	// internal endpoints only; prefer CACertFile, which keeps verification on.
 	InsecureTLS bool
+	// Timeout bounds one request attempt, body transfer included (default
+	// DefaultTimeout). A negative value disables it. Retry-After waits happen between
+	// attempts, so this does not cut them short.
+	Timeout time.Duration
 	// HTTPClient replaces the SDK's own client wholesale, for a caller that needs
 	// transport behaviour the fields above do not cover. It takes precedence over
 	// Proxy, CACertFile and InsecureTLS.
@@ -156,12 +163,13 @@ func (cfg Config) httpClient() (*http.Client, error) {
 	// http.DefaultTransport, and with it one connection pool per process rather than a
 	// private pool per client.
 	if cfg.Proxy == "" && cfg.CACertFile == "" && !cfg.InsecureTLS {
-		return &http.Client{}, nil
+		return &http.Client{Timeout: resolveTimeout(cfg.Timeout)}, nil
 	}
 	return NewHTTPClient(HTTPClientOptions{
 		Proxy:      cfg.Proxy,
 		CACertFile: cfg.CACertFile,
 		Insecure:   cfg.InsecureTLS,
+		Timeout:    cfg.Timeout,
 	})
 }
 

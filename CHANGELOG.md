@@ -5,6 +5,33 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **The SDK client is configured with a `scanoss.Config` struct.** `scanoss.New` now
+  takes a `Config` and returns an error, so an unreadable CA file or a proxy without a
+  scheme fails at construction instead of on the first request. `scanoss.Option` and the
+  `With*` client options are gone; per-call options (`WithChunkBytes`,
+  `WithScanReporter`, `WithDecorationReporter`) are unchanged. `Proxy`, `CACertFile` and
+  `InsecureTLS` are now SDK fields, previously reachable only by building an
+  `*http.Client` by hand.
+
+  ```go
+  // before
+  client := scanoss.New(scanoss.WithAPIKey(key), scanoss.WithWorkers(10))
+
+  // after
+  client, err := scanoss.New(scanoss.Config{APIKey: key, Workers: 10})
+  ```
+
+- **A request is now bounded by a 120s timeout** (`Config.Timeout` to change it, a
+  negative value to disable it). Connecting and the TLS handshake were already bounded by
+  Go's defaults, and a caller passing a context with a deadline was already covered; what
+  had no bound was waiting for a server that accepted the request and then went quiet —
+  the CLI sets no deadline, so it waited indefinitely. `Retry-After` waits happen between
+  attempts and are not cut short.
+
 ## [0.5.0] - 2026-07-30
 
 ### Added
