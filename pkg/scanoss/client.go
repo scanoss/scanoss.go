@@ -67,11 +67,9 @@ const (
 	DefaultChunkSize  = 10
 	DefaultWorkers    = 5
 	DefaultMaxRetries = 5
+	// DefaultMaxRetryAfter caps a single Retry-After wait.
+	DefaultMaxRetryAfter = 5 * time.Minute
 )
-
-// DefaultMaxRetryAfter caps a single Retry-After wait (used when WithMaxRetryAfter
-// is not set).
-const DefaultMaxRetryAfter = 5 * time.Minute
 
 // Client is the SCANOSS SDK entry point. Create one with New and reuse it; it
 // is safe for concurrent use.
