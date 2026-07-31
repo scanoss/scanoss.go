@@ -41,8 +41,8 @@ import (
 // funnels through do — so cross-cutting concerns (auth, status handling, retries)
 // live here once. A future grpcTransport could sit beside it.
 //
-// Retry policy: maxRetries caps the retry COUNT (WithMaxRetries); maxRetryAfter
-// caps a single Retry-After WAIT (WithMaxRetryAfter), so a pathological server
+// Retry policy: maxRetries caps the retry COUNT (Config.MaxRetries); maxRetryAfter
+// caps a single Retry-After WAIT (Config.MaxRetryAfter), so a pathological server
 // value can't stall a call (<= 0 means no cap). The wait DURATION itself is the
 // server's Retry-After value — the SDK obeys it, it does not compute its own
 // backoff.

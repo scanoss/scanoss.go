@@ -68,11 +68,11 @@ type Client struct {
 	// transport is the SDK's HTTP transport layer (http client + auth + retries).
 	// The Client composes it rather than being one — see transport.go.
 	transport *httpTransport
-	// chunkSize is the number of PURLs per decoration request (WithChunkSize),
+	// chunkSize is the number of PURLs per decoration request (Config.ChunkSize),
 	// shared by every decoration service.
 	chunkSize int
 	workers   int
-	// log receives the SDK's diagnostic logging (WithLogger); defaults to
+	// log receives the SDK's diagnostic logging (Config.Logger); defaults to
 	// slog.Default(). The SDK never writes to stdout, only through this logger.
 	log *slog.Logger
 
