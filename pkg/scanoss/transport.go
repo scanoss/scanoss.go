@@ -111,7 +111,9 @@ func (t *httpTransport) do(ctx context.Context, req *http.Request) ([]byte, *htt
 			continue
 		}
 
-		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
+		// Any 2xx is success. Restricting this to 200/202 turned a 201 Created or a
+		// 204 No Content into an error.
+		if resp.StatusCode < 200 || resp.StatusCode > 299 {
 			return respBody, resp, &StatusError{StatusCode: resp.StatusCode, Body: string(respBody)}
 		}
 		return respBody, resp, nil

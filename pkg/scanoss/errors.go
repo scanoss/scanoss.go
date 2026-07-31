@@ -26,8 +26,8 @@ package scanoss
 import "fmt"
 
 // StatusError is returned by the transport when the API responds with a non-success
-// status (anything other than 200 OK / 202 Accepted). It exposes the status code so
-// callers can branch on it (e.g. distinguish 401 Unauthorized) via errors.As.
+// status (anything outside the 2xx range). It exposes the status code so callers can
+// branch on it (e.g. distinguish 401 Unauthorized) via errors.As.
 type StatusError struct {
 	StatusCode int
 	Body       string
