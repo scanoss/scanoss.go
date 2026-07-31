@@ -101,11 +101,14 @@ func runResults(cmd *cobra.Command, args []string) error {
 
 	prog := &scanProgress{}
 	rep := scanpipeline.NewReporter(prog.layer)
-	client := scanoss.New(
-		scanoss.WithAPIURL(api.URL),
-		scanoss.WithAPIKey(api.Key),
-		scanoss.WithHTTPClient(httpClient),
-	)
+	client, err := scanoss.New(scanoss.Config{
+		APIURL:     api.URL,
+		APIKey:     api.Key,
+		HTTPClient: httpClient,
+	})
+	if err != nil {
+		return err
+	}
 
 	infof("Retrieving results for scan %s", scanID)
 

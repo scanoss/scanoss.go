@@ -150,39 +150,39 @@ func readComponentsFile(path, defaultRequirement string) ([]scanoss.Component, e
 	return components, nil
 }
 
-// clientOptions builds the SDK client options. The API URL and key are resolved
+// clientConfig builds the SDK configuration. The API URL and key are resolved
 // (flag > environment > config file > default); the chunk-size and workers flags are
 // optional (absent on the non-PURL-list commands) and when unset resolve to 0, so
 // the SDK keeps its defaults.
-func clientOptions(cmd *cobra.Command) ([]scanoss.Option, error) {
+func clientConfig(cmd *cobra.Command) (scanoss.Config, error) {
 	api, err := cliconfig.ResolveAPI(cmd.Flags())
 	if err != nil {
-		return nil, err
+		return scanoss.Config{}, err
 	}
 	chunkSize, _ := cmd.Flags().GetInt("chunk-size")
 	workers, _ := cmd.Flags().GetInt("workers")
 	httpClient, err := newHTTPClient(cmd)
 	if err != nil {
-		return nil, err
+		return scanoss.Config{}, err
 	}
 
-	return []scanoss.Option{
-		scanoss.WithAPIURL(api.URL),
-		scanoss.WithAPIKey(api.Key),
-		scanoss.WithChunkSize(chunkSize),
-		scanoss.WithWorkers(workers),
-		scanoss.WithHTTPClient(httpClient),
+	return scanoss.Config{
+		APIURL:     api.URL,
+		APIKey:     api.Key,
+		ChunkSize:  chunkSize,
+		Workers:    workers,
+		HTTPClient: httpClient,
 	}, nil
 }
 
 // newClient builds an SDK client from the API flags, without a progress bar. Used
 // by the single-shot commands (components search/versions).
 func newClient(cmd *cobra.Command) (*scanoss.Client, error) {
-	opts, err := clientOptions(cmd)
+	cfg, err := clientConfig(cmd)
 	if err != nil {
 		return nil, err
 	}
-	return scanoss.New(opts...), nil
+	return scanoss.New(cfg)
 }
 
 // purlBar renders decoration progress onto a single bar. The purl commands query one service at a
@@ -201,7 +201,11 @@ func newProgressClient(cmd *cobra.Command) (*scanoss.Client, scanoss.DecorateOpt
 		bar   *mpb.Bar
 		total int
 	)
-	base, err := clientOptions(cmd)
+	cfg, err := clientConfig(cmd)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	client, err := scanoss.New(cfg)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -219,7 +223,7 @@ func newProgressClient(cmd *cobra.Command) (*scanoss.Client, scanoss.DecorateOpt
 			bar.SetCurrent(int64(done))
 		},
 	})
-	return scanoss.New(base...), reporter, func() {
+	return client, reporter, func() {
 		mu.Lock()
 		defer mu.Unlock()
 		if bar != nil {

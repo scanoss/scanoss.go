@@ -54,7 +54,7 @@ func TestPipelineRunKeyedOutput(t *testing.T) {
 	srv := httptest.NewServer(echoServer(""))
 	defer srv.Close()
 
-	client := New(WithAPIURL(srv.URL), WithChunkSize(10), WithWorkers(5))
+	client := mustNew(t, Config{APIURL: srv.URL, ChunkSize: 10, Workers: 5})
 	p := client.DecorationPipeline(
 		ServiceVulnerabilities,
 		ServiceLicenses,
@@ -98,7 +98,7 @@ func TestPipelineRunKeyedOutput(t *testing.T) {
 }
 
 func TestPipelineAddRemoveDedupe(t *testing.T) {
-	client := New()
+	client := mustNew(t, Config{})
 	p := client.DecorationPipeline(ServiceVulnerabilities, ServiceLicenses)
 
 	p.Add(ServiceVulnerabilities) // duplicate -> ignored
@@ -117,7 +117,7 @@ func TestPipelinePartialFailure(t *testing.T) {
 	srv := httptest.NewServer(echoServer("/v3/licenses")) // licenses fails, others ok
 	defer srv.Close()
 
-	client := New(WithAPIURL(srv.URL))
+	client := mustNew(t, Config{APIURL: srv.URL})
 	p := client.DecorationPipeline(ServiceVulnerabilities, ServiceLicenses, ServiceGeoprovenanceOrigin)
 
 	res, err := p.Run(context.Background(), Components("pkg:a"))
@@ -136,7 +136,7 @@ func TestPipelineAllFail(t *testing.T) {
 	srv := httptest.NewServer(echoServer("/")) // everything fails
 	defer srv.Close()
 
-	client := New(WithAPIURL(srv.URL))
+	client := mustNew(t, Config{APIURL: srv.URL})
 	p := client.DecorationPipeline(ServiceVulnerabilities, ServiceLicenses)
 	if _, err := p.Run(context.Background(), Components("pkg:a")); err == nil {
 		t.Error("expected error when every service fails")
@@ -144,7 +144,7 @@ func TestPipelineAllFail(t *testing.T) {
 }
 
 func TestPipelineNoServices(t *testing.T) {
-	client := New()
+	client := mustNew(t, Config{})
 	if _, err := client.DecorationPipeline().Run(context.Background(), Components("pkg:a")); err == nil {
 		t.Error("expected error for pipeline with no services")
 	}

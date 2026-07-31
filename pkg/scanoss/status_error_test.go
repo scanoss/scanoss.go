@@ -40,7 +40,7 @@ func TestStatusErrorOn401(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := New(WithAPIURL(srv.URL))
+	c := mustNew(t, Config{APIURL: srv.URL})
 	_, err := c.Components.Versions(context.Background(), "pkg:test/x", 0)
 	if err == nil {
 		t.Fatal("expected an error from a 401 response")

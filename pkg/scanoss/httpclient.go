@@ -66,7 +66,7 @@ type HTTPClientOptions struct {
 //	if err != nil {
 //		return err
 //	}
-//	client := scanoss.New(scanoss.WithAPIKey(key), scanoss.WithHTTPClient(hc))
+//	client, err := scanoss.New(scanoss.Config{APIKey: key, HTTPClient: hc})
 //
 // Reading and parsing the PEM happen here, so a bad path is an error at
 // construction rather than a handshake failure on the first request.
@@ -96,14 +96,6 @@ func NewHTTPClient(opts HTTPClientOptions) (*http.Client, error) {
 	}
 
 	return &http.Client{Transport: transport}, nil
-}
-
-// insecureHTTPClient returns a client that skips certificate verification and changes
-// nothing else. Unlike NewHTTPClient it cannot fail: no proxy or CA file is read.
-func insecureHTTPClient() *http.Client {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	ensureTLSConfig(transport).InsecureSkipVerify = true
-	return &http.Client{Transport: transport}
 }
 
 // ensureTLSConfig returns transport's TLS config, creating it if absent. It never

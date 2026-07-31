@@ -88,7 +88,7 @@ func TestVulnerabilitiesChunksAndAggregates(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(WithAPIURL(srv.URL), WithChunkSize(10), WithWorkers(5))
+	client := mustNew(t, Config{APIURL: srv.URL, ChunkSize: 10, Workers: 5})
 
 	// Transparent SDK call: just a list of PURLs.
 	purls := make([]string, 25)
@@ -130,7 +130,7 @@ func TestServiceEndpointSelection(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(WithAPIURL(srv.URL))
+	client := mustNew(t, Config{APIURL: srv.URL})
 	// Closures return only error so the assertions are independent of each
 	// service's (typed) response model.
 	cases := []struct {
@@ -192,7 +192,7 @@ func TestWorkersCappedByChunkCount(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(WithAPIURL(srv.URL), WithChunkSize(1), WithWorkers(5))
+	client := mustNew(t, Config{APIURL: srv.URL, ChunkSize: 1, Workers: 5})
 	if _, err := client.decorate(context.Background(), ServiceVulnerabilities, Components("pkg:a", "pkg:b")); err != nil {
 		t.Fatalf("decorate returned error: %v", err)
 	}
@@ -214,7 +214,7 @@ func TestPartialFailure(t *testing.T) {
 	defer srv.Close()
 
 	// Single worker so chunk order is deterministic (first chunk fails).
-	client := New(WithAPIURL(srv.URL), WithChunkSize(1), WithWorkers(1))
+	client := mustNew(t, Config{APIURL: srv.URL, ChunkSize: 1, Workers: 1})
 	res, err := client.decorate(context.Background(), ServiceVulnerabilities, Components("pkg:a", "pkg:b"))
 	if err != nil {
 		t.Fatalf("expected partial success, got error: %v", err)
@@ -243,7 +243,7 @@ func TestQueryContextCancelledSkipsRequests(t *testing.T) {
 		purls[i] = "pkg:test/c"
 	}
 
-	client := New(WithAPIURL(srv.URL), WithChunkSize(1), WithWorkers(2))
+	client := mustNew(t, Config{APIURL: srv.URL, ChunkSize: 1, Workers: 2})
 	_, err := client.decorate(ctx, ServiceVulnerabilities, Components(purls...))
 	if err == nil {
 		t.Fatal("expected an error from a cancelled context")
@@ -255,7 +255,7 @@ func TestQueryContextCancelledSkipsRequests(t *testing.T) {
 }
 
 func TestNoComponents(t *testing.T) {
-	client := New(WithAPIURL("http://example.invalid"))
+	client := mustNew(t, Config{APIURL: "http://example.invalid"})
 	if _, err := client.decorate(context.Background(), ServiceVulnerabilities, nil); err == nil {
 		t.Error("expected error for empty purl list")
 	}

@@ -122,7 +122,7 @@ func newTestClient(t *testing.T, h http.Handler) *Client {
 	t.Helper()
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	return New(WithAPIURL(srv.URL))
+	return mustNew(t, Config{APIURL: srv.URL})
 }
 
 func TestScanUploadAndPoll(t *testing.T) {
@@ -230,7 +230,7 @@ func TestScanNoNotifyOnFailedUpload(t *testing.T) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	c := New(WithAPIURL(srv.URL))
+	c := mustNew(t, Config{APIURL: srv.URL})
 
 	notified := false
 	c.onScanID = func(string) { notified = true }

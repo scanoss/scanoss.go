@@ -46,11 +46,7 @@ func TestDecorationProgressCountsPurls(t *testing.T) {
 	}
 	var updates []update
 
-	client := New(
-		WithAPIURL(srv.URL),
-		WithChunkSize(10),
-		WithWorkers(3),
-	)
+	client := mustNew(t, Config{APIURL: srv.URL, ChunkSize: 10, Workers: 3})
 
 	purls := make([]string, 25) // 25 purls, chunk 10 -> 3 chunks
 	for i := range purls {

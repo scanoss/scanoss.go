@@ -523,7 +523,7 @@ Everything above is also available as a Go SDK (`pkg/scanoss`). See the
 per-service progress, and scanning from Go.
 
 ```go
-client := scanoss.New(scanoss.WithAPIKey(os.Getenv("SCANOSS_API_KEY")))
+client, err := scanoss.New(scanoss.Config{APIKey: os.Getenv("SCANOSS_API_KEY")})
 result, err := client.Scan.Folder(ctx, "./my-project")
 
 res, err := client.Vulnerabilities.Components(ctx, scanoss.Components("pkg:github/scanoss/engine"))

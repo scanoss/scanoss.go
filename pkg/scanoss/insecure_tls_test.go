@@ -30,7 +30,7 @@ import (
 
 func TestWithInsecureTLS(t *testing.T) {
 	t.Run("true disables verification", func(t *testing.T) {
-		c := New(WithInsecureTLS(true))
+		c := mustNew(t, Config{InsecureTLS: true})
 		tr, ok := c.transport.httpClient.Transport.(*http.Transport)
 		if !ok {
 			t.Fatalf("Transport = %T, want *http.Transport", c.transport.httpClient.Transport)
@@ -41,7 +41,7 @@ func TestWithInsecureTLS(t *testing.T) {
 	})
 
 	t.Run("false leaves the default client", func(t *testing.T) {
-		c := New(WithInsecureTLS(false))
+		c := mustNew(t, Config{InsecureTLS: false})
 		if c.transport.httpClient.Transport != nil {
 			t.Fatalf("Transport = %v, want nil (default client)", c.transport.httpClient.Transport)
 		}
@@ -52,7 +52,7 @@ func TestWithInsecureTLS(t *testing.T) {
 	// turned off HTTP_PROXY/HTTPS_PROXY, silently. This is the assertion that fails
 	// against that version.
 	t.Run("true keeps the environment proxy", func(t *testing.T) {
-		c := New(WithInsecureTLS(true))
+		c := mustNew(t, Config{InsecureTLS: true})
 		tr, ok := c.transport.httpClient.Transport.(*http.Transport)
 		if !ok {
 			t.Fatalf("Transport = %T, want *http.Transport", c.transport.httpClient.Transport)

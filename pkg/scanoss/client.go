@@ -28,24 +28,25 @@
 // batches and querying those batches concurrently with a pool of workers is
 // handled internally and is transparent to the caller:
 //
-//	client := scanoss.New(scanoss.WithAPIKey(key))
+//	client, err := scanoss.New(scanoss.Config{APIKey: key})
 //	res, err := client.Vulnerabilities.Components(ctx, comps) // batch
 //	res, err := client.Vulnerabilities.Component(ctx, comp)   // single
 //	res, err := client.Licenses.Components(ctx, comps)
 //	res, err := client.Cryptography.Algorithms(ctx, comps)
 //	res, err := client.Geoprovenance.Origins(ctx, comps)
 //
-// Tune chunk size and concurrency at construction time with WithChunkSize and
-// WithWorkers; everything else stays the same.
+// New is the only way to build a Client. Everything client-wide — credentials,
+// endpoint, proxy and TLS, concurrency, retries — is a field of Config, whose zero
+// value is the default configuration.
 //
 // The client also exposes a batch scan service that uploads WFP fingerprints and
 // returns match results:
 //
 //	res, err := client.Scan.WFP(ctx, wfp) // upload (parallel chunks) + poll
 //
-// Tune the upload block size per call with the WithChunkBytes scan option;
-// register WithScanIDNotify to capture the client-generated scan id for optional
-// recovery via Scan.Wait.
+// Per-call tuning stays a functional option: WithChunkBytes for the upload block
+// size, WithScanReporter for progress. Config.OnScanID captures the
+// client-generated scan id for optional recovery via Scan.Wait.
 package scanoss
 
 import (
@@ -100,120 +101,110 @@ type Client struct {
 	Scan ScanAPI
 }
 
-// Option configures a Client.
-type Option func(*Client)
+// Config is the SDK's configuration. The zero value is the default configuration:
+// every unset field falls back to its Default* constant.
+type Config struct {
+	// APIKey authenticates the requests. Empty means keyless, which the public
+	// endpoint rejects and an on-prem one may allow.
+	APIKey string
+	// APIURL is the API base URL (default DefaultAPIURL). A trailing slash is trimmed.
+	APIURL string
 
-// WithAPIURL overrides the API base URL (default DefaultAPIURL).
-func WithAPIURL(url string) Option {
-	return func(c *Client) {
-		if url != "" {
-			c.apiURL = strings.TrimRight(url, "/")
-		}
+	// Proxy overrides HTTP_PROXY and HTTPS_PROXY for this client. It needs an http://
+	// or https:// scheme; NO_PROXY still applies. Empty leaves Go's own environment
+	// handling in place.
+	Proxy string
+	// CACertFile is a PEM file whose certificates are trusted in addition to the system
+	// pool. Verification stays on: this adds an authority, it does not stop checking.
+	CACertFile string
+	// InsecureTLS disables certificate verification entirely. For self-signed or
+	// internal endpoints only; prefer CACertFile, which keeps verification on.
+	InsecureTLS bool
+	// HTTPClient replaces the SDK's own client wholesale, for a caller that needs
+	// transport behaviour the fields above do not cover. It takes precedence over
+	// Proxy, CACertFile and InsecureTLS.
+	HTTPClient *http.Client
+
+	// ChunkSize is the number of PURLs per decoration request (default
+	// DefaultChunkSize), shared by every decoration service.
+	ChunkSize int
+	// Workers caps the concurrent requests (default DefaultWorkers). The effective
+	// number is never larger than the number of chunks.
+	Workers int
+	// MaxRetries caps the retry count when the server answers 429/503 with a
+	// Retry-After header (default DefaultMaxRetries).
+	MaxRetries int
+	// MaxRetryAfter caps a single Retry-After wait (default DefaultMaxRetryAfter),
+	// bounding a pathological server value.
+	MaxRetryAfter time.Duration
+
+	// Logger receives the SDK's diagnostics, at Debug/Info/Warn (default
+	// slog.Default()). The SDK never writes to stdout, only through this logger.
+	Logger *slog.Logger
+	// OnScanID is called once with the client-generated scan id, after the full WFP has
+	// been uploaded and before polling begins — the point from which Scan.Wait can
+	// resume it. Optional; a normal scan needs no recovery.
+	OnScanID func(scanID string)
+}
+
+// httpClient returns the caller's HTTPClient, or builds one from the transport fields.
+func (cfg Config) httpClient() (*http.Client, error) {
+	if cfg.HTTPClient != nil {
+		return cfg.HTTPClient, nil
 	}
-}
-
-// WithAPIKey sets the API key used for authentication.
-func WithAPIKey(key string) Option { return func(c *Client) { c.transport.apiKey = key } }
-
-// WithChunkSize sets the number of PURLs sent per request (default DefaultChunkSize).
-func WithChunkSize(n int) Option {
-	return func(c *Client) {
-		if n > 0 {
-			c.chunkSize = n
-		}
+	// With nothing to customise, leave Transport nil so the client shares
+	// http.DefaultTransport, and with it one connection pool per process rather than a
+	// private pool per client.
+	if cfg.Proxy == "" && cfg.CACertFile == "" && !cfg.InsecureTLS {
+		return &http.Client{}, nil
 	}
+	return NewHTTPClient(HTTPClientOptions{
+		Proxy:      cfg.Proxy,
+		CACertFile: cfg.CACertFile,
+		Insecure:   cfg.InsecureTLS,
+	})
 }
 
-// WithWorkers sets the maximum number of concurrent requests (default DefaultWorkers).
-// The effective number of workers is never larger than the number of chunks.
-func WithWorkers(n int) Option {
-	return func(c *Client) {
-		if n > 0 {
-			c.workers = n
-		}
+// positiveOr returns value when it is above zero and fallback otherwise: how an unset
+// Config field falls back to its default. A negative value is a typo, not a setting.
+func positiveOr[T int | time.Duration](value, fallback T) T {
+	if value > 0 {
+		return value
 	}
+	return fallback
 }
 
-// WithHTTPClient supplies a custom *http.Client (for timeouts, proxies, etc.).
-func WithHTTPClient(h *http.Client) Option {
-	return func(c *Client) {
-		if h != nil {
-			c.transport.httpClient = h
-		}
+// New creates a Client from cfg. It reports a configuration it cannot apply — an
+// unreadable CA file, a proxy without a scheme — so a bad setting fails here instead of
+// on the first request.
+func New(cfg Config) (*Client, error) {
+	httpClient, err := cfg.httpClient()
+	if err != nil {
+		return nil, err
 	}
-}
-
-// WithInsecureTLS disables TLS certificate verification when insecure is true.
-// For self-signed or internal endpoints only — insecure, avoid in production.
-func WithInsecureTLS(insecure bool) Option {
-	return func(c *Client) {
-		if insecure {
-			c.transport.httpClient = insecureHTTPClient()
-		}
+	logger := cfg.Logger
+	if logger == nil {
+		logger = slog.Default()
 	}
-}
-
-// WithMaxRetries sets how many times a request is retried when the server returns
-// 429/503 with a Retry-After header (default DefaultMaxRetries). The wait between
-// retries is the server's Retry-After value, not a client-chosen backoff. Values
-// <= 0 are ignored.
-func WithMaxRetries(n int) Option {
-	return func(c *Client) {
-		if n > 0 {
-			c.transport.maxRetries = n
-		}
+	apiURL := DefaultAPIURL
+	if cfg.APIURL != "" {
+		apiURL = strings.TrimRight(cfg.APIURL, "/")
 	}
-}
 
-// WithMaxRetryAfter caps how long a single Retry-After wait may be (default
-// DefaultMaxRetryAfter), bounding a pathological server value. Values <= 0 are
-// ignored.
-func WithMaxRetryAfter(d time.Duration) Option {
-	return func(c *Client) {
-		if d > 0 {
-			c.transport.maxRetryAfter = d
-		}
-	}
-}
-
-// WithLogger sets the structured logger the SDK uses for diagnostics (HTTP
-// requests, scan flow, decoration). Defaults to slog.Default(). Diagnostics are
-// emitted at Debug/Info/Warn; nothing is written to stdout. Pass a logger whose
-// handler level you control to capture or silence SDK logs independently.
-func WithLogger(l *slog.Logger) Option {
-	return func(c *Client) {
-		if l != nil {
-			c.log = l
-		}
-	}
-}
-
-// WithScanIDNotify registers an optional callback invoked once, after the full
-// WFP has been uploaded and before polling begins — at which point the id is
-// resumable via Scan.Wait. It lets a caller record the id so an interrupted scan
-// can be resumed later. It is optional; recovery is not required for a normal scan.
-func WithScanIDNotify(fn func(scanID string)) Option {
-	return func(c *Client) { c.onScanID = fn }
-}
-
-// New creates a Client with the given options.
-func New(opts ...Option) *Client {
 	c := &Client{
-		apiURL:    DefaultAPIURL,
-		chunkSize: DefaultChunkSize,
-		workers:   DefaultWorkers,
-		log:       slog.Default(),
+		apiURL:    apiURL,
+		chunkSize: positiveOr(cfg.ChunkSize, DefaultChunkSize),
+		workers:   positiveOr(cfg.Workers, DefaultWorkers),
+		onScanID:  cfg.OnScanID,
+		log:       logger,
 		transport: &httpTransport{
-			httpClient:    &http.Client{},
-			maxRetries:    DefaultMaxRetries,
-			maxRetryAfter: DefaultMaxRetryAfter,
+			httpClient:    httpClient,
+			apiKey:        cfg.APIKey,
+			maxRetries:    positiveOr(cfg.MaxRetries, DefaultMaxRetries),
+			maxRetryAfter: positiveOr(cfg.MaxRetryAfter, DefaultMaxRetryAfter),
+			log:           logger,
 		},
 	}
-	for _, opt := range opts {
-		opt(c)
-	}
-	// Propagate the (possibly overridden) logger to the transport.
-	c.transport.log = c.log
 	// Wire the per-service handles to this client.
 	c.Vulnerabilities = vulnerabilityService{c}
 	c.Licenses = licenseService{c}
@@ -223,7 +214,7 @@ func New(opts ...Option) *Client {
 	c.Components = componentsService{c}
 	c.Dependencies = dependencyService{c}
 	c.Scan = scanService{c}
-	return c
+	return c, nil
 }
 
 // newRequest builds a request against endpoint, resolved relative to the API base

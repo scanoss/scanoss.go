@@ -544,20 +544,19 @@ func buildScanClient(cmd *cobra.Command, prog *scanProgress) (*scanoss.Client, e
 		return nil, err
 	}
 
-	opts := []scanoss.Option{
-		scanoss.WithAPIURL(api.URL),
-		scanoss.WithAPIKey(api.Key),
-		scanoss.WithHTTPClient(httpClient),
-		scanoss.WithScanIDNotify(func(id string) {
+	return scanoss.New(scanoss.Config{
+		APIURL:     api.URL,
+		APIKey:     api.Key,
+		HTTPClient: httpClient,
+		OnScanID: func(id string) {
 			prog.writeLine("") // separate the scan-id block from the filter/skip notices above
 			prog.writeLine(infoLine("Scan id: %s", id))
 			// The resume hint carries the resolved endpoint, so it still works in a
 			// shell without the environment variable that produced it.
 			prog.writeLine("  If interrupted, resume with:\n  " + buildResultsCommand(id, api.URL, api.Key))
 			prog.writeLine("") // separate the resume hint from the progress bars below
-		}),
-	}
-	return scanoss.New(opts...), nil
+		},
+	})
 }
 
 // scanTuning builds the per-scan options (chunk size, poll interval, and bom.remove) from the

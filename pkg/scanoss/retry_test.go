@@ -180,25 +180,25 @@ func TestTransportCtxCancelDuringWait(t *testing.T) {
 }
 
 func TestWithMaxRetries(t *testing.T) {
-	if c := New(WithMaxRetries(9)); c.transport.maxRetries != 9 {
+	if c := mustNew(t, Config{MaxRetries: 9}); c.transport.maxRetries != 9 {
 		t.Fatalf("maxRetries = %d, want 9", c.transport.maxRetries)
 	}
-	if c := New(); c.transport.maxRetries != DefaultMaxRetries {
+	if c := mustNew(t, Config{}); c.transport.maxRetries != DefaultMaxRetries {
 		t.Fatalf("default maxRetries = %d, want %d", c.transport.maxRetries, DefaultMaxRetries)
 	}
-	if c := New(WithMaxRetries(0)); c.transport.maxRetries != DefaultMaxRetries {
+	if c := mustNew(t, Config{MaxRetries: 0}); c.transport.maxRetries != DefaultMaxRetries {
 		t.Fatalf("n<=0 should be ignored, got %d", c.transport.maxRetries)
 	}
 }
 
 func TestWithMaxRetryAfter(t *testing.T) {
-	if c := New(WithMaxRetryAfter(30 * time.Second)); c.transport.maxRetryAfter != 30*time.Second {
+	if c := mustNew(t, Config{MaxRetryAfter: 30 * time.Second}); c.transport.maxRetryAfter != 30*time.Second {
 		t.Fatalf("maxRetryAfter = %v, want 30s", c.transport.maxRetryAfter)
 	}
-	if c := New(); c.transport.maxRetryAfter != DefaultMaxRetryAfter {
+	if c := mustNew(t, Config{}); c.transport.maxRetryAfter != DefaultMaxRetryAfter {
 		t.Fatalf("default maxRetryAfter = %v, want %v", c.transport.maxRetryAfter, DefaultMaxRetryAfter)
 	}
-	if c := New(WithMaxRetryAfter(0)); c.transport.maxRetryAfter != DefaultMaxRetryAfter {
+	if c := mustNew(t, Config{MaxRetryAfter: 0}); c.transport.maxRetryAfter != DefaultMaxRetryAfter {
 		t.Fatalf("d<=0 should be ignored, got %v", c.transport.maxRetryAfter)
 	}
 }
