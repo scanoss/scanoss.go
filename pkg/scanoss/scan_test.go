@@ -134,11 +134,11 @@ func TestScanUploadAndPoll(t *testing.T) {
 	c := newTestClient(t, mock.handler())
 
 	var gotID string
-	c.onScanID = func(id string) { gotID = id }
 
 	wfp := []byte("0123456789abc") // 13 bytes → ceil(13/4)=4 chunks
 	// WithChunkBytes(4) per-call override forces several chunks.
-	res, err := c.Scan.WFP(context.Background(), wfp, WithChunkBytes(4))
+	res, err := c.Scan.WFP(context.Background(), wfp, WithChunkBytes(4),
+		WithScanIDNotify(func(id string) { gotID = id }))
 	if err != nil {
 		t.Fatalf("Scan: %v", err)
 	}
@@ -185,9 +185,9 @@ func TestScanChunkCarriesClientID(t *testing.T) {
 	c := newTestClient(t, mock.handler())
 
 	var gotID string
-	c.onScanID = func(id string) { gotID = id }
 
-	if _, err := c.Scan.WFP(context.Background(), []byte("abc")); err != nil {
+	notify := WithScanIDNotify(func(id string) { gotID = id })
+	if _, err := c.Scan.WFP(context.Background(), []byte("abc"), notify); err != nil {
 		t.Fatalf("Scan: %v", err)
 	}
 	if got := atomic.LoadInt32(&mock.missingIDPOST); got != 0 {
@@ -208,10 +208,10 @@ func TestScanNotifyAfterUpload(t *testing.T) {
 	c := newTestClient(t, mock.handler())
 
 	var uploadsAtNotify int32
-	c.onScanID = func(string) { uploadsAtNotify = atomic.LoadInt32(&mock.uploads) }
+	notify := WithScanIDNotify(func(string) { uploadsAtNotify = atomic.LoadInt32(&mock.uploads) })
 
 	wfp := []byte("0123456789abc") // 13 bytes → ceil(13/4)=4 chunks
-	if _, err := c.Scan.WFP(context.Background(), wfp, WithChunkBytes(4)); err != nil {
+	if _, err := c.Scan.WFP(context.Background(), wfp, WithChunkBytes(4), notify); err != nil {
 		t.Fatalf("Scan: %v", err)
 	}
 	if got := atomic.LoadInt32(&mock.uploads); got != 4 {
@@ -233,9 +233,9 @@ func TestScanNoNotifyOnFailedUpload(t *testing.T) {
 	c := mustNew(t, Config{APIURL: srv.URL})
 
 	notified := false
-	c.onScanID = func(string) { notified = true }
+	notify := WithScanIDNotify(func(string) { notified = true })
 
-	if _, err := c.Scan.WFP(context.Background(), []byte("abc")); err == nil {
+	if _, err := c.Scan.WFP(context.Background(), []byte("abc"), notify); err == nil {
 		t.Fatal("want upload error, got nil")
 	}
 	if notified {

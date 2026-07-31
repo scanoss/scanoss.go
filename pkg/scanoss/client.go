@@ -44,9 +44,9 @@
 //
 //	res, err := client.Scan.WFP(ctx, wfp) // upload (parallel chunks) + poll
 //
-// Per-call tuning stays a functional option: WithChunkBytes for the upload block
-// size, WithScanReporter for progress. Config.OnScanID captures the
-// client-generated scan id for optional recovery via Scan.Wait.
+// Per-call tuning stays a functional option: WithChunkBytes for the upload block size,
+// WithScanReporter for progress, WithScanIDNotify to capture the scan id for optional
+// recovery via Scan.Wait.
 package scanoss
 
 import (
@@ -86,7 +86,6 @@ type Client struct {
 	// shared by every decoration service.
 	chunkSize int
 	workers   int
-	onScanID  func(string)
 	// log receives the SDK's diagnostic logging (WithLogger); defaults to
 	// slog.Default(). The SDK never writes to stdout, only through this logger.
 	log *slog.Logger
@@ -127,10 +126,6 @@ type Config struct {
 	// DefaultTimeout). A negative value disables it. Retry-After waits happen between
 	// attempts, so this does not cut them short.
 	Timeout time.Duration
-	// HTTPClient replaces the SDK's own client wholesale, for a caller that needs
-	// transport behaviour the fields above do not cover. It takes precedence over
-	// Proxy, CACertFile and InsecureTLS.
-	HTTPClient *http.Client
 
 	// ChunkSize is the number of PURLs per decoration request (default
 	// DefaultChunkSize), shared by every decoration service.
@@ -148,17 +143,11 @@ type Config struct {
 	// Logger receives the SDK's diagnostics, at Debug/Info/Warn (default
 	// slog.Default()). The SDK never writes to stdout, only through this logger.
 	Logger *slog.Logger
-	// OnScanID is called once with the client-generated scan id, after the full WFP has
-	// been uploaded and before polling begins — the point from which Scan.Wait can
-	// resume it. Optional; a normal scan needs no recovery.
-	OnScanID func(scanID string)
 }
 
-// httpClient returns the caller's HTTPClient, or builds one from the transport fields.
+// httpClient builds the client for the transport. The SDK owns it: Config carries the
+// settings, never a client of the caller's own.
 func (cfg Config) httpClient() (*http.Client, error) {
-	if cfg.HTTPClient != nil {
-		return cfg.HTTPClient, nil
-	}
 	// With nothing to customise, leave Transport nil so the client shares
 	// http.DefaultTransport, and with it one connection pool per process rather than a
 	// private pool per client.
@@ -203,7 +192,6 @@ func New(cfg Config) (*Client, error) {
 		apiURL:    apiURL,
 		chunkSize: positiveOr(cfg.ChunkSize, DefaultChunkSize),
 		workers:   positiveOr(cfg.Workers, DefaultWorkers),
-		onScanID:  cfg.OnScanID,
 		log:       logger,
 		transport: &httpTransport{
 			httpClient:    httpClient,

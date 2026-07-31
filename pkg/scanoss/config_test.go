@@ -24,7 +24,6 @@
 package scanoss
 
 import (
-	"net/http"
 	"testing"
 	"time"
 )
@@ -137,23 +136,6 @@ func TestConfigTimeout(t *testing.T) {
 				t.Errorf("Timeout = %v, want %v", got, tc.want)
 			}
 		})
-	}
-}
-
-// A caller who brings their own client owns its timeout: the SDK does not overwrite it.
-func TestConfigHTTPClientKeepsItsOwnTimeout(t *testing.T) {
-	c := mustNew(t, Config{HTTPClient: &http.Client{Timeout: time.Second}, Timeout: time.Hour})
-	if c.transport.httpClient.Timeout != time.Second {
-		t.Errorf("Timeout = %v, want the supplied client's 1s", c.transport.httpClient.Timeout)
-	}
-}
-
-// HTTPClient takes precedence over the transport fields.
-func TestConfigHTTPClientWins(t *testing.T) {
-	mine := &http.Client{}
-	c := mustNew(t, Config{HTTPClient: mine, InsecureTLS: true, Proxy: "http://proxy.example.com:8080"})
-	if c.transport.httpClient != mine {
-		t.Error("httpClient is not the one supplied in Config.HTTPClient")
 	}
 }
 

@@ -30,6 +30,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/scanoss/scanoss.go/internal/cliconfig"
 	"github.com/scanoss/scanoss.go/internal/config"
 	"github.com/scanoss/scanoss.go/pkg/filter"
 	"github.com/scanoss/scanoss.go/pkg/output"
@@ -408,7 +409,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 
 	prog := &scanProgress{}
-	client, err := buildScanClient(cmd, prog)
+	client, err := buildScanClient(cmd)
 	if err != nil {
 		return err
 	}
@@ -432,7 +433,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 		Threads:            threads,
 		Filter:             collectOpts,
 		DependencySettings: scanSettings.DependencyFilter(),
-		ScanOptions:        scanTuning(cmd, scanSettings),
+		ScanOptions:        scanTuning(cmd, scanSettings, prog),
 		OnProgress:         prog.layer,
 	})
 	prog.finish()
@@ -501,7 +502,7 @@ func runScanWFP(cmd *cobra.Command, args []string) error {
 	}
 
 	prog := &scanProgress{}
-	client, err := buildScanClient(cmd, prog)
+	client, err := buildScanClient(cmd)
 	if err != nil {
 		return err
 	}
@@ -513,7 +514,7 @@ func runScanWFP(cmd *cobra.Command, args []string) error {
 	// follows. Without it this path draws the enrichment bars and nothing for the scan itself.
 	rep := scanpipeline.NewReporter(prog.layer)
 
-	scanOpts := append(scanTuning(cmd, scanSettings), scanoss.WithScanReporter(rep))
+	scanOpts := append(scanTuning(cmd, scanSettings, prog), scanoss.WithScanReporter(rep))
 	res, err := client.Scan.WFP(ctx, wfp, scanOpts...)
 	if err != nil {
 		return renderAPIError(fmt.Errorf("scan failed: %w", err))
@@ -530,34 +531,39 @@ func runScanWFP(cmd *cobra.Command, args []string) error {
 	return emitInventory(cmd, inv, wfpPath)
 }
 
-// buildScanClient constructs the SDK client from the shared scan flags. Progress is not wired
-// here: reporters travel with each call, so a caller registers one when it makes the call. The
-// only hook this attaches is the scan-id notification.
-func buildScanClient(cmd *cobra.Command, prog *scanProgress) (*scanoss.Client, error) {
+// buildScanClient constructs the SDK client from the shared scan flags. Nothing per-call is
+// wired here: reporters and the scan-id notification travel with the call, so a caller
+// registers them where it makes it — see scanTuning.
+func buildScanClient(cmd *cobra.Command) (*scanoss.Client, error) {
 	cfg, err := apiConfig(cmd)
 	if err != nil {
 		return nil, err
 	}
-	cfg.OnScanID = func(id string) {
-		prog.writeLine("") // separate the scan-id block from the filter/skip notices above
-		prog.writeLine(infoLine("Scan id: %s", id))
-		// The resume hint carries the resolved endpoint, so it still works in a
-		// shell without the environment variable that produced it.
-		prog.writeLine("  If interrupted, resume with:\n  " + buildResultsCommand(id, cfg.APIURL, cfg.APIKey))
-		prog.writeLine("") // separate the resume hint from the progress bars below
-	}
 	return scanoss.New(cfg)
 }
 
-// scanTuning builds the per-scan options (chunk size, poll interval, and bom.remove) from the
-// flags and settings.
-func scanTuning(cmd *cobra.Command, scanSettings *settings.Settings) []scanoss.ScanOption {
+// scanTuning builds the per-scan options — chunk size, poll interval, bom.remove, and the
+// scan-id notice — from the flags and settings.
+func scanTuning(cmd *cobra.Command, scanSettings *settings.Settings, prog *scanProgress) []scanoss.ScanOption {
 	chunkSize, _ := cmd.Flags().GetInt("chunk-size")
 	pollInterval, _ := cmd.Flags().GetDuration("poll-interval")
 	if chunkSize < 1024 {
 		chunkSize = scanoss.DefaultScanChunkBytes
 	}
-	scanOpts := []scanoss.ScanOption{scanoss.WithChunkBytes(chunkSize), scanoss.WithPollInterval(pollInterval)}
+	api, _ := cliconfig.ResolveAPI(cmd.Flags())
+
+	scanOpts := []scanoss.ScanOption{
+		scanoss.WithChunkBytes(chunkSize),
+		scanoss.WithPollInterval(pollInterval),
+		scanoss.WithScanIDNotify(func(id string) {
+			prog.writeLine("") // separate the scan-id block from the filter/skip notices above
+			prog.writeLine(infoLine("Scan id: %s", id))
+			// The resume hint carries the resolved endpoint, so it still works in a
+			// shell without the environment variable that produced it.
+			prog.writeLine("  If interrupted, resume with:\n  " + buildResultsCommand(id, api.URL, api.Key))
+			prog.writeLine("") // separate the resume hint from the progress bars below
+		}),
+	}
 	if scanSettings != nil && scanSettings.HasBOM() {
 		scanOpts = append(scanOpts, scanoss.WithBOM(&scanSettings.BOM))
 	}

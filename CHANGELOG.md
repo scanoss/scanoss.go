@@ -33,6 +33,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   client, err := scanoss.New(scanoss.Config{APIKey: key, Workers: 10})
   ```
 
+  `Config` carries settings only — no pre-built `*http.Client`. Proxy, CA file, insecure
+  TLS and the timeout are fields, and `New` builds the client from them. mTLS and custom
+  round trippers are not reachable for now; ask and they get a field.
+
+  The scan-id notification moved to where the scan happens: `WithScanIDNotify` is a
+  `ScanOption` passed to `Scan.Folder`/`Files`/`WFP`, not a client-wide setting. A client
+  no longer carries state belonging to one call.
+
 - **A request is now bounded by a 120s timeout** (`Config.Timeout` to change it, a
   negative value to disable it). Connecting and the TLS handshake were already bounded by
   Go's defaults, and a caller passing a context with a deadline was already covered; what
