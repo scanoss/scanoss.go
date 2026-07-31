@@ -24,11 +24,9 @@
 package scanoss
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/url"
 )
 
@@ -229,15 +227,7 @@ func (c *Client) decorateOne(ctx context.Context, svc Service, comp Component, o
 // raw body in a *Result. It is the single-shot GET path shared by decorateOne and
 // by non-component GET endpoints (e.g. license details/obligations).
 func (c *Client) getResult(ctx context.Context, endpoint string, query url.Values) (*Result, error) {
-	u := c.apiURL + endpoint
-	if len(query) > 0 {
-		u += "?" + query.Encode()
-	}
-	req, err := http.NewRequest(http.MethodGet, u, nil)
-	if err != nil {
-		return nil, fmt.Errorf("error creating request: %w", err)
-	}
-	body, _, err := c.transport.do(ctx, req)
+	body, err := c.get(ctx, endpoint, query)
 	if err != nil {
 		return nil, err
 	}
@@ -247,17 +237,8 @@ func (c *Client) getResult(ctx context.Context, endpoint string, query url.Value
 // postComponents sends one chunk of components as a ComponentsRequest body (POST)
 // and returns the raw response. Used by the batch engine (decorate).
 func (c *Client) postComponents(ctx context.Context, endpoint string, components []Component) (json.RawMessage, error) {
-	body, err := json.Marshal(componentsRequest{Components: components})
-	if err != nil {
-		return nil, fmt.Errorf("error marshaling request body: %w", err)
-	}
-	req, err := http.NewRequest(http.MethodPost, c.apiURL+endpoint, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("error creating request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	b, _, err := c.transport.do(ctx, req)
-	return json.RawMessage(b), err
+	body, err := c.postJSON(ctx, endpoint, componentsRequest{Components: components})
+	return json.RawMessage(body), err
 }
 
 // chunk splits components into batches of at most size. size <= 0 yields a

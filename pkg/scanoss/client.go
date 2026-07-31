@@ -49,8 +49,14 @@
 package scanoss
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -233,4 +239,46 @@ func New(opts ...Option) *Client {
 	c.Dependencies = dependencyService{c}
 	c.Scan = scanService{c}
 	return c
+}
+
+// newRequest builds a request against endpoint, resolved relative to the API base
+// URL. Every request the SDK sends is built here, so the base URL is joined — and the
+// failure wrapped — in one place.
+func (c *Client) newRequest(method, endpoint string, body io.Reader) (*http.Request, error) {
+	req, err := http.NewRequest(method, c.apiURL+endpoint, body)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %w", err)
+	}
+	return req, nil
+}
+
+// get issues a GET to endpoint with the given query parameters and returns the raw
+// response body. The body is returned even on error, so a caller can report what the
+// server said.
+func (c *Client) get(ctx context.Context, endpoint string, query url.Values) ([]byte, error) {
+	if len(query) > 0 {
+		endpoint += "?" + query.Encode()
+	}
+	req, err := c.newRequest(http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	respBody, _, err := c.transport.do(ctx, req)
+	return respBody, err
+}
+
+// postJSON sends payload as the JSON body of a POST to endpoint and returns the raw
+// response body, which is returned even on error for the same reason as in get.
+func (c *Client) postJSON(ctx context.Context, endpoint string, payload any) ([]byte, error) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling request body: %w", err)
+	}
+	req, err := c.newRequest(http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	respBody, _, err := c.transport.do(ctx, req)
+	return respBody, err
 }

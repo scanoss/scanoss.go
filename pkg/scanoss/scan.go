@@ -28,7 +28,6 @@ import (
 	"fmt"
 
 	scanossapi "github.com/scanoss/scanoss.api-sdk"
-	"net/http"
 	"sync"
 	"time"
 
@@ -327,12 +326,7 @@ func (s scanService) Status(ctx context.Context, scanID string) (scanossapi.Scan
 	if scanID == "" {
 		return scanossapi.ScanEnvelope{}, fmt.Errorf("no scan id")
 	}
-	pollURL := s.c.apiURL + ServiceScan.endpoint + "/" + scanID
-	req, err := http.NewRequest(http.MethodGet, pollURL, nil)
-	if err != nil {
-		return scanossapi.ScanEnvelope{}, fmt.Errorf("error creating request: %w", err)
-	}
-	body, _, err := s.c.transport.do(ctx, req)
+	body, err := s.c.get(ctx, ServiceScan.endpoint+"/"+scanID, nil)
 	if err != nil {
 		return scanossapi.ScanEnvelope{}, err
 	}

@@ -24,11 +24,9 @@
 package scanoss
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 
 	scanossapi "github.com/scanoss/scanoss.api-sdk"
 )
@@ -98,16 +96,7 @@ func (s dependencyService) Transitive(ctx context.Context, comps []Component, de
 	if limit > 0 {
 		reqBody.Limit = &limit
 	}
-	body, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, fmt.Errorf("error marshaling request body: %w", err)
-	}
-	req, err := http.NewRequest(http.MethodPost, s.c.apiURL+ServiceTransitive.endpoint, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("error creating request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	raw, _, err := s.c.transport.do(ctx, req)
+	raw, err := s.c.postJSON(ctx, ServiceTransitive.endpoint, reqBody)
 	if err != nil {
 		return nil, err
 	}
