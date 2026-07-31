@@ -80,7 +80,7 @@ func (c *Client) uploadChunk(ctx context.Context, scanID string, off, end, total
 	req.Header.Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", off, end, total))
 	req.Header.Set("X-Scan-Id", scanID)
 
-	if _, _, err := c.transport.do(ctx, req); err != nil {
+	if _, err := c.transport.do(ctx, req); err != nil {
 		return fmt.Errorf("chunk %d-%d/%d: %w", off, end, total, err)
 	}
 	return nil

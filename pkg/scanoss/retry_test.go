@@ -92,12 +92,12 @@ func TestTransportRetriesOn429(t *testing.T) {
 	tr := &httpTransport{httpClient: srv.Client(), maxRetries: 3, maxRetryAfter: DefaultMaxRetryAfter}
 	req, _ := http.NewRequest(http.MethodGet, srv.URL, nil)
 	start := time.Now()
-	body, r, err := tr.do(context.Background(), req)
+	res, err := tr.do(context.Background(), req)
 	if err != nil {
 		t.Fatalf("do: %v", err)
 	}
-	if r.StatusCode != http.StatusOK || string(body) != `{"ok":true}` {
-		t.Fatalf("status=%d body=%s", r.StatusCode, body)
+	if res.StatusCode != http.StatusOK || string(res.Body) != `{"ok":true}` {
+		t.Fatalf("status=%d body=%s", res.StatusCode, res.Body)
 	}
 	if got := atomic.LoadInt32(&hits); got != 2 {
 		t.Fatalf("hits = %d, want 2 (one retry)", got)
@@ -127,7 +127,7 @@ func TestTransportReplaysBodyOnRetry(t *testing.T) {
 
 	tr := &httpTransport{httpClient: srv.Client(), maxRetries: 3, maxRetryAfter: DefaultMaxRetryAfter}
 	req, _ := http.NewRequest(http.MethodPost, srv.URL, bytes.NewReader([]byte("payload")))
-	if _, _, err := tr.do(context.Background(), req); err != nil {
+	if _, err := tr.do(context.Background(), req); err != nil {
 		t.Fatalf("do: %v", err)
 	}
 	mu.Lock()
@@ -148,12 +148,12 @@ func TestTransportMaxRetriesExhausted(t *testing.T) {
 
 	tr := &httpTransport{httpClient: srv.Client(), maxRetries: 2, maxRetryAfter: DefaultMaxRetryAfter}
 	req, _ := http.NewRequest(http.MethodGet, srv.URL, nil)
-	_, r, err := tr.do(context.Background(), req)
+	res, err := tr.do(context.Background(), req)
 	if err == nil {
 		t.Fatal("want error after exhausting retries")
 	}
-	if r == nil || r.StatusCode != http.StatusTooManyRequests {
-		t.Fatalf("want last 429 response, got %v", r)
+	if res.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("want last 429 response, got status %d", res.StatusCode)
 	}
 	if got := atomic.LoadInt32(&hits); got != 3 { // initial + 2 retries
 		t.Fatalf("hits = %d, want 3", got)
@@ -172,7 +172,7 @@ func TestTransportCtxCancelDuringWait(t *testing.T) {
 	go func() { time.Sleep(50 * time.Millisecond); cancel() }()
 
 	req, _ := http.NewRequest(http.MethodGet, srv.URL, nil)
-	if _, _, err := tr.do(ctx, req); err == nil {
+	if _, err := tr.do(ctx, req); err == nil {
 		t.Fatal("want ctx error while waiting on Retry-After")
 	}
 }

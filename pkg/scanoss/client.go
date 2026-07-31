@@ -253,8 +253,11 @@ func (c *Client) newRequest(method, endpoint string, body io.Reader) (*http.Requ
 }
 
 // get issues a GET to endpoint with the given query parameters and returns the raw
-// response body. The body is returned even on error, so a caller can report what the
-// server said.
+// response body.
+//
+// The status is the transport's business: a non-2xx has already become a *StatusError
+// by the time this returns, so err alone tells the caller the call failed. The body
+// comes back even then, so the caller can report what the server said.
 func (c *Client) get(ctx context.Context, endpoint string, query url.Values) ([]byte, error) {
 	if len(query) > 0 {
 		endpoint += "?" + query.Encode()
@@ -263,12 +266,12 @@ func (c *Client) get(ctx context.Context, endpoint string, query url.Values) ([]
 	if err != nil {
 		return nil, err
 	}
-	respBody, _, err := c.transport.do(ctx, req)
-	return respBody, err
+	res, err := c.transport.do(ctx, req)
+	return res.Body, err
 }
 
 // postJSON sends payload as the JSON body of a POST to endpoint and returns the raw
-// response body, which is returned even on error for the same reason as in get.
+// response body. Status handling and the body-on-error rule are the same as in get.
 func (c *Client) postJSON(ctx context.Context, endpoint string, payload any) ([]byte, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -279,6 +282,6 @@ func (c *Client) postJSON(ctx context.Context, endpoint string, payload any) ([]
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	respBody, _, err := c.transport.do(ctx, req)
-	return respBody, err
+	res, err := c.transport.do(ctx, req)
+	return res.Body, err
 }
