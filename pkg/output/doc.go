@@ -22,6 +22,5 @@
  */
 
 // Package output writes scan output to a file or, when no path is given, to stdout.
-// Writer wraps the destination (handling creation and closing), and MergeJSONResults
-// combines multiple API JSON responses into a single JSON object.
+// Writer wraps the destination, handling creation and closing.
 package output

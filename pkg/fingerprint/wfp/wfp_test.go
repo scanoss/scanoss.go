@@ -58,6 +58,102 @@ func TestGenerateFingerprintGolden(t *testing.T) {
 	}
 }
 
+// The returned struct is what every later stage reads: Size is the byte count, Hash is
+// the CRC64 as 16 hex digits, and the "file=" line repeats both.
+func TestGenerateFingerprintFields(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "a.c")
+	content := "int main(void) { return 0; }\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	fp, err := GenerateFingerprint(path, dir)
+	if err != nil {
+		t.Fatalf("GenerateFingerprint: %v", err)
+	}
+	if fp.Size != len(content) {
+		t.Errorf("Size = %d, want %d", fp.Size, len(content))
+	}
+	if len(fp.Hash) != 16 {
+		t.Errorf("Hash = %q, want 16 hex digits", fp.Hash)
+	}
+	if want := fmt.Sprintf("file=%s,%d,a.c\n", fp.Hash, fp.Size); !strings.HasPrefix(fp.Fingerprint, want) {
+		t.Errorf("first line = %q, want prefix %q", fp.Fingerprint, want)
+	}
+}
+
+// root decides what the "file=" label says. The scan result reports these paths, so an
+// empty root has to leave the path the caller passed untouched.
+func TestGenerateFingerprintRootLabel(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "src", "lib"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	path := filepath.Join(dir, "src", "lib", "a.c")
+	if err := os.WriteFile(path, []byte("int a;\n"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	for name, tc := range map[string]struct{ root, want string }{
+		"relative to root":                   {dir, "src/lib/a.c"},
+		"empty root keeps the path as given": {"", path},
+		"root below the file still resolves": {filepath.Join(dir, "src"), "lib/a.c"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			fp, err := GenerateFingerprint(path, tc.root)
+			if err != nil {
+				t.Fatalf("GenerateFingerprint: %v", err)
+			}
+			if fp.Path != tc.want {
+				t.Errorf("Path = %q, want %q", fp.Path, tc.want)
+			}
+			if !strings.Contains(fp.Fingerprint, ","+tc.want+"\n") {
+				t.Errorf("file= line does not carry %q:\n%s", tc.want, firstLine(fp.Fingerprint))
+			}
+		})
+	}
+}
+
+// An empty file has no minutiae, but it still produces its file= line: collection
+// decided it was worth fingerprinting, and this stage does not second-guess that.
+func TestGenerateFingerprintEmptyFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "empty.c")
+	if err := os.WriteFile(path, nil, 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	fp, err := GenerateFingerprint(path, dir)
+	if err != nil {
+		t.Fatalf("GenerateFingerprint: %v", err)
+	}
+	if fp.Size != 0 {
+		t.Errorf("Size = %d, want 0", fp.Size)
+	}
+	if lines := strings.Count(fp.Fingerprint, "\n"); lines != 1 {
+		t.Errorf("want only the file= line, got %d lines:\n%s", lines, fp.Fingerprint)
+	}
+}
+
+func TestGenerateFingerprintUnreadableFile(t *testing.T) {
+	_, err := GenerateFingerprint(filepath.Join(t.TempDir(), "missing.c"), "")
+	if err == nil {
+		t.Fatal("GenerateFingerprint succeeded on a missing file, want an error")
+	}
+	if !strings.Contains(err.Error(), "error reading file") {
+		t.Errorf("error = %q, want it to name the read failure", err)
+	}
+}
+
+// firstLine is the "file=" header, for failure messages that do not need the minutiae.
+func firstLine(wfp string) string {
+	if i := strings.IndexByte(wfp, '\n'); i >= 0 {
+		return wfp[:i]
+	}
+	return wfp
+}
+
 // BenchmarkGenerateFingerprint measures fingerprinting a large source file — the
 // per-file scan hot path. The fixture is big enough to exercise the fingerprint
 // assembly (many winnowing minutiae).

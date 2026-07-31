@@ -28,7 +28,6 @@ import (
 	"os"
 	"sync"
 
-	"github.com/scanoss/scanoss.go/pkg/batch"
 	"github.com/scanoss/scanoss.go/pkg/filter"
 	fingerprint "github.com/scanoss/scanoss.go/pkg/fingerprint/wfp"
 )
@@ -170,5 +169,5 @@ func GenerateWFP(files []string, workers int, root string, onProgress func(done,
 	}
 	errWg.Wait()
 
-	return []byte(batch.CombineFingerprints(fps)), errs
+	return []byte(fingerprint.CombineFingerprints(fps)), errs
 }

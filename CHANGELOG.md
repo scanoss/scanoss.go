@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **`pkg/api` and `pkg/batch` are gone.** They were a second, weaker transport stack — no
+  context, no retries, no timeout — used only by the C bindings, which now go through
+  `pkg/scanoss` like the CLI and the SDK. `CombineFingerprints` moved to
+  `pkg/fingerprint/wfp`, beside the type it operates on; `output.MergeJSONResults` went
+  with the pipeline that used it.
+
 ### Changed
 
 - **The SDK client is configured with a `scanoss.Config` struct.** `scanoss.New` now
