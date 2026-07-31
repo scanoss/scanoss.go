@@ -69,9 +69,13 @@ type response struct {
 	Header http.Header
 }
 
-// do attaches the context, applies authentication, executes the request, and returns
-// the fully read response. Any status outside 2xx becomes a *StatusError, which
-// carries the code for callers that need to branch on it.
+// do attaches the context, applies authentication, executes the request and returns
+// the fully read response.
+//
+// It reports what came back without judging it: any status, 4xx and 5xx included, is
+// returned with a nil error. Whether a status counts as a failure is an API-level
+// decision and belongs to Client.do. A non-nil error here means no response was
+// obtained at all — the network failed, or the body could not be rewound or read.
 //
 // On 429 Too Many Requests or 503 Service Unavailable carrying a Retry-After
 // header, it waits the server-indicated time (clamped to maxRetryAfter) and
@@ -125,11 +129,6 @@ func (t *httpTransport) do(ctx context.Context, req *http.Request) (response, er
 			continue
 		}
 
-		// Any 2xx is success. Restricting this to 200/202 turned a 201 Created or a
-		// 204 No Content into an error.
-		if resp.StatusCode < 200 || resp.StatusCode > 299 {
-			return result, &StatusError{StatusCode: resp.StatusCode, Body: string(respBody)}
-		}
 		return result, nil
 	}
 }

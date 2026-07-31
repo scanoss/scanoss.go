@@ -149,8 +149,10 @@ func TestTransportMaxRetriesExhausted(t *testing.T) {
 	tr := &httpTransport{httpClient: srv.Client(), maxRetries: 2, maxRetryAfter: DefaultMaxRetryAfter}
 	req, _ := http.NewRequest(http.MethodGet, srv.URL, nil)
 	res, err := tr.do(context.Background(), req)
-	if err == nil {
-		t.Fatal("want error after exhausting retries")
+	// The transport hands back the 429 it ended up with and no error: turning a status
+	// into a failure is Client.do's decision, not the transport's.
+	if err != nil {
+		t.Fatalf("do: %v", err)
 	}
 	if res.StatusCode != http.StatusTooManyRequests {
 		t.Fatalf("want last 429 response, got status %d", res.StatusCode)

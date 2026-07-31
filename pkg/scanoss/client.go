@@ -252,12 +252,29 @@ func (c *Client) newRequest(method, endpoint string, body io.Reader) (*http.Requ
 	return req, nil
 }
 
+// do sends req through the transport and turns an unacceptable status into an error.
+// Any 2xx is success — restricting this to 200/202 used to turn a 201 Created or a
+// 204 No Content into a failure.
+//
+// Deciding which statuses are failures is an API-level call, so it is made here rather
+// than in the transport, which only reports what came back. Every response the SDK
+// receives passes through this method.
+func (c *Client) do(ctx context.Context, req *http.Request) (response, error) {
+	res, err := c.transport.do(ctx, req)
+	if err != nil {
+		return res, err
+	}
+	if res.StatusCode < 200 || res.StatusCode > 299 {
+		return res, &StatusError{StatusCode: res.StatusCode, Body: string(res.Body)}
+	}
+	return res, nil
+}
+
 // get issues a GET to endpoint with the given query parameters and returns the raw
 // response body.
 //
-// The status is the transport's business: a non-2xx has already become a *StatusError
-// by the time this returns, so err alone tells the caller the call failed. The body
-// comes back even then, so the caller can report what the server said.
+// err alone tells the caller the call failed, status included — see do. The body comes
+// back even then, so the caller can report what the server said.
 func (c *Client) get(ctx context.Context, endpoint string, query url.Values) ([]byte, error) {
 	if len(query) > 0 {
 		endpoint += "?" + query.Encode()
@@ -266,7 +283,7 @@ func (c *Client) get(ctx context.Context, endpoint string, query url.Values) ([]
 	if err != nil {
 		return nil, err
 	}
-	res, err := c.transport.do(ctx, req)
+	res, err := c.do(ctx, req)
 	return res.Body, err
 }
 
@@ -282,6 +299,6 @@ func (c *Client) postJSON(ctx context.Context, endpoint string, payload any) ([]
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	res, err := c.transport.do(ctx, req)
+	res, err := c.do(ctx, req)
 	return res.Body, err
 }
