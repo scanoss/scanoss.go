@@ -106,7 +106,7 @@ func TestServiceMethodsForwardTheirOptions(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			rep := &countingReporter{}
-			client := New(WithAPIURL(srv.URL), WithChunkSize(10), WithWorkers(3))
+			client := mustNew(t, Config{APIURL: srv.URL, ChunkSize: 10, Workers: 3})
 			if err := call(client, rep); err != nil {
 				t.Fatalf("call returned error: %v", err)
 			}
@@ -134,7 +134,7 @@ func TestScanWFPReportsItsStages(t *testing.T) {
 	defer srv.Close()
 
 	rep := &stageRecorder{}
-	client := New(WithAPIURL(srv.URL))
+	client := mustNew(t, Config{APIURL: srv.URL})
 	if _, err := client.Scan.WFP(context.Background(), []byte("file=abc,10,a.c\n"),
 		WithScanReporter(rep), WithPollInterval(10_000_000)); err != nil {
 		t.Fatalf("WFP: %v", err)

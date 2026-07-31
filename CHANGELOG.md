@@ -5,6 +5,30 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-07-31
+
+### Fixed
+
+- **A component's `rank`, `release_date` and `artifact_name` reach the inventory.** All three
+  were dropped, so two components matching the same file looked equally strong.
+- **A request is bounded by a 120s timeout** (`Config.Timeout`; negative disables it).
+  Waiting for a server that accepted the request and went quiet had no bound before.
+- **Any 2xx counts as success.** A `201` or `204` used to surface as an error.
+
+### Removed
+
+- **The `attributions` command** — `POST /sbom/attribution` is not in the v3 contract.
+  Use `licenses attribution`.
+- **`pkg/api` and `pkg/batch`** — a second transport stack with no context, retries or
+  timeout, used only by the C bindings, which now go through `pkg/scanoss`.
+- **`scanoss.NewHTTPClient` and `scanoss.HTTPClientOptions`** are now private.
+
+### Changed
+
+- **`scanoss.New(Config) (*Client, error)`** replaces `scanoss.Option` and the `With*`
+  client options; `Proxy`, `CACertFile`, `InsecureTLS` and `Timeout` are now fields.
+- **`WithScanIDNotify` is a `ScanOption`**, passed to the scan call, not to the client.
+
 ## [0.5.0] - 2026-07-30
 
 ### Added
@@ -170,6 +194,7 @@ Initial release of the SCANOSS Go CLI and SDK (`scanoss`).
   CycloneDX and SPDX (with `WithTool`/`WithAuthor`/`WithTimestamp` document-metadata options).
 - **C shared library** (`libscanoss`) with Node.js and Python bindings.
 
+[0.6.0]: https://github.com/scanoss/scanoss.go/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/scanoss/scanoss.go/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/scanoss/scanoss.go/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/scanoss/scanoss.go/compare/v0.2.0...v0.3.0

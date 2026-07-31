@@ -25,18 +25,23 @@ package main
 
 import "C"
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 
 	"github.com/scanoss/scanoss.go/internal/version"
-	"github.com/scanoss/scanoss.go/pkg/api"
-	"github.com/scanoss/scanoss.go/pkg/batch"
 	"github.com/scanoss/scanoss.go/pkg/filter"
 	wfpPkg "github.com/scanoss/scanoss.go/pkg/fingerprint/wfp"
-	"github.com/scanoss/scanoss.go/pkg/output"
 	"github.com/scanoss/scanoss.go/pkg/scanner"
+	"github.com/scanoss/scanoss.go/pkg/scanoss"
 )
+
+// errorJSON renders err in the shape every export uses to report a failure.
+func errorJSON(err error) *C.char {
+	payload, _ := json.Marshal(map[string]string{"error": err.Error()})
+	return C.CString(string(payload))
+}
 
 // skipFile applies the scanning rules to a single path. These entry points
 // fingerprint one file at a time without collecting a tree, so they are the one
@@ -82,14 +87,12 @@ func GenerateWFPJSON(filePath *C.char) *C.char {
 
 	fp, err := wfpPkg.GenerateFingerprint(goFilePath, "")
 	if err != nil {
-		errJSON, _ := json.Marshal(map[string]string{"error": err.Error()})
-		return C.CString(string(errJSON))
+		return errorJSON(err)
 	}
 
 	jsonData, err := json.Marshal(fp)
 	if err != nil {
-		errJSON, _ := json.Marshal(map[string]string{"error": err.Error()})
-		return C.CString(string(errJSON))
+		return errorJSON(err)
 	}
 
 	return C.CString(string(jsonData))
@@ -103,87 +106,45 @@ func CollectFiles(path *C.char) *C.char {
 
 	files, err := scanner.CollectFiles(goPath)
 	if err != nil {
-		errJSON, _ := json.Marshal(map[string]string{"error": err.Error()})
-		return C.CString(string(errJSON))
+		return errorJSON(err)
 	}
 
 	jsonData, err := json.Marshal(files)
 	if err != nil {
-		errJSON, _ := json.Marshal(map[string]string{"error": err.Error()})
-		return C.CString(string(errJSON))
+		return errorJSON(err)
 	}
 
 	return C.CString(string(jsonData))
 }
 
-// Scan performs a complete scan: collects files, generates fingerprints, and sends to API
+// Scan performs a complete scan of path: collects files, fingerprints them with threads
+// workers, uploads the WFP in postSize-byte chunks and waits for the report.
+//
+// Unlike the hand-rolled pipeline this replaced, a failed upload is now an error rather
+// than a skipped chunk, so a partial scan no longer reports success.
 //
 //export Scan
 func Scan(path *C.char, apiURL *C.char, apiKey *C.char, threads C.int, postSize C.int) *C.char {
-	goPath := C.GoString(path)
-	goAPIURL := C.GoString(apiURL)
-	goAPIKey := C.GoString(apiKey)
-	goThreads := int(threads)
-	goPostSize := int(postSize)
-
-	// Collect files
-	files, err := scanner.CollectFiles(goPath)
+	client, err := scanoss.New(scanoss.Config{
+		APIURL:  C.GoString(apiURL),
+		APIKey:  C.GoString(apiKey),
+		Workers: int(threads),
+	})
 	if err != nil {
-		errJSON, _ := json.Marshal(map[string]string{"error": err.Error()})
-		return C.CString(string(errJSON))
+		return errorJSON(err)
 	}
 
-	if len(files) == 0 {
-		errJSON, _ := json.Marshal(map[string]string{"error": "no valid files found"})
-		return C.CString(string(errJSON))
-	}
-
-	// Create worker pool
-	pool := scanner.NewWorkerPool(goThreads)
-	pool.Start()
-
-	// Create batcher
-	batcher := batch.NewStreamingBatcher(goPostSize)
-
-	// Create API client
-	apiClient := api.NewClient(goAPIURL, goAPIKey)
-
-	// Submit jobs
-	go func() {
-		for _, file := range files {
-			pool.Submit(file)
-		}
-		pool.Close()
-	}()
-
-	// Collect results and batch
-	go func() {
-		for fp := range pool.Results() {
-			batcher.Add(fp)
-		}
-		batcher.Close()
-	}()
-
-	// Send batches and collect responses
-	var allResults []string
-	for batchWithMeta := range batcher.Batches() {
-		wfpContent := batch.CombineFingerprints(batchWithMeta.Data)
-		response, err := apiClient.SendBatch(wfpContent)
-		if err != nil {
-			// Skip errors, continue with next batch
-			continue
-		}
-		allResults = append(allResults, response)
-	}
-
-	// Merge all results
-	mergedResult, err := output.MergeJSONResults(allResults)
+	env, err := client.Scan.Folder(context.Background(), C.GoString(path),
+		scanoss.WithChunkBytes(int(postSize)))
 	if err != nil {
-		errJSON, _ := json.Marshal(map[string]string{"error": err.Error()})
-		return C.CString(string(errJSON))
+		return errorJSON(err)
 	}
 
-	return C.CString(mergedResult)
+	result, err := json.Marshal(env.Result)
+	if err != nil {
+		return errorJSON(err)
+	}
+	return C.CString(string(result))
 }
 
 // GetVersion returns the library version, single-sourced from the git tag

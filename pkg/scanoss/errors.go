@@ -21,7 +21,18 @@
  * THE SOFTWARE.
  */
 
-// Package batch groups file fingerprints into upload-sized batches. Batcher
-// accumulates fingerprints up to a maximum byte size, and CombineFingerprints
-// joins a set of fingerprints into a single WFP byte stream for the scan request.
-package batch
+package scanoss
+
+import "fmt"
+
+// StatusError is returned by the transport when the API responds with a non-success
+// status (anything outside the 2xx range). It exposes the status code so callers can
+// branch on it (e.g. distinguish 401 Unauthorized) via errors.As.
+type StatusError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("API returned status %d: %s", e.StatusCode, e.Body)
+}

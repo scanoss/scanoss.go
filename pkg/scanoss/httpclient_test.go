@@ -70,9 +70,9 @@ func writePEM(t *testing.T, name string, data []byte) string {
 }
 
 func TestNewHTTPClientDefaults(t *testing.T) {
-	client, err := NewHTTPClient(HTTPClientOptions{})
+	client, err := newHTTPClient(httpClientOptions{})
 	if err != nil {
-		t.Fatalf("NewHTTPClient() error: %v", err)
+		t.Fatalf("newHTTPClient() error: %v", err)
 	}
 	transport := transportOf(t, client)
 
@@ -107,13 +107,13 @@ func TestNewHTTPClientKeepsTLSDefaults(t *testing.T) {
 		Bytes: httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})).Certificate().Raw,
 	}))
 
-	for name, opts := range map[string]HTTPClientOptions{
+	for name, opts := range map[string]httpClientOptions{
 		"with a CA":     {CACertFile: caPath},
 		"insecure":      {Insecure: true},
 		"CA + insecure": {CACertFile: caPath, Insecure: true},
 	} {
 		t.Run(name, func(t *testing.T) {
-			client, err := NewHTTPClient(opts)
+			client, err := newHTTPClient(opts)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -131,9 +131,9 @@ func TestNewHTTPClientKeepsTLSDefaults(t *testing.T) {
 func TestNewHTTPClientProxy(t *testing.T) {
 	const proxy = "http://proxy.example.com:8080"
 
-	client, err := NewHTTPClient(HTTPClientOptions{Proxy: proxy})
+	client, err := newHTTPClient(httpClientOptions{Proxy: proxy})
 	if err != nil {
-		t.Fatalf("NewHTTPClient() error: %v", err)
+		t.Fatalf("newHTTPClient() error: %v", err)
 	}
 	transport := transportOf(t, client)
 
@@ -154,7 +154,7 @@ func TestNewHTTPClientProxy(t *testing.T) {
 // the internet, an internal endpoint reached directly — keeps working once the proxy is
 // configured rather than left to the environment.
 //
-// Unlike http.ProxyFromEnvironment, NewHTTPClient samples the environment when it builds
+// Unlike http.ProxyFromEnvironment, newHTTPClient samples the environment when it builds
 // the client, so t.Setenv is enough and no test decides the answer for the others.
 func TestNewHTTPClientProxyHonoursNoProxy(t *testing.T) {
 	const proxy = "http://proxy.example.com:8080"
@@ -176,9 +176,9 @@ func TestNewHTTPClientProxyHonoursNoProxy(t *testing.T) {
 			t.Setenv("NO_PROXY", tt.noProxy)
 			t.Setenv("no_proxy", "")
 
-			client, err := NewHTTPClient(HTTPClientOptions{Proxy: proxy})
+			client, err := newHTTPClient(httpClientOptions{Proxy: proxy})
 			if err != nil {
-				t.Fatalf("NewHTTPClient() error: %v", err)
+				t.Fatalf("newHTTPClient() error: %v", err)
 			}
 			req, err := http.NewRequest(http.MethodGet, tt.target, nil)
 			if err != nil {
@@ -207,9 +207,9 @@ func TestNewHTTPClientProxySkipsLoopbackTargets(t *testing.T) {
 	t.Setenv("NO_PROXY", "")
 	t.Setenv("no_proxy", "")
 
-	client, err := NewHTTPClient(HTTPClientOptions{Proxy: proxy})
+	client, err := newHTTPClient(httpClientOptions{Proxy: proxy})
 	if err != nil {
-		t.Fatalf("NewHTTPClient() error: %v", err)
+		t.Fatalf("newHTTPClient() error: %v", err)
 	}
 	tests := map[string]string{
 		"http://127.0.0.1:9000/v3":   "",    // loopback target: direct
@@ -240,9 +240,9 @@ func TestNewHTTPClientProxyHonoursLowercaseNoProxy(t *testing.T) {
 	t.Setenv("NO_PROXY", "")
 	t.Setenv("no_proxy", "scanoss.internal.example.com")
 
-	client, err := NewHTTPClient(HTTPClientOptions{Proxy: "http://proxy.example.com:8080"})
+	client, err := newHTTPClient(httpClientOptions{Proxy: "http://proxy.example.com:8080"})
 	if err != nil {
-		t.Fatalf("NewHTTPClient() error: %v", err)
+		t.Fatalf("newHTTPClient() error: %v", err)
 	}
 	req, err := http.NewRequest(http.MethodGet, "https://scanoss.internal.example.com/v3", nil)
 	if err != nil {
@@ -275,14 +275,14 @@ func TestNewHTTPClientProxyRequiresScheme(t *testing.T) {
 	}
 
 	for _, proxy := range accepted {
-		if _, err := NewHTTPClient(HTTPClientOptions{Proxy: proxy}); err != nil {
-			t.Errorf("NewHTTPClient(Proxy: %q) error: %v", proxy, err)
+		if _, err := newHTTPClient(httpClientOptions{Proxy: proxy}); err != nil {
+			t.Errorf("newHTTPClient(Proxy: %q) error: %v", proxy, err)
 		}
 	}
 	for _, proxy := range rejected {
-		_, err := NewHTTPClient(HTTPClientOptions{Proxy: proxy})
+		_, err := newHTTPClient(httpClientOptions{Proxy: proxy})
 		if err == nil {
-			t.Errorf("NewHTTPClient(Proxy: %q) succeeded, want an error", proxy)
+			t.Errorf("newHTTPClient(Proxy: %q) succeeded, want an error", proxy)
 			continue
 		}
 		if !strings.Contains(err.Error(), "https:// or http://") {
@@ -308,7 +308,7 @@ func TestNewHTTPClientCACert(t *testing.T) {
 	}))
 
 	// Without the CA the handshake must fail — otherwise the test proves nothing.
-	plain, err := NewHTTPClient(HTTPClientOptions{})
+	plain, err := newHTTPClient(httpClientOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,9 +316,9 @@ func TestNewHTTPClientCACert(t *testing.T) {
 		t.Fatal("the default client trusted a server the system pool cannot vouch for")
 	}
 
-	client, err := NewHTTPClient(HTTPClientOptions{CACertFile: caPath})
+	client, err := newHTTPClient(httpClientOptions{CACertFile: caPath})
 	if err != nil {
-		t.Fatalf("NewHTTPClient() error: %v", err)
+		t.Fatalf("newHTTPClient() error: %v", err)
 	}
 	resp, err := client.Get(srv.URL)
 	if err != nil {
@@ -357,9 +357,9 @@ func TestNewHTTPClientCACertErrors(t *testing.T) {
 		{"a key, not a certificate", keyOnly, "contains no certificate"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := NewHTTPClient(HTTPClientOptions{CACertFile: tc.path})
+			_, err := newHTTPClient(httpClientOptions{CACertFile: tc.path})
 			if err == nil {
-				t.Fatalf("NewHTTPClient(CACertFile: %q) succeeded, want an error", tc.path)
+				t.Fatalf("newHTTPClient(CACertFile: %q) succeeded, want an error", tc.path)
 			}
 			if !strings.Contains(err.Error(), tc.want) {
 				t.Errorf("error %q does not contain %q", err, tc.want)
@@ -373,9 +373,9 @@ func TestNewHTTPClientCACertErrors(t *testing.T) {
 }
 
 func TestNewHTTPClientInsecure(t *testing.T) {
-	client, err := NewHTTPClient(HTTPClientOptions{Insecure: true})
+	client, err := newHTTPClient(httpClientOptions{Insecure: true})
 	if err != nil {
-		t.Fatalf("NewHTTPClient() error: %v", err)
+		t.Fatalf("newHTTPClient() error: %v", err)
 	}
 	transport := transportOf(t, client)
 
@@ -388,9 +388,9 @@ func TestNewHTTPClientInsecure(t *testing.T) {
 // from a fresh http.Transport, whose nil Proxy silently bypassed HTTPS_PROXY. It
 // must keep resolving the environment's proxy.
 func TestInsecureKeepsTheEnvironmentProxy(t *testing.T) {
-	client, err := NewHTTPClient(HTTPClientOptions{Insecure: true})
+	client, err := newHTTPClient(httpClientOptions{Insecure: true})
 	if err != nil {
-		t.Fatalf("NewHTTPClient() error: %v", err)
+		t.Fatalf("newHTTPClient() error: %v", err)
 	}
 	if !usesEnvironmentProxy(transportOf(t, client)) {
 		t.Error("an insecure client no longer resolves its proxy from the environment")
@@ -408,13 +408,13 @@ func TestNewHTTPClientCombined(t *testing.T) {
 	}))
 
 	const proxy = "http://proxy.example.com:8080"
-	client, err := NewHTTPClient(HTTPClientOptions{
+	client, err := newHTTPClient(httpClientOptions{
 		Proxy:      proxy,
 		CACertFile: caPath,
 		Insecure:   true,
 	})
 	if err != nil {
-		t.Fatalf("NewHTTPClient() error: %v", err)
+		t.Fatalf("newHTTPClient() error: %v", err)
 	}
 	transport := transportOf(t, client)
 
@@ -439,7 +439,7 @@ func TestNewHTTPClientCombined(t *testing.T) {
 
 // The clone must keep what DefaultTransport configures, not just its proxy.
 func TestNewHTTPClientKeepsTransportDefaults(t *testing.T) {
-	client, err := NewHTTPClient(HTTPClientOptions{Insecure: true})
+	client, err := newHTTPClient(httpClientOptions{Insecure: true})
 	if err != nil {
 		t.Fatal(err)
 	}

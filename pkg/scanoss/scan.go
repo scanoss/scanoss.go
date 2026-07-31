@@ -28,7 +28,6 @@ import (
 	"fmt"
 
 	scanossapi "github.com/scanoss/scanoss.api-sdk"
-	"net/http"
 	"sync"
 	"time"
 
@@ -78,6 +77,7 @@ type scanOptions struct {
 	bom          *settings.BOM  // when set, BOM rules are applied to the result (post-scan)
 	pollInterval time.Duration  // scan status poll cadence (WithPollInterval)
 	reporter     ScanReporter   // receives this scan's stages (WithScanReporter)
+	onScanID     func(string)   // receives this scan's id once it is resumable (WithScanIDNotify)
 }
 
 func resolveScanOptions(opts []ScanOption) scanOptions {
@@ -93,6 +93,13 @@ func resolveScanOptions(opts []ScanOption) scanOptions {
 		opt(&o)
 	}
 	return o
+}
+
+// WithScanIDNotify registers a callback invoked once with this scan's id, after the full
+// WFP is uploaded and before polling begins — the point from which Scan.Wait can resume
+// it. Optional; a normal scan needs no recovery.
+func WithScanIDNotify(fn func(scanID string)) ScanOption {
+	return func(o *scanOptions) { o.onScanID = fn }
 }
 
 // WithChunkBytes sets the WFP upload block size in bytes (default
@@ -174,7 +181,7 @@ func (s scanService) WFP(ctx context.Context, wfp []byte, opts ...ScanOption) (s
 // points (Folder/Files/WFP) each produce the WFP, then funnel through here.
 func (s scanService) scan(ctx context.Context, wfp []byte, o scanOptions) (scanossapi.ScanEnvelope, error) {
 	s.c.log.Debug("scan: uploading WFP", "bytes", len(wfp), "chunkBytes", o.chunkBytes)
-	scanID, err := s.upload(ctx, wfp, o.chunkBytes, o.reporter)
+	scanID, err := s.upload(ctx, wfp, o)
 	if err != nil {
 		return scanossapi.ScanEnvelope{}, err
 	}
@@ -214,7 +221,7 @@ func (s scanService) fingerprint(files []string, o scanOptions) ([]byte, error) 
 // concurrently (each carrying the id, bounded by the client's worker limit), then
 // fires the notify hook. The hook fires only after the full WFP is on the server,
 // so the surfaced id is always resumable. It returns the scan id.
-func (s scanService) upload(ctx context.Context, wfp []byte, chunkBytes int, r ScanReporter) (string, error) {
+func (s scanService) upload(ctx context.Context, wfp []byte, o scanOptions) (string, error) {
 	if len(wfp) == 0 {
 		return "", fmt.Errorf("no fingerprints to scan")
 	}
@@ -225,17 +232,17 @@ func (s scanService) upload(ctx context.Context, wfp []byte, chunkBytes int, r S
 	}
 	scanID := id.String()
 
-	ranges := chunkRanges(len(wfp), chunkBytes)
+	ranges := chunkRanges(len(wfp), o.chunkBytes)
 	s.c.log.Debug("uploading WFP chunks", "scanID", scanID, "chunks", len(ranges))
-	prog := &chunkProgress{r: r, total: len(ranges)}
+	prog := &chunkProgress{r: o.reporter, total: len(ranges)}
 	if err := s.uploadChunks(ctx, scanID, wfp, ranges, prog); err != nil {
 		return "", err
 	}
 
 	// The full WFP is now on the server: the id is resumable. Surface it before
 	// polling so an interrupted scan can be recovered with `results <id>`.
-	if s.c.onScanID != nil {
-		s.c.onScanID(scanID)
+	if o.onScanID != nil {
+		o.onScanID(scanID)
 	}
 	return scanID, nil
 }
@@ -327,12 +334,7 @@ func (s scanService) Status(ctx context.Context, scanID string) (scanossapi.Scan
 	if scanID == "" {
 		return scanossapi.ScanEnvelope{}, fmt.Errorf("no scan id")
 	}
-	pollURL := s.c.apiURL + ServiceScan.endpoint + "/" + scanID
-	req, err := http.NewRequest(http.MethodGet, pollURL, nil)
-	if err != nil {
-		return scanossapi.ScanEnvelope{}, fmt.Errorf("error creating request: %w", err)
-	}
-	body, _, err := s.c.transport.do(ctx, req)
+	body, err := s.c.get(ctx, ServiceScan.endpoint+"/"+scanID, nil)
 	if err != nil {
 		return scanossapi.ScanEnvelope{}, err
 	}

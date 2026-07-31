@@ -72,15 +72,15 @@ func chunkRanges(total, size int) [][2]int {
 // uploadChunk POSTs one WFP byte range to the scan endpoint. The client-generated
 // scanID is sent on every chunk via the X-Scan-Id request header.
 func (c *Client) uploadChunk(ctx context.Context, scanID string, off, end, total int, block []byte) error {
-	req, err := http.NewRequest(http.MethodPost, c.apiURL+ServiceScan.endpoint, bytes.NewReader(block))
+	req, err := c.newRequest(http.MethodPost, ServiceScan.endpoint, bytes.NewReader(block))
 	if err != nil {
-		return fmt.Errorf("error creating request: %w", err)
+		return err
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
 	req.Header.Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", off, end, total))
 	req.Header.Set("X-Scan-Id", scanID)
 
-	if _, _, err := c.transport.do(ctx, req); err != nil {
+	if _, err := c.do(ctx, req); err != nil {
 		return fmt.Errorf("chunk %d-%d/%d: %w", off, end, total, err)
 	}
 	return nil

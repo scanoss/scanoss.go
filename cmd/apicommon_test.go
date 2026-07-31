@@ -25,16 +25,15 @@ package cmd
 
 import (
 	"bytes"
-	"encoding/pem"
 	"log/slog"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
+
+	"github.com/scanoss/scanoss.go/pkg/scanoss"
 )
 
 // apiCommand builds a command carrying the flags addAPIFlags registers and parses
@@ -68,76 +67,59 @@ func captureWarnings(t *testing.T) *bytes.Buffer {
 	return &buf
 }
 
-func TestAPIHTTPClientDefaults(t *testing.T) {
-	client, err := newHTTPClient(apiCommand(t, nil))
+// With no flags every transport field stays unset, which is what leaves the SDK on Go's
+// defaults — and with them HTTP_PROXY, HTTPS_PROXY and NO_PROXY.
+func TestAPIConfigDefaults(t *testing.T) {
+	cfg, err := apiConfig(apiCommand(t, nil))
 	if err != nil {
-		t.Fatalf("newHTTPClient() error: %v", err)
+		t.Fatalf("apiConfig() error: %v", err)
 	}
-	transport, ok := client.Transport.(*http.Transport)
-	if !ok {
-		t.Fatalf("Transport = %T, want *http.Transport", client.Transport)
-	}
-	// No flags must not cost the environment's proxy.
-	if transport.Proxy == nil {
-		t.Error("the default client has no proxy resolver; HTTP_PROXY would be ignored")
+	if cfg.Proxy != "" || cfg.CACertFile != "" || cfg.InsecureTLS {
+		t.Errorf("transport fields = %q/%q/%v, want all unset", cfg.Proxy, cfg.CACertFile, cfg.InsecureTLS)
 	}
 }
 
-func TestAPIHTTPClientProxy(t *testing.T) {
-	const proxy = "http://proxy.example.com:8080"
-
-	client, err := newHTTPClient(apiCommand(t, map[string]string{"proxy": proxy}))
-	if err != nil {
-		t.Fatalf("newHTTPClient() error: %v", err)
-	}
-	req, err := http.NewRequest(http.MethodGet, "https://api.scanoss.com/", nil)
-	if err != nil {
+// Each transport flag reaches the Config field that carries it. What the SDK then builds
+// from those fields — the proxy resolver, the certificate pool — is pkg/scanoss's own
+// test; this only pins the handover.
+func TestAPIConfigCarriesTransportFlags(t *testing.T) {
+	caPath := filepath.Join(t.TempDir(), "ca.pem")
+	if err := os.WriteFile(caPath, []byte("unused"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got, err := client.Transport.(*http.Transport).Proxy(req)
+
+	cfg, err := apiConfig(apiCommand(t, map[string]string{
+		"proxy":   "http://proxy.example.com:8080",
+		"ca-cert": caPath,
+	}))
 	if err != nil {
-		t.Fatalf("resolving the proxy: %v", err)
+		t.Fatalf("apiConfig() error: %v", err)
 	}
-	if got == nil || got.String() != proxy {
-		t.Errorf("proxy = %v, want %q", got, proxy)
+	if cfg.Proxy != "http://proxy.example.com:8080" {
+		t.Errorf("Proxy = %q, want the flag value", cfg.Proxy)
+	}
+	if cfg.CACertFile != caPath {
+		t.Errorf("CACertFile = %q, want %q", cfg.CACertFile, caPath)
 	}
 }
 
-// A bad flag value must stop the command rather than reach the network.
-func TestAPIHTTPClientRejectsBadFlags(t *testing.T) {
+// A bad flag value must stop the command rather than reach the network. The flags are
+// resolved here and validated when the client is built, so the guarantee spans both.
+func TestAPIConfigRejectsBadFlags(t *testing.T) {
 	for name, flags := range map[string]map[string]string{
 		"proxy without a scheme": {"proxy": "proxy.example.com:8080"},
 		"missing CA file":        {"ca-cert": filepath.Join(t.TempDir(), "nope.pem")},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := newHTTPClient(apiCommand(t, flags)); err == nil {
-				t.Errorf("newHTTPClient(%v) succeeded, want an error", flags)
+			cfg, err := apiConfig(apiCommand(t, flags))
+			if err == nil {
+				_, err = scanoss.New(cfg)
+			}
+			if err == nil {
+				t.Errorf("%v was accepted, want an error", flags)
 			}
 		})
 	}
-}
-
-func TestAPIHTTPClientCACert(t *testing.T) {
-	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-
-	caPath := filepath.Join(t.TempDir(), "ca.pem")
-	data := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
-	if err := os.WriteFile(caPath, data, 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	client, err := newHTTPClient(apiCommand(t, map[string]string{"ca-cert": caPath}))
-	if err != nil {
-		t.Fatalf("newHTTPClient() error: %v", err)
-	}
-	resp, err := client.Get(srv.URL)
-	if err != nil {
-		t.Fatalf("request with the CA configured: %v", err)
-	}
-	defer resp.Body.Close()
 }
 
 // Passing both is pointless rather than wrong, so it warns instead of failing —
@@ -153,11 +135,20 @@ func TestAPIHTTPClientWarnsWhenCACertIsIgnored(t *testing.T) {
 	// unused.
 	t.Run("both flags warn, and the CA file is not read", func(t *testing.T) {
 		logged := captureWarnings(t)
-		if _, err := newHTTPClient(apiCommand(t, map[string]string{
+		cfg, err := apiConfig(apiCommand(t, map[string]string{
 			"ca-cert":            caPath,
 			"ignore-cert-errors": "true",
-		})); err != nil {
-			t.Fatalf("newHTTPClient() error: %v", err)
+		}))
+		if err != nil {
+			t.Fatalf("apiConfig() error: %v", err)
+		}
+		// Dropped, not merely unused: the file holds no certificate, so a CACertFile
+		// that survived here would fail when the client was built.
+		if cfg.CACertFile != "" {
+			t.Errorf("CACertFile = %q, want it dropped", cfg.CACertFile)
+		}
+		if _, err := scanoss.New(cfg); err != nil {
+			t.Fatalf("New() with the CA dropped: %v", err)
 		}
 		out := logged.String()
 		if !strings.Contains(out, "ignoring TLS certificate errors") {
@@ -174,8 +165,8 @@ func TestAPIHTTPClientWarnsWhenCACertIsIgnored(t *testing.T) {
 	// it is never read, so the command must still run.
 	t.Run("insecure alone does not warn about the CA", func(t *testing.T) {
 		logged := captureWarnings(t)
-		if _, err := newHTTPClient(apiCommand(t, map[string]string{"ignore-cert-errors": "true"})); err != nil {
-			t.Fatalf("newHTTPClient() error: %v", err)
+		if _, err := apiConfig(apiCommand(t, map[string]string{"ignore-cert-errors": "true"})); err != nil {
+			t.Fatalf("apiConfig() error: %v", err)
 		}
 		if strings.Contains(logged.String(), "ca-cert") {
 			t.Errorf("warned about ca-cert when it was not set:\n%s", logged.String())
@@ -183,68 +174,55 @@ func TestAPIHTTPClientWarnsWhenCACertIsIgnored(t *testing.T) {
 	})
 }
 
-// A stored setting must reach the transport with no flag passed — the whole point of
-// making proxy and ca-cert config keys.
-func TestNewHTTPClientUsesStoredSettings(t *testing.T) {
+// A stored setting must reach the Config with no flag passed — the whole point of making
+// proxy and ca-cert config keys.
+func TestAPIConfigUsesStoredSettings(t *testing.T) {
 	configHome(t)
 	if err := runConfigSet(nil, []string{"proxy", "http://stored.example.com:8080"}); err != nil {
 		t.Fatal(err)
 	}
 
-	client, err := newHTTPClient(apiCommand(t, nil))
+	cfg, err := apiConfig(apiCommand(t, nil))
 	if err != nil {
-		t.Fatalf("newHTTPClient() error: %v", err)
+		t.Fatalf("apiConfig() error: %v", err)
 	}
-	req, err := http.NewRequest(http.MethodGet, "https://api.scanoss.com/", nil)
-	if err != nil {
-		t.Fatal(err)
+	if cfg.Proxy != "http://stored.example.com:8080" {
+		t.Errorf("Proxy = %q, want the stored value", cfg.Proxy)
 	}
-	got, err := client.Transport.(*http.Transport).Proxy(req)
-	if err != nil {
-		t.Fatalf("resolving the proxy: %v", err)
-	}
-	if got == nil || got.String() != "http://stored.example.com:8080" {
-		t.Errorf("proxy = %v, want the stored value", got)
-	}
-
 }
 
 // And the flag still wins over a stored value.
-func TestNewHTTPClientFlagBeatsStoredSettings(t *testing.T) {
+func TestAPIConfigFlagBeatsStoredSettings(t *testing.T) {
 	configHome(t)
 	if err := runConfigSet(nil, []string{"proxy", "http://stored.example.com:8080"}); err != nil {
 		t.Fatal(err)
 	}
 
-	client, err := newHTTPClient(apiCommand(t, map[string]string{"proxy": "http://flag.example.com:8080"}))
+	cfg, err := apiConfig(apiCommand(t, map[string]string{"proxy": "http://flag.example.com:8080"}))
 	if err != nil {
-		t.Fatalf("newHTTPClient() error: %v", err)
+		t.Fatalf("apiConfig() error: %v", err)
 	}
-	req, err := http.NewRequest(http.MethodGet, "https://api.scanoss.com/", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := client.Transport.(*http.Transport).Proxy(req)
-	if err != nil {
-		t.Fatalf("resolving the proxy: %v", err)
-	}
-	if got == nil || got.String() != "http://flag.example.com:8080" {
-		t.Errorf("proxy = %v, want the flag value", got)
+	if cfg.Proxy != "http://flag.example.com:8080" {
+		t.Errorf("Proxy = %q, want the flag value", cfg.Proxy)
 	}
 }
 
-// A stored CA that cannot be read fails the command, naming the path — the same error
-// the flag produces, since nothing about the source changes the file being unreadable.
-func TestNewHTTPClientStoredCACertMustExist(t *testing.T) {
+// A stored CA that cannot be read fails the command, naming the path — the same error the
+// flag produces, since nothing about the source changes the file being unreadable. The
+// path is resolved here and read when the client is built, so both stages take part.
+func TestAPIConfigStoredCACertMustExist(t *testing.T) {
 	configHome(t)
 	missing := filepath.Join(t.TempDir(), "gone.pem")
 	if err := runConfigSet(nil, []string{"ca-cert", missing}); err != nil {
 		t.Fatal(err)
 	}
 
-	_, err := newHTTPClient(apiCommand(t, nil))
+	cfg, err := apiConfig(apiCommand(t, nil))
 	if err == nil {
-		t.Fatal("newHTTPClient() succeeded with an unreadable stored CA, want an error")
+		_, err = scanoss.New(cfg)
+	}
+	if err == nil {
+		t.Fatal("an unreadable stored CA was accepted, want an error")
 	}
 	if !strings.Contains(err.Error(), missing) {
 		t.Errorf("error %q does not name the path", err)

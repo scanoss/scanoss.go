@@ -113,7 +113,7 @@ func runEnrich(cmd *cobra.Command, args []string) error {
 	layers = effectiveLayers(outputFormat, layers)
 
 	prog := &scanProgress{}
-	client, err := buildScanClient(cmd, prog)
+	client, err := buildScanClient(cmd)
 	if err != nil {
 		return err
 	}

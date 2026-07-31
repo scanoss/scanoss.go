@@ -31,16 +31,17 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"golang.org/x/net/http/httpproxy"
 )
 
-// HTTPClientOptions configures how the SDK reaches the API: through which proxy,
-// and trusting which certificate authorities.
+// httpClientOptions is the transport half of Config, resolved: which proxy to go
+// through, and which certificate authorities to trust.
 //
 // The zero value is the default behaviour — the proxy comes from HTTP_PROXY,
 // HTTPS_PROXY and NO_PROXY, and verification uses the system certificate pool.
-type HTTPClientOptions struct {
+type httpClientOptions struct {
 	// Proxy is the proxy URL to use, overriding HTTP_PROXY and HTTPS_PROXY for this
 	// client. It must carry an https:// or http:// scheme. NO_PROXY still applies, so
 	// the hosts it exempts are reached directly. Empty leaves Go's own environment
@@ -55,22 +56,31 @@ type HTTPClientOptions struct {
 	// Insecure disables certificate verification entirely. For self-signed or
 	// internal endpoints only; prefer CACertFile, which keeps verification on.
 	Insecure bool
+
+	// Timeout bounds one request, body transfer included (default DefaultTimeout).
+	// A negative value disables it.
+	Timeout time.Duration
 }
 
-// NewHTTPClient builds an *http.Client from opts, for use with WithHTTPClient:
+// resolveTimeout maps a configured timeout onto what http.Client expects: unset takes
+// DefaultTimeout, negative means no timeout at all.
+func resolveTimeout(d time.Duration) time.Duration {
+	switch {
+	case d > 0:
+		return d
+	case d < 0:
+		return 0 // explicitly disabled
+	default:
+		return DefaultTimeout
+	}
+}
+
+// newHTTPClient builds the *http.Client the transport will use. It is unexported: a
+// caller configures the transport through Config fields, and New assembles it here.
 //
-//	hc, err := scanoss.NewHTTPClient(scanoss.HTTPClientOptions{
-//		Proxy:      "http://proxy.example.com:8080",
-//		CACertFile: "/etc/ssl/corp-ca.pem",
-//	})
-//	if err != nil {
-//		return err
-//	}
-//	client := scanoss.New(scanoss.WithAPIKey(key), scanoss.WithHTTPClient(hc))
-//
-// Reading and parsing the PEM happen here, so a bad path is an error at
-// construction rather than a handshake failure on the first request.
-func NewHTTPClient(opts HTTPClientOptions) (*http.Client, error) {
+// Reading and parsing the PEM happen here, so a bad path is an error at construction
+// rather than a handshake failure on the first request.
+func newHTTPClient(opts httpClientOptions) (*http.Client, error) {
 	// Clone rather than construct. A zero-value http.Transport has a nil Proxy,
 	// which means no proxy at all — not even the environment's — and it drops Go's
 	// timeouts and connection pooling along with it.
@@ -84,27 +94,28 @@ func NewHTTPClient(opts HTTPClientOptions) (*http.Client, error) {
 		transport.Proxy = proxy
 	}
 
-	// Both TLS settings mutate the cloned config rather than replacing it: the clone
-	// already carries what DefaultTransport configures, NextProtos ("h2",
-	// "http/1.1") among it, and assigning a fresh &tls.Config{} would quietly drop
-	// that. They also have to compose, since a caller may pass both.
-	if opts.CACertFile != "" || opts.Insecure {
-		if transport.TLSClientConfig == nil {
-			transport.TLSClientConfig = &tls.Config{}
-		}
-	}
 	if opts.CACertFile != "" {
 		pool, err := certPoolWith(opts.CACertFile)
 		if err != nil {
 			return nil, err
 		}
-		transport.TLSClientConfig.RootCAs = pool
+		ensureTLSConfig(transport).RootCAs = pool
 	}
 	if opts.Insecure {
-		transport.TLSClientConfig.InsecureSkipVerify = true
+		ensureTLSConfig(transport).InsecureSkipVerify = true
 	}
 
-	return &http.Client{Transport: transport}, nil
+	return &http.Client{Transport: transport, Timeout: resolveTimeout(opts.Timeout)}, nil
+}
+
+// ensureTLSConfig returns transport's TLS config, creating it if absent. It never
+// replaces an existing one: that would drop DefaultTransport's NextProtos, and HTTP/2
+// with it.
+func ensureTLSConfig(transport *http.Transport) *tls.Config {
+	if transport.TLSClientConfig == nil {
+		transport.TLSClientConfig = &tls.Config{}
+	}
+	return transport.TLSClientConfig
 }
 
 // parseProxy turns a proxy setting into a URL, insisting on a scheme.

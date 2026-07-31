@@ -42,7 +42,7 @@ func TestTypedDecodeMerged(t *testing.T) {
 	defer srv.Close()
 
 	// chunk-size 1 over 2 purls => 2 chunks merged back into one components array.
-	client := New(WithAPIURL(srv.URL), WithChunkSize(1))
+	client := mustNew(t, Config{APIURL: srv.URL, ChunkSize: 1})
 	v, err := client.Vulnerabilities.Components(context.Background(), Components("pkg:a", "pkg:b"))
 	if err != nil {
 		t.Fatalf("Components: %v", err)
@@ -73,7 +73,7 @@ func TestTypedDecodeLiveAPI(t *testing.T) {
 		t.Skip("SCANOSS_API_KEY not set; skipping live API check")
 	}
 
-	client := New(WithAPIKey(key))
+	client := mustNew(t, Config{APIKey: key})
 	v, err := client.Vulnerabilities.Components(context.Background(), Components("pkg:npm/lodash"))
 	if err != nil {
 		t.Fatalf("live Components: %v", err)

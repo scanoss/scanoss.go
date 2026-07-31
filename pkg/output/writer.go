@@ -24,7 +24,6 @@
 package output
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -73,40 +72,4 @@ func (w *Writer) Close() error {
 		return w.file.Close()
 	}
 	return nil
-}
-
-// MergeJSONResults combines multiple JSON responses from the API into a single JSON object
-func MergeJSONResults(results []string) (string, error) {
-	if len(results) == 0 {
-		return "{}", nil
-	}
-
-	// If there's only one result, return it directly
-	if len(results) == 1 {
-		return results[0], nil
-	}
-
-	// Map to combine all results
-	merged := make(map[string]interface{})
-
-	// Parse each JSON and merge
-	for _, result := range results {
-		var data map[string]interface{}
-		if err := json.Unmarshal([]byte(result), &data); err != nil {
-			return "", fmt.Errorf("error parsing JSON: %w", err)
-		}
-
-		// Merge fields into the merged map
-		for key, value := range data {
-			merged[key] = value
-		}
-	}
-
-	// Convert back to JSON
-	output, err := json.Marshal(merged)
-	if err != nil {
-		return "", fmt.Errorf("error marshaling merged JSON: %w", err)
-	}
-
-	return string(output), nil
 }

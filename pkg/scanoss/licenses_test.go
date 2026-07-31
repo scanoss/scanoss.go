@@ -41,7 +41,7 @@ func TestLicensesComponentsBatch(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(WithAPIURL(srv.URL))
+	client := mustNew(t, Config{APIURL: srv.URL})
 	res, err := client.Licenses.Components(context.Background(), Components("pkg:npm/lodash"))
 	if err != nil {
 		t.Fatalf("Components: %v", err)
@@ -72,7 +72,7 @@ func TestLicensesComponentSingle(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(WithAPIURL(srv.URL))
+	client := mustNew(t, Config{APIURL: srv.URL})
 	res, err := client.Licenses.Component(context.Background(), Component{Purl: "pkg:npm/lodash", Requirement: "4.17.21"})
 	if err != nil {
 		t.Fatalf("Component: %v", err)
@@ -98,7 +98,7 @@ func TestLicensesDetailsAndObligations(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(WithAPIURL(srv.URL))
+	client := mustNew(t, Config{APIURL: srv.URL})
 
 	if _, err := client.Licenses.Details(context.Background(), "MIT"); err != nil {
 		t.Fatalf("Details: %v", err)

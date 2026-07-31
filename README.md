@@ -110,7 +110,6 @@ Stdout stays reserved for results, so logs never corrupt `--output` or piped JSO
 | `sbom <input>` | Produce an SBOM from a raw inventory, or convert between formats, offline (cyclonedx/spdx). |
 | `enrich <input>` | Add purl-keyed layers (vulns/licenses/crypto/geo) to a `raw` or SBOM file. |
 | `dependencies [path]` | Extract local dependencies, or query direct/transitive deps for a PURL. |
-| `attributions [sbom]` | Attribution text from an SBOM file or a PURL. |
 | `vulnerabilities` | Known vulnerabilities / CPEs for components. |
 | `cryptography` | Algorithms, library hints, and version ranges. |
 | `licenses` | Declared licenses, attribution files, per-file evidence. |
@@ -278,12 +277,15 @@ Chunking and the worker pool are handled internally.
 ```go
 import "github.com/scanoss/scanoss.go/pkg/scanoss"
 
-client := scanoss.New(
-    scanoss.WithAPIKey(os.Getenv("SCANOSS_API_KEY")),
-    scanoss.WithChunkSize(20), // PURLs per request
-    scanoss.WithWorkers(10),   // max concurrent requests
-    // scanoss.WithLogger(logger), // optional: route SDK diagnostics via log/slog (default slog.Default())
-)
+client, err := scanoss.New(scanoss.Config{
+    APIKey:    os.Getenv("SCANOSS_API_KEY"),
+    ChunkSize: 20, // PURLs per request
+    Workers:   10, // max concurrent requests
+    // Logger: logger, // optional: route SDK diagnostics via log/slog (default slog.Default())
+})
+if err != nil {
+    return err
+}
 
 comps := scanoss.Components("pkg:github/scanoss/engine")
 
@@ -353,7 +355,7 @@ res, err := client.Vulnerabilities.Components(ctx, comps) // *scanossapi.Vulnera
 ### Scanning from the SDK
 
 ```go
-client := scanoss.New(scanoss.WithAPIKey(os.Getenv("SCANOSS_API_KEY")))
+client, err := scanoss.New(scanoss.Config{APIKey: os.Getenv("SCANOSS_API_KEY")})
 result, err := client.Scan.Folder(ctx, "./my-project")
 // resume by id: client.Scan.Wait(ctx, scanID)
 ```
@@ -361,14 +363,14 @@ result, err := client.Scan.Folder(ctx, "./my-project")
 ### Proxy and custom CA from the SDK
 
 ```go
-hc, err := scanoss.NewHTTPClient(scanoss.HTTPClientOptions{
+client, err := scanoss.New(scanoss.Config{
+    APIKey:     key,
     Proxy:      "http://proxy.example.com:8080", // empty honours HTTP(S)_PROXY
     CACertFile: "/etc/ssl/corp-ca.pem",          // added to the system pool
 })
 if err != nil {
-    return err
+    return err // an unreadable CA file or a schemeless proxy fails here
 }
-client := scanoss.New(scanoss.WithAPIKey(key), scanoss.WithHTTPClient(hc))
 ```
 
 ## Development

@@ -41,8 +41,8 @@ import (
 // funnels through do — so cross-cutting concerns (auth, status handling, retries)
 // live here once. A future grpcTransport could sit beside it.
 //
-// Retry policy: maxRetries caps the retry COUNT (WithMaxRetries); maxRetryAfter
-// caps a single Retry-After WAIT (WithMaxRetryAfter), so a pathological server
+// Retry policy: maxRetries caps the retry COUNT (Config.MaxRetries); maxRetryAfter
+// caps a single Retry-After WAIT (Config.MaxRetryAfter), so a pathological server
 // value can't stall a call (<= 0 means no cap). The wait DURATION itself is the
 // server's Retry-After value — the SDK obeys it, it does not compute its own
 // backoff.
@@ -54,18 +54,35 @@ type httpTransport struct {
 	log           *slog.Logger
 }
 
-// do attaches the context, applies authentication, executes the request, and
-// returns the raw body together with the response. The body is fully read into
-// the returned []byte; the returned *http.Response is for inspecting
-// Header/StatusCode only (its Body is already drained and closed). Both 200 OK
-// and 202 Accepted are treated as success.
+// response is what the transport learned about a single API call. It is returned by
+// value: small, never nil, so callers never have to nil-check it. Body is already
+// fully read and the connection closed — owning the retry policy means owning the
+// body, since a request cannot be replayed while its previous body is unread.
+//
+// Deliberately not an *http.Response: that type would carry a Body that is already
+// closed, and it would tie this signature to HTTP (see the grpcTransport note above).
+type response struct {
+	Body       []byte
+	StatusCode int
+	// Header is here for the response metadata a caller may come to need — rate
+	// limits, pagination, a correlation id for support. Nothing reads it yet.
+	Header http.Header
+}
+
+// do attaches the context, applies authentication, executes the request and returns
+// the fully read response.
+//
+// It reports what came back without judging it: any status, 4xx and 5xx included, is
+// returned with a nil error. Whether a status counts as a failure is an API-level
+// decision and belongs to Client.do. A non-nil error here means no response was
+// obtained at all — the network failed, or the body could not be rewound or read.
 //
 // On 429 Too Many Requests or 503 Service Unavailable carrying a Retry-After
 // header, it waits the server-indicated time (clamped to maxRetryAfter) and
 // retries, up to maxRetries times. The request body is replayed via req.GetBody
 // (set automatically by http.NewRequest for bytes/strings readers); a request
 // with a body but no GetBody is not retried. The wait honors ctx cancellation.
-func (t *httpTransport) do(ctx context.Context, req *http.Request) ([]byte, *http.Response, error) {
+func (t *httpTransport) do(ctx context.Context, req *http.Request) (response, error) {
 	req = req.WithContext(ctx)
 	logger := t.log
 	if logger == nil {
@@ -81,7 +98,7 @@ func (t *httpTransport) do(ctx context.Context, req *http.Request) ([]byte, *htt
 		if attempt > 0 && req.GetBody != nil {
 			body, err := req.GetBody()
 			if err != nil {
-				return nil, nil, fmt.Errorf("error rewinding request body: %w", err)
+				return response{}, fmt.Errorf("error rewinding request body: %w", err)
 			}
 			req.Body = body
 		}
@@ -90,7 +107,7 @@ func (t *httpTransport) do(ctx context.Context, req *http.Request) ([]byte, *htt
 		resp, err := t.httpClient.Do(req)
 		if err != nil {
 			logger.Debug("http request error", "method", req.Method, "url", req.URL.String(), "err", err)
-			return nil, nil, fmt.Errorf("error making request: %w", err)
+			return response{}, fmt.Errorf("error making request: %w", err)
 		}
 		respBody, rerr := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
@@ -98,36 +115,22 @@ func (t *httpTransport) do(ctx context.Context, req *http.Request) ([]byte, *htt
 			"method", req.Method, "url", req.URL.String(),
 			"status", resp.StatusCode, "bytes", len(respBody),
 			"duration", time.Since(start).Round(time.Millisecond))
+		result := response{Body: respBody, StatusCode: resp.StatusCode, Header: resp.Header}
 		if rerr != nil {
-			return respBody, resp, fmt.Errorf("error reading response: %w", rerr)
+			return result, fmt.Errorf("error reading response: %w", rerr)
 		}
 
 		// Server asked us to back off and we can replay → wait and retry.
 		if d, ok := retryAfter(resp, t.maxRetryAfter); ok && attempt < t.maxRetries && replayable(req) {
 			logger.Debug("server backoff; retrying", "wait", d, "attempt", attempt+1, "url", req.URL.String())
 			if werr := sleepCtx(ctx, d); werr != nil {
-				return respBody, resp, werr
+				return result, werr
 			}
 			continue
 		}
 
-		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
-			return respBody, resp, &StatusError{StatusCode: resp.StatusCode, Body: string(respBody)}
-		}
-		return respBody, resp, nil
+		return result, nil
 	}
-}
-
-// StatusError is returned by do when the API responds with a non-success status
-// (anything other than 200 OK / 202 Accepted). It exposes the status code so
-// callers can branch on it (e.g. distinguish 401 Unauthorized) via errors.As.
-type StatusError struct {
-	StatusCode int
-	Body       string
-}
-
-func (e *StatusError) Error() string {
-	return fmt.Sprintf("API returned status %d: %s", e.StatusCode, e.Body)
 }
 
 // replayable reports whether req can be re-sent: a body-less request (GET) always

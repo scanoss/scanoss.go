@@ -65,7 +65,7 @@ func TestPipelineRunsInParallel(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := New(WithAPIURL(srv.URL), WithChunkSize(100), WithWorkers(1))
+	client := mustNew(t, Config{APIURL: srv.URL, ChunkSize: 100, Workers: 1})
 	p := client.DecorationPipeline(
 		ServiceVulnerabilities,
 		ServiceLicenses,
@@ -121,11 +121,7 @@ func TestPipelineReportsEachServiceToCompletion(t *testing.T) {
 	defer srv.Close()
 
 	rec := newRecorder()
-	client := New(
-		WithAPIURL(srv.URL),
-		WithChunkSize(5),
-		WithWorkers(4),
-	)
+	client := mustNew(t, Config{APIURL: srv.URL, ChunkSize: 5, Workers: 4})
 	p := client.DecorationPipeline(ServiceVulnerabilities, ServiceLicenses, ServiceGeoprovenanceOrigin)
 
 	purls := make([]string, 12) // 12 purls / chunk 5 -> 3 chunks per service

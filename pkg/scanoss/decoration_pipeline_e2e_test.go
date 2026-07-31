@@ -54,11 +54,11 @@ func TestPipelineEndToEnd(t *testing.T) {
 
 	rec := newRecorder()
 
-	client := New(
-		WithAPIURL(srv.URL),
-		WithChunkSize(2), // 5 purls -> 3 chunks per service (exercises merge)
-		WithWorkers(3),
-	)
+	client := mustNew(t, Config{
+		APIURL:    srv.URL,
+		ChunkSize: 2, // 5 purls -> 3 chunks per service (exercises merge)
+		Workers:   3,
+	})
 
 	p := client.DecorationPipeline(
 		ServiceVulnerabilities,

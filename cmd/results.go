@@ -94,18 +94,19 @@ func runResults(cmd *cobra.Command, args []string) error {
 	reportSkippedLayers(outputFormat, layers)
 	layers = effectiveLayers(outputFormat, layers) // don't gather what this format can't render
 
-	httpClient, err := newHTTPClient(cmd)
+	cfg, err := apiConfig(cmd)
 	if err != nil {
 		return err
 	}
 
 	prog := &scanProgress{}
 	rep := scanpipeline.NewReporter(prog.layer)
-	client := scanoss.New(
-		scanoss.WithAPIURL(api.URL),
-		scanoss.WithAPIKey(api.Key),
-		scanoss.WithHTTPClient(httpClient),
-	)
+	cfg.APIURL = api.URL
+	cfg.APIKey = api.Key
+	client, err := scanoss.New(cfg)
+	if err != nil {
+		return err
+	}
 
 	infof("Retrieving results for scan %s", scanID)
 

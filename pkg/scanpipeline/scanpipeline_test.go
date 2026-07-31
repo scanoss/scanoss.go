@@ -39,6 +39,16 @@ import (
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
 )
 
+// mustNewClient builds an SDK client against apiURL and fails the test if it cannot.
+func mustNewClient(t *testing.T, apiURL string) *scanoss.Client {
+	t.Helper()
+	client, err := scanoss.New(scanoss.Config{APIURL: apiURL, APIKey: "x"})
+	if err != nil {
+		t.Fatalf("scanoss.New: %v", err)
+	}
+	return client
+}
+
 // decorationServer answers the licenses, vulnerabilities, dependency-resolve, cryptography,
 // geoprovenance and copyright endpoints with canned responses so Build can be exercised
 // without a live API.
@@ -102,7 +112,7 @@ func hasVuln(inv sbom.Inventory, id string) bool {
 func TestBuildEnrichesDetected(t *testing.T) {
 	srv := decorationServer()
 	defer srv.Close()
-	client := scanoss.New(scanoss.WithAPIURL(srv.URL), scanoss.WithAPIKey("x"))
+	client := mustNewClient(t, srv.URL)
 
 	inv, err := Build(context.Background(), client, detectedResult(), []scanoss.Service{scanoss.ServiceLicenses, scanoss.ServiceVulnerabilities}, false, nil, nil)
 	if err != nil {
@@ -127,7 +137,7 @@ func TestBuildEnrichesDetected(t *testing.T) {
 func TestEnrichHandBuiltInventory(t *testing.T) {
 	srv := decorationServer()
 	defer srv.Close()
-	client := scanoss.New(scanoss.WithAPIURL(srv.URL), scanoss.WithAPIKey("x"))
+	client := mustNewClient(t, srv.URL)
 
 	inv := sbom.Inventory{Components: []sbom.Component{
 		{Purl: "pkg:npm/lodash", Version: "4.17.20"},
@@ -151,7 +161,7 @@ func TestEnrichHandBuiltInventory(t *testing.T) {
 func TestBuildLayersAreOptIn(t *testing.T) {
 	srv := decorationServer()
 	defer srv.Close()
-	client := scanoss.New(scanoss.WithAPIURL(srv.URL), scanoss.WithAPIKey("x"))
+	client := mustNewClient(t, srv.URL)
 
 	inv, err := Build(context.Background(), client, detectedResult(), nil, false, nil, nil)
 	if err != nil {
@@ -174,7 +184,7 @@ func TestBuildLayersAreOptIn(t *testing.T) {
 func TestBuildDepsDrivenByLayer(t *testing.T) {
 	srv := decorationServer()
 	defer srv.Close()
-	client := scanoss.New(scanoss.WithAPIURL(srv.URL), scanoss.WithAPIKey("x"))
+	client := mustNewClient(t, srv.URL)
 
 	// deps NOT requested: the declared input is ignored.
 	inv, err := Build(context.Background(), client, detectedResult(), nil, false, declaredLeftPad(), nil)
@@ -211,7 +221,7 @@ func TestBuildDepsDrivenByLayer(t *testing.T) {
 func TestBuildDeclaredEnrichedForVulns(t *testing.T) {
 	srv := decorationServer()
 	defer srv.Close()
-	client := scanoss.New(scanoss.WithAPIURL(srv.URL), scanoss.WithAPIKey("x"))
+	client := mustNewClient(t, srv.URL)
 
 	inv, err := Build(context.Background(), client, detectedResult(), []scanoss.Service{scanoss.ServiceVulnerabilities}, true, declaredLeftPad(), nil)
 	if err != nil {
@@ -242,7 +252,7 @@ func TestBuildDeclaredEnrichedForVulns(t *testing.T) {
 func TestBuildDepsWithoutDetectedMatches(t *testing.T) {
 	srv := decorationServer()
 	defer srv.Close()
-	client := scanoss.New(scanoss.WithAPIURL(srv.URL), scanoss.WithAPIKey("x"))
+	client := mustNewClient(t, srv.URL)
 
 	inv, err := Build(context.Background(), client, &scanossapi.ScanResult{}, nil, true, declaredLeftPad(), nil)
 	if err != nil {
@@ -318,7 +328,7 @@ func TestSourceDeclared(t *testing.T) {
 func TestBuildEnrichesAllPurlLayers(t *testing.T) {
 	srv := decorationServer()
 	defer srv.Close()
-	client := scanoss.New(scanoss.WithAPIURL(srv.URL), scanoss.WithAPIKey("x"))
+	client := mustNewClient(t, srv.URL)
 
 	inv, err := Build(context.Background(), client, detectedResult(), []scanoss.Service{scanoss.ServiceCryptographyAlgorithms, scanoss.ServiceGeoprovenanceOrigin}, false, nil, nil)
 	if err != nil {

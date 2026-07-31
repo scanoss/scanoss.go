@@ -33,7 +33,10 @@ import (
 // Basic usage: the chunking and worker pool are transparent — pass a list of
 // PURLs to a service method and read the merged result.
 func ExampleClient_Vulnerabilities() {
-	client := scanoss.New(scanoss.WithAPIKey("YOUR_API_KEY"))
+	client, err := scanoss.New(scanoss.Config{APIKey: "YOUR_API_KEY"})
+	if err != nil {
+		panic(err)
+	}
 
 	purls := []string{
 		"pkg:npm/lodash",
@@ -54,11 +57,14 @@ func ExampleClient_Vulnerabilities() {
 // Tuning chunk size and concurrency is done once at construction; the call site
 // is unchanged.
 func ExampleNew() {
-	client := scanoss.New(
-		scanoss.WithAPIKey("YOUR_API_KEY"),
-		scanoss.WithChunkSize(20), // 20 PURLs per request
-		scanoss.WithWorkers(10),   // up to 10 concurrent requests
-	)
+	client, err := scanoss.New(scanoss.Config{
+		APIKey:    "YOUR_API_KEY",
+		ChunkSize: 20, // 20 PURLs per request
+		Workers:   10, // up to 10 concurrent requests
+	})
+	if err != nil {
+		panic(err)
+	}
 
 	comps := scanoss.Components("pkg:npm/lodash", "pkg:pypi/requests")
 
@@ -72,7 +78,10 @@ func ExampleNew() {
 // the same components, reports per-service progress, and returns one object
 // keyed by service.
 func ExampleClient_DecorationPipeline() {
-	client := scanoss.New(scanoss.WithAPIKey("YOUR_API_KEY"), scanoss.WithWorkers(10))
+	client, err := scanoss.New(scanoss.Config{APIKey: "YOUR_API_KEY", Workers: 10})
+	if err != nil {
+		panic(err)
+	}
 
 	pipe := client.DecorationPipeline(
 		scanoss.ServiceVulnerabilities,

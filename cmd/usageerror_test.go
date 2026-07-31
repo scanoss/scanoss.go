@@ -92,7 +92,6 @@ func TestCommandsWithoutTheirArgumentFail(t *testing.T) {
 		{[]string{"results"}, "a scan id is required"},
 		{[]string{"enrich"}, "an SBOM file to enrich is required"},
 		{[]string{"sbom"}, "an input file is required"},
-		{[]string{"attributions"}, "an SBOM file or --purl is required"},
 		{[]string{"dependencies"}, "a path, --purl or --extract-local is required"},
 		{[]string{"licenses"}, "--purl or --input is required"},
 		{[]string{"vulnerabilities"}, "--purl or --input is required"},

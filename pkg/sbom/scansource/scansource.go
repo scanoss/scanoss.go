@@ -62,15 +62,18 @@ func FromScanResult(result *scanossapi.ScanResult) sbom.Inventory {
 			continue
 		}
 		components = append(components, sbom.Component{
-			Purl:       comp.Purls[0],
-			Scope:      sbom.ScopeDetected,
-			AliasPurls: comp.Purls[1:],
-			Vendor:     comp.Vendor,
-			Name:       comp.Component,
-			Version:    comp.Version,
-			URL:        comp.Url,
-			URLHash:    hash,
-			Evidence:   filesByHash[hash],
+			Purl:         comp.Purls[0],
+			Scope:        sbom.ScopeDetected,
+			AliasPurls:   comp.Purls[1:],
+			Vendor:       comp.Vendor,
+			Name:         comp.Component,
+			Version:      comp.Version,
+			URL:          comp.Url,
+			URLHash:      hash,
+			Rank:         comp.Rank,
+			ReleaseDate:  comp.ReleaseDate,
+			ArtifactName: comp.File,
+			Evidence:     filesByHash[hash],
 		})
 	}
 	return sbom.Inventory{Components: components}
