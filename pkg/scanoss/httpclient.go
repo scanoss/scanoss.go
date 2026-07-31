@@ -84,27 +84,28 @@ func NewHTTPClient(opts HTTPClientOptions) (*http.Client, error) {
 		transport.Proxy = proxy
 	}
 
-	// Both TLS settings mutate the cloned config rather than replacing it: the clone
-	// already carries what DefaultTransport configures, NextProtos ("h2",
-	// "http/1.1") among it, and assigning a fresh &tls.Config{} would quietly drop
-	// that. They also have to compose, since a caller may pass both.
-	if opts.CACertFile != "" || opts.Insecure {
-		if transport.TLSClientConfig == nil {
-			transport.TLSClientConfig = &tls.Config{}
-		}
-	}
 	if opts.CACertFile != "" {
 		pool, err := certPoolWith(opts.CACertFile)
 		if err != nil {
 			return nil, err
 		}
-		transport.TLSClientConfig.RootCAs = pool
+		ensureTLSConfig(transport).RootCAs = pool
 	}
 	if opts.Insecure {
-		transport.TLSClientConfig.InsecureSkipVerify = true
+		ensureTLSConfig(transport).InsecureSkipVerify = true
 	}
 
 	return &http.Client{Transport: transport}, nil
+}
+
+// ensureTLSConfig returns transport's TLS config, creating it if absent. It never
+// replaces an existing one: that would drop DefaultTransport's NextProtos, and HTTP/2
+// with it.
+func ensureTLSConfig(transport *http.Transport) *tls.Config {
+	if transport.TLSClientConfig == nil {
+		transport.TLSClientConfig = &tls.Config{}
+	}
+	return transport.TLSClientConfig
 }
 
 // parseProxy turns a proxy setting into a URL, insisting on a scheme.
