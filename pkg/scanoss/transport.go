@@ -118,18 +118,6 @@ func (t *httpTransport) do(ctx context.Context, req *http.Request) ([]byte, *htt
 	}
 }
 
-// StatusError is returned by do when the API responds with a non-success status
-// (anything other than 200 OK / 202 Accepted). It exposes the status code so
-// callers can branch on it (e.g. distinguish 401 Unauthorized) via errors.As.
-type StatusError struct {
-	StatusCode int
-	Body       string
-}
-
-func (e *StatusError) Error() string {
-	return fmt.Sprintf("API returned status %d: %s", e.StatusCode, e.Body)
-}
-
 // replayable reports whether req can be re-sent: a body-less request (GET) always
 // can; a request with a body needs GetBody to rewind it.
 func replayable(req *http.Request) bool {
