@@ -13,7 +13,6 @@ installation, see the [README](README.md).
 - [SBOM (`sbom`)](#sbom-sbom)
 - [Enrich (`enrich`)](#enrich-enrich)
 - [Dependencies (`dependencies`)](#dependencies-dependencies)
-- [Attributions (`attributions`)](#attributions-attributions)
 - [Decoration commands](#decoration-commands)
 - [`scanoss.json` reference](#scanossjson-reference)
 - [Default values](#default-values)
@@ -379,23 +378,6 @@ Flags: `--extract-local`, `--purl`, `--requirement` (optional), `--transient`,
 
 Endpoints: direct → `POST /v3/dependencies/dependencies`;
 transitive → `POST /v3/dependencies/transitive`.
-
-## Attributions (`attributions`)
-
-Generate attribution text from an SBOM file, or from a single PURL. Provide
-**either** the file **or** `--purl` (not both).
-
-```bash
-# From an SBOM file
-scanoss-cli attributions sbom.json --output attributions.txt
-
-# From a PURL (a temporary SBOM is created for you)
-scanoss-cli attributions --purl "pkg:github/scanoss/engine@v5.4.19" \
-  --api-key "$SCANOSS_API_KEY" --output attributions.txt
-```
-
-Uploads to `POST /sbom/attribution`. Flags: `--purl`, `--api-url`, `--api-key`,
-`--ignore-cert-errors`, `-o, --output`.
 
 ## Decoration commands
 

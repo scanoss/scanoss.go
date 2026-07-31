@@ -110,7 +110,6 @@ Stdout stays reserved for results, so logs never corrupt `--output` or piped JSO
 | `sbom <input>` | Produce an SBOM from a raw inventory, or convert between formats, offline (cyclonedx/spdx). |
 | `enrich <input>` | Add purl-keyed layers (vulns/licenses/crypto/geo) to a `raw` or SBOM file. |
 | `dependencies [path]` | Extract local dependencies, or query direct/transitive deps for a PURL. |
-| `attributions [sbom]` | Attribution text from an SBOM file or a PURL. |
 | `vulnerabilities` | Known vulnerabilities / CPEs for components. |
 | `cryptography` | Algorithms, library hints, and version ranges. |
 | `licenses` | Declared licenses, attribution files, per-file evidence. |

@@ -25,7 +25,6 @@ package cmd
 
 import (
 	"log/slog"
-	"net/http"
 
 	"github.com/spf13/cobra"
 
@@ -54,7 +53,8 @@ func addAPIFlags(cmd *cobra.Command) {
 
 // apiConfig resolves the five flags addAPIFlags gives every API command — endpoint, key,
 // proxy, CA file and ignore-cert-errors — into the Config that carries them. Commands add
-// their own fields on top; nothing else reads these flags.
+// their own fields on top; nothing else reads these flags, and no command builds an
+// *http.Client of its own.
 //
 // chunk-size and workers are deliberately absent: chunk-size means PURLs per request on
 // the purl commands and upload bytes on scan, so resolving it here would misconfigure one
@@ -95,19 +95,4 @@ func apiConfig(cmd *cobra.Command) (scanoss.Config, error) {
 		CACertFile:  transport.CACertFile,
 		InsecureTLS: insecure,
 	}, nil
-}
-
-// newHTTPClient builds an *http.Client from the same flags, for the one command that
-// talks to an endpoint the SDK does not cover: `attributions` posts a multipart SBOM to
-// /sbom/attribution. Everything else configures the transport through Config.
-func newHTTPClient(cmd *cobra.Command) (*http.Client, error) {
-	cfg, err := apiConfig(cmd)
-	if err != nil {
-		return nil, err
-	}
-	return scanoss.NewHTTPClient(scanoss.HTTPClientOptions{
-		Proxy:      cfg.Proxy,
-		CACertFile: cfg.CACertFile,
-		Insecure:   cfg.InsecureTLS,
-	})
 }
