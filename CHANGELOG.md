@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **The `attributions` command** — `POST /sbom/attribution` is not in the v3 contract.
   Use `licenses attribution`.
+- **`scanoss.NewHTTPClient` and `scanoss.HTTPClientOptions`** are now private: `New` builds
+  the transport from `Config`.
 - **`pkg/api` and `pkg/batch` are gone.** They were a second, weaker transport stack — no
   context, no retries, no timeout — used only by the C bindings, which now go through
   `pkg/scanoss` like the CLI and the SDK. `CombineFingerprints` moved to

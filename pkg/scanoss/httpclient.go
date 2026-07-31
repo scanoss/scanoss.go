@@ -36,12 +36,12 @@ import (
 	"golang.org/x/net/http/httpproxy"
 )
 
-// HTTPClientOptions configures how the SDK reaches the API: through which proxy,
-// and trusting which certificate authorities.
+// httpClientOptions is the transport half of Config, resolved: which proxy to go
+// through, and which certificate authorities to trust.
 //
 // The zero value is the default behaviour — the proxy comes from HTTP_PROXY,
 // HTTPS_PROXY and NO_PROXY, and verification uses the system certificate pool.
-type HTTPClientOptions struct {
+type httpClientOptions struct {
 	// Proxy is the proxy URL to use, overriding HTTP_PROXY and HTTPS_PROXY for this
 	// client. It must carry an https:// or http:// scheme. NO_PROXY still applies, so
 	// the hosts it exempts are reached directly. Empty leaves Go's own environment
@@ -75,20 +75,12 @@ func resolveTimeout(d time.Duration) time.Duration {
 	}
 }
 
-// NewHTTPClient builds an *http.Client from opts, for use with WithHTTPClient:
+// newHTTPClient builds the *http.Client the transport will use. It is unexported: a
+// caller configures the transport through Config fields, and New assembles it here.
 //
-//	hc, err := scanoss.NewHTTPClient(scanoss.HTTPClientOptions{
-//		Proxy:      "http://proxy.example.com:8080",
-//		CACertFile: "/etc/ssl/corp-ca.pem",
-//	})
-//	if err != nil {
-//		return err
-//	}
-//	client, err := scanoss.New(scanoss.Config{APIKey: key, HTTPClient: hc})
-//
-// Reading and parsing the PEM happen here, so a bad path is an error at
-// construction rather than a handshake failure on the first request.
-func NewHTTPClient(opts HTTPClientOptions) (*http.Client, error) {
+// Reading and parsing the PEM happen here, so a bad path is an error at construction
+// rather than a handshake failure on the first request.
+func newHTTPClient(opts httpClientOptions) (*http.Client, error) {
 	// Clone rather than construct. A zero-value http.Transport has a nil Proxy,
 	// which means no proxy at all — not even the environment's — and it drops Go's
 	// timeouts and connection pooling along with it.

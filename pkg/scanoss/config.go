@@ -93,7 +93,7 @@ func (cfg Config) httpClient() (*http.Client, error) {
 	if cfg.Proxy == "" && cfg.CACertFile == "" && !cfg.InsecureTLS {
 		return &http.Client{Timeout: resolveTimeout(cfg.Timeout)}, nil
 	}
-	return NewHTTPClient(HTTPClientOptions{
+	return newHTTPClient(httpClientOptions{
 		Proxy:      cfg.Proxy,
 		CACertFile: cfg.CACertFile,
 		Insecure:   cfg.InsecureTLS,
