@@ -52,18 +52,26 @@ func addAPIFlags(cmd *cobra.Command) {
 	fs.StringP("output", "o", "", "Output file (default: stdout)")
 }
 
-// newHTTPClient builds the HTTP client from the three transport flags. Every
-// command that talks to the API goes through here, so the transport is configured
-// in one place rather than per command.
+// apiConfig resolves the five flags addAPIFlags gives every API command — endpoint, key,
+// proxy, CA file and ignore-cert-errors — into the Config that carries them. Commands add
+// their own fields on top; nothing else reads these flags.
 //
-// With no flags set the client keeps Go's defaults, which means HTTP_PROXY,
-// HTTPS_PROXY and NO_PROXY are honoured without any code of ours.
-func newHTTPClient(cmd *cobra.Command) (*http.Client, error) {
+// chunk-size and workers are deliberately absent: chunk-size means PURLs per request on
+// the purl commands and upload bytes on scan, so resolving it here would misconfigure one
+// of them.
+//
+// With no flags set the SDK keeps Go's defaults, which means HTTP_PROXY, HTTPS_PROXY and
+// NO_PROXY are honoured without any code of ours.
+func apiConfig(cmd *cobra.Command) (scanoss.Config, error) {
+	api, err := cliconfig.ResolveAPI(cmd.Flags())
+	if err != nil {
+		return scanoss.Config{}, err
+	}
 	// Resolved rather than read off the flags: both can also come from the
 	// environment or ~/.scanoss/settings.json, so a stored value works with no flag.
 	transport, err := cliconfig.ResolveTransport(cmd.Flags())
 	if err != nil {
-		return nil, err
+		return scanoss.Config{}, err
 	}
 	// ignore-cert-errors stays a flag. Storing "never verify certificates" would
 	// remove the deliberateness that makes it acceptable per run.
@@ -80,9 +88,26 @@ func newHTTPClient(cmd *cobra.Command) (*http.Client, error) {
 		}
 	}
 
+	return scanoss.Config{
+		APIURL:      api.URL,
+		APIKey:      api.Key,
+		Proxy:       transport.Proxy,
+		CACertFile:  transport.CACertFile,
+		InsecureTLS: insecure,
+	}, nil
+}
+
+// newHTTPClient builds an *http.Client from the same flags, for the one command that
+// talks to an endpoint the SDK does not cover: `attributions` posts a multipart SBOM to
+// /sbom/attribution. Everything else configures the transport through Config.
+func newHTTPClient(cmd *cobra.Command) (*http.Client, error) {
+	cfg, err := apiConfig(cmd)
+	if err != nil {
+		return nil, err
+	}
 	return scanoss.NewHTTPClient(scanoss.HTTPClientOptions{
-		Proxy:      transport.Proxy,
-		CACertFile: transport.CACertFile,
-		Insecure:   insecure,
+		Proxy:      cfg.Proxy,
+		CACertFile: cfg.CACertFile,
+		Insecure:   cfg.InsecureTLS,
 	})
 }

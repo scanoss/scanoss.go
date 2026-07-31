@@ -35,7 +35,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/vbauerster/mpb/v8"
 
-	"github.com/scanoss/scanoss.go/internal/cliconfig"
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
 )
 
@@ -155,24 +154,13 @@ func readComponentsFile(path, defaultRequirement string) ([]scanoss.Component, e
 // optional (absent on the non-PURL-list commands) and when unset resolve to 0, so
 // the SDK keeps its defaults.
 func clientConfig(cmd *cobra.Command) (scanoss.Config, error) {
-	api, err := cliconfig.ResolveAPI(cmd.Flags())
+	cfg, err := apiConfig(cmd)
 	if err != nil {
 		return scanoss.Config{}, err
 	}
-	chunkSize, _ := cmd.Flags().GetInt("chunk-size")
-	workers, _ := cmd.Flags().GetInt("workers")
-	httpClient, err := newHTTPClient(cmd)
-	if err != nil {
-		return scanoss.Config{}, err
-	}
-
-	return scanoss.Config{
-		APIURL:     api.URL,
-		APIKey:     api.Key,
-		ChunkSize:  chunkSize,
-		Workers:    workers,
-		HTTPClient: httpClient,
-	}, nil
+	cfg.ChunkSize, _ = cmd.Flags().GetInt("chunk-size")
+	cfg.Workers, _ = cmd.Flags().GetInt("workers")
+	return cfg, nil
 }
 
 // newClient builds an SDK client from the API flags, without a progress bar. Used

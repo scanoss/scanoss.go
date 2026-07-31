@@ -30,7 +30,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/scanoss/scanoss.go/internal/cliconfig"
 	"github.com/scanoss/scanoss.go/internal/config"
 	"github.com/scanoss/scanoss.go/pkg/filter"
 	"github.com/scanoss/scanoss.go/pkg/output"
@@ -535,28 +534,19 @@ func runScanWFP(cmd *cobra.Command, args []string) error {
 // here: reporters travel with each call, so a caller registers one when it makes the call. The
 // only hook this attaches is the scan-id notification.
 func buildScanClient(cmd *cobra.Command, prog *scanProgress) (*scanoss.Client, error) {
-	api, err := cliconfig.ResolveAPI(cmd.Flags())
+	cfg, err := apiConfig(cmd)
 	if err != nil {
 		return nil, err
 	}
-	httpClient, err := newHTTPClient(cmd)
-	if err != nil {
-		return nil, err
+	cfg.OnScanID = func(id string) {
+		prog.writeLine("") // separate the scan-id block from the filter/skip notices above
+		prog.writeLine(infoLine("Scan id: %s", id))
+		// The resume hint carries the resolved endpoint, so it still works in a
+		// shell without the environment variable that produced it.
+		prog.writeLine("  If interrupted, resume with:\n  " + buildResultsCommand(id, cfg.APIURL, cfg.APIKey))
+		prog.writeLine("") // separate the resume hint from the progress bars below
 	}
-
-	return scanoss.New(scanoss.Config{
-		APIURL:     api.URL,
-		APIKey:     api.Key,
-		HTTPClient: httpClient,
-		OnScanID: func(id string) {
-			prog.writeLine("") // separate the scan-id block from the filter/skip notices above
-			prog.writeLine(infoLine("Scan id: %s", id))
-			// The resume hint carries the resolved endpoint, so it still works in a
-			// shell without the environment variable that produced it.
-			prog.writeLine("  If interrupted, resume with:\n  " + buildResultsCommand(id, api.URL, api.Key))
-			prog.writeLine("") // separate the resume hint from the progress bars below
-		},
-	})
+	return scanoss.New(cfg)
 }
 
 // scanTuning builds the per-scan options (chunk size, poll interval, and bom.remove) from the
