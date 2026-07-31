@@ -5,57 +5,29 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2026-07-31
 
 ### Fixed
 
-- **The inventory keeps a component's `rank`, `release_date` and `artifact_name`.** All
-  three were dropped, so two components matching the same file looked equally strong.
+- **A component's `rank`, `release_date` and `artifact_name` reach the inventory.** All three
+  were dropped, so two components matching the same file looked equally strong.
+- **A request is bounded by a 120s timeout** (`Config.Timeout`; negative disables it).
+  Waiting for a server that accepted the request and went quiet had no bound before.
+- **Any 2xx counts as success.** A `201` or `204` used to surface as an error.
 
 ### Removed
 
 - **The `attributions` command** — `POST /sbom/attribution` is not in the v3 contract.
   Use `licenses attribution`.
-- **`scanoss.NewHTTPClient` and `scanoss.HTTPClientOptions`** are now private: `New` builds
-  the transport from `Config`.
-- **`pkg/api` and `pkg/batch` are gone.** They were a second, weaker transport stack — no
-  context, no retries, no timeout — used only by the C bindings, which now go through
-  `pkg/scanoss` like the CLI and the SDK. `CombineFingerprints` moved to
-  `pkg/fingerprint/wfp`, beside the type it operates on; `output.MergeJSONResults` went
-  with the pipeline that used it.
+- **`pkg/api` and `pkg/batch`** — a second transport stack with no context, retries or
+  timeout, used only by the C bindings, which now go through `pkg/scanoss`.
+- **`scanoss.NewHTTPClient` and `scanoss.HTTPClientOptions`** are now private.
 
 ### Changed
 
-- **The SDK client is configured with a `scanoss.Config` struct.** `scanoss.New` now
-  takes a `Config` and returns an error, so an unreadable CA file or a proxy without a
-  scheme fails at construction instead of on the first request. `scanoss.Option` and the
-  `With*` client options are gone; per-call options (`WithChunkBytes`,
-  `WithScanReporter`, `WithDecorationReporter`) are unchanged. `Proxy`, `CACertFile` and
-  `InsecureTLS` are now SDK fields, previously reachable only by building an
-  `*http.Client` by hand.
-
-  ```go
-  // before
-  client := scanoss.New(scanoss.WithAPIKey(key), scanoss.WithWorkers(10))
-
-  // after
-  client, err := scanoss.New(scanoss.Config{APIKey: key, Workers: 10})
-  ```
-
-  `Config` carries settings only — no pre-built `*http.Client`. Proxy, CA file, insecure
-  TLS and the timeout are fields, and `New` builds the client from them. mTLS and custom
-  round trippers are not reachable for now; ask and they get a field.
-
-  The scan-id notification moved to where the scan happens: `WithScanIDNotify` is a
-  `ScanOption` passed to `Scan.Folder`/`Files`/`WFP`, not a client-wide setting. A client
-  no longer carries state belonging to one call.
-
-- **A request is now bounded by a 120s timeout** (`Config.Timeout` to change it, a
-  negative value to disable it). Connecting and the TLS handshake were already bounded by
-  Go's defaults, and a caller passing a context with a deadline was already covered; what
-  had no bound was waiting for a server that accepted the request and then went quiet —
-  the CLI sets no deadline, so it waited indefinitely. `Retry-After` waits happen between
-  attempts and are not cut short.
+- **`scanoss.New(Config) (*Client, error)`** replaces `scanoss.Option` and the `With*`
+  client options; `Proxy`, `CACertFile`, `InsecureTLS` and `Timeout` are now fields.
+- **`WithScanIDNotify` is a `ScanOption`**, passed to the scan call, not to the client.
 
 ## [0.5.0] - 2026-07-30
 
@@ -222,6 +194,7 @@ Initial release of the SCANOSS Go CLI and SDK (`scanoss`).
   CycloneDX and SPDX (with `WithTool`/`WithAuthor`/`WithTimestamp` document-metadata options).
 - **C shared library** (`libscanoss`) with Node.js and Python bindings.
 
+[0.6.0]: https://github.com/scanoss/scanoss.go/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/scanoss/scanoss.go/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/scanoss/scanoss.go/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/scanoss/scanoss.go/compare/v0.2.0...v0.3.0
