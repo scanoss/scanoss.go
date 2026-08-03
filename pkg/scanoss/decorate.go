@@ -28,6 +28,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 )
 
 // ChunkError records a batch of components the service never answered for. It names the
@@ -41,8 +42,19 @@ type ChunkError struct {
 	Err error
 }
 
+// Error names the components, not just how many. Most callers only ever see this string — logged,
+// or wrapped with %w — and a bare count is exactly what the batch index already told them.
+//
+// The list is bounded because a chunk holds ChunkSize components and a caller may raise that: past
+// the first few the full set is on Purls, rather than in every log line.
 func (e ChunkError) Error() string {
-	return fmt.Sprintf("%d component(s) unanswered: %v", len(e.Purls), e.Err)
+	const shown = 10
+	purls, more := e.Purls, ""
+	if len(purls) > shown {
+		purls, more = purls[:shown], fmt.Sprintf(" (+%d more)", len(e.Purls)-shown)
+	}
+	return fmt.Sprintf("%d component(s) unanswered [%s%s]: %v",
+		len(e.Purls), strings.Join(purls, ", "), more, e.Err)
 }
 
 // result holds the outcome of a chunked, multi-request query: one raw body per chunk that
