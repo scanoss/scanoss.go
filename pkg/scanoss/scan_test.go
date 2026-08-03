@@ -497,3 +497,52 @@ func TestScanRetriesFailedStatusPoll(t *testing.T) {
 		t.Errorf("polls = %d, want 2 (one retried)", got)
 	}
 }
+
+// The run that surfaced this: a proxy rewrote a successful chunk response to 503, so the
+// SDK retried a chunk the server had already accepted and got 409 RANGE_CONFLICT. A 409
+// means the upload is done, not broken — the scan must complete, not fail.
+func TestScanChunkConflictCountsAsUploaded(t *testing.T) {
+	var posts int32
+	var scanID atomic.Value
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			id, _ := scanID.Load().(string)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"scan_id": id, "status": "completed", "phase": "done",
+				"phase_done": 1, "phase_total": 1,
+				"result": json.RawMessage(`{"files":[],"components":{}}`),
+			})
+			return
+		}
+		scanID.Store(r.Header.Get("X-Scan-Id"))
+		// The first POST lands, but the caller is told 503 — the response was mangled or
+		// lost. Every later POST for the same range is therefore a duplicate.
+		if atomic.AddInt32(&posts, 1) == 1 {
+			http.Error(w, "rewritten by a proxy", http.StatusServiceUnavailable)
+			return
+		}
+		http.Error(w, `{"error":{"code":"RANGE_CONFLICT","message":"upload already complete"}}`,
+			http.StatusConflict)
+	}))
+	t.Cleanup(srv.Close)
+
+	notified := ""
+	c := mustNew(t, Config{APIURL: srv.URL, RetryBackoffBase: time.Millisecond})
+	env, err := c.Scan.WFP(context.Background(), []byte("abc"),
+		WithPollInterval(10*time.Millisecond),
+		WithScanIDNotify(func(id string) { notified = id }))
+	if err != nil {
+		t.Fatalf("a 409 means the upload completed, not that the scan failed: %v", err)
+	}
+	if env.Status != "completed" {
+		t.Fatalf("status = %q, want completed", env.Status)
+	}
+	// The id must still be surfaced: the session it names is resumable.
+	if notified == "" {
+		t.Error("notify never fired, so the completed session was not resumable")
+	}
+	if got := atomic.LoadInt32(&posts); got != 2 {
+		t.Errorf("POSTs = %d, want 2 (the 503 then the 409)", got)
+	}
+}

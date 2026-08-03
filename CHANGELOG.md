@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   chunk used to fail the entire upload, and one while polling threw away work the server
   had already done. Network errors, truncated responses and 429/5xx are now retried with
   exponential backoff; a `Retry-After` is still obeyed first.
+- **A chunk the server already holds no longer fails the scan.** When a retry's predecessor
+  landed but its response was lost, the server answers `409 RANGE_CONFLICT` — the upload is
+  complete, so it now counts as success and the scan proceeds to polling.
 
 ### Added
 
