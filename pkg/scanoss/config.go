@@ -35,8 +35,12 @@ const (
 	DefaultChunkSize  = 10
 	DefaultWorkers    = 5
 	DefaultMaxRetries = 5
-	// DefaultMaxRetryAfter caps a single Retry-After wait.
-	DefaultMaxRetryAfter = 5 * time.Minute
+	// DefaultMaxServerRetryWait caps a single Retry-After wait. It is generous because it
+	// bounds a wait the server asked for; the SDK's own waits are capped by maxRetryBackoff.
+	DefaultMaxServerRetryWait = 5 * time.Minute
+	// DefaultRetryBackoffBase is the first backoff wait; it doubles per attempt. With
+	// DefaultMaxRetries that totals under 8s of waiting before a call gives up.
+	DefaultRetryBackoffBase = 250 * time.Millisecond
 	// DefaultTimeout bounds one request attempt, body transfer included. Sized for the
 	// largest the SDK sends — a 1 MiB WFP chunk — over a poor link.
 	DefaultTimeout = 120 * time.Second
@@ -72,12 +76,17 @@ type Config struct {
 	// Workers caps the concurrent requests (default DefaultWorkers). The effective
 	// number is never larger than the number of chunks.
 	Workers int
-	// MaxRetries caps the retry count when the server answers 429/503 with a
-	// Retry-After header (default DefaultMaxRetries).
+	// MaxRetries caps the retry count for a transient failure — a network error, a
+	// truncated response, or a 429/5xx status (default DefaultMaxRetries). A negative
+	// value disables retries; a request that fails once then fails the call.
 	MaxRetries int
-	// MaxRetryAfter caps a single Retry-After wait (default DefaultMaxRetryAfter),
-	// bounding a pathological server value.
-	MaxRetryAfter time.Duration
+	// RetryBackoffBase is the first wait the SDK computes for itself, doubled per attempt
+	// and capped internally (default DefaultRetryBackoffBase). A Retry-After the server
+	// sent takes precedence over it.
+	RetryBackoffBase time.Duration
+	// MaxServerRetryWait caps a single Retry-After wait (default DefaultMaxServerRetryWait),
+	// bounding a pathological server value. It does not bound RetryBackoffBase's waits.
+	MaxServerRetryWait time.Duration
 
 	// Logger receives the SDK's diagnostics, at Debug/Info/Warn (default
 	// slog.Default()). The SDK never writes to stdout, only through this logger.
@@ -99,6 +108,15 @@ func (cfg Config) httpClient() (*http.Client, error) {
 		Insecure:   cfg.InsecureTLS,
 		Timeout:    cfg.Timeout,
 	})
+}
+
+// retryCount resolves Config.MaxRetries: unset takes the default, and a negative value
+// disables retries — the convention Timeout already uses in this Config.
+func retryCount(n int) int {
+	if n < 0 {
+		return 0
+	}
+	return positiveOr(n, DefaultMaxRetries)
 }
 
 // positiveOr returns value when it is above zero and fallback otherwise: how an unset

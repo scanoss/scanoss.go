@@ -54,8 +54,8 @@ func TestConfigZeroValueDefaults(t *testing.T) {
 	if c.transport.maxRetries != DefaultMaxRetries {
 		t.Errorf("maxRetries = %d, want %d", c.transport.maxRetries, DefaultMaxRetries)
 	}
-	if c.transport.maxRetryAfter != DefaultMaxRetryAfter {
-		t.Errorf("maxRetryAfter = %v, want %v", c.transport.maxRetryAfter, DefaultMaxRetryAfter)
+	if c.transport.maxServerRetryWait != DefaultMaxServerRetryWait {
+		t.Errorf("maxServerRetryWait = %v, want %v", c.transport.maxServerRetryWait, DefaultMaxServerRetryWait)
 	}
 	if c.log == nil {
 		t.Error("log is nil, want slog.Default()")
@@ -63,8 +63,10 @@ func TestConfigZeroValueDefaults(t *testing.T) {
 }
 
 // A non-positive value is not a setting, it is an omission: it falls back to the default.
+// MaxRetries is deliberately absent here: a negative value disables retries rather than
+// falling back, like Timeout. See TestMaxRetriesDisabled.
 func TestConfigNonPositiveFallsBackToDefault(t *testing.T) {
-	c := mustNew(t, Config{ChunkSize: -1, Workers: 0, MaxRetries: -5, MaxRetryAfter: -time.Second})
+	c := mustNew(t, Config{ChunkSize: -1, Workers: 0, MaxServerRetryWait: -time.Second, RetryBackoffBase: -time.Second})
 
 	if c.chunkSize != DefaultChunkSize {
 		t.Errorf("chunkSize = %d, want %d", c.chunkSize, DefaultChunkSize)
@@ -72,22 +74,22 @@ func TestConfigNonPositiveFallsBackToDefault(t *testing.T) {
 	if c.workers != DefaultWorkers {
 		t.Errorf("workers = %d, want %d", c.workers, DefaultWorkers)
 	}
-	if c.transport.maxRetries != DefaultMaxRetries {
-		t.Errorf("maxRetries = %d, want %d", c.transport.maxRetries, DefaultMaxRetries)
+	if c.transport.maxServerRetryWait != DefaultMaxServerRetryWait {
+		t.Errorf("maxServerRetryWait = %v, want %v", c.transport.maxServerRetryWait, DefaultMaxServerRetryWait)
 	}
-	if c.transport.maxRetryAfter != DefaultMaxRetryAfter {
-		t.Errorf("maxRetryAfter = %v, want %v", c.transport.maxRetryAfter, DefaultMaxRetryAfter)
+	if c.transport.retryBackoffBase != DefaultRetryBackoffBase {
+		t.Errorf("retryBase = %v, want %v", c.transport.retryBackoffBase, DefaultRetryBackoffBase)
 	}
 }
 
 func TestConfigAppliesSetFields(t *testing.T) {
 	c := mustNew(t, Config{
-		APIKey:        "k",
-		APIURL:        "https://scanoss.internal/",
-		ChunkSize:     7,
-		Workers:       3,
-		MaxRetries:    9,
-		MaxRetryAfter: 30 * time.Second,
+		APIKey:             "k",
+		APIURL:             "https://scanoss.internal/",
+		ChunkSize:          7,
+		Workers:            3,
+		MaxRetries:         9,
+		MaxServerRetryWait: 30 * time.Second,
 	})
 
 	if c.apiURL != "https://scanoss.internal" {
@@ -102,8 +104,8 @@ func TestConfigAppliesSetFields(t *testing.T) {
 	if c.transport.maxRetries != 9 {
 		t.Errorf("maxRetries = %d, want 9", c.transport.maxRetries)
 	}
-	if c.transport.maxRetryAfter != 30*time.Second {
-		t.Errorf("maxRetryAfter = %v, want 30s", c.transport.maxRetryAfter)
+	if c.transport.maxServerRetryWait != 30*time.Second {
+		t.Errorf("maxServerRetryWait = %v, want 30s", c.transport.maxServerRetryWait)
 	}
 }
 

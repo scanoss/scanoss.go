@@ -213,8 +213,9 @@ func TestPartialFailure(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Single worker so chunk order is deterministic (first chunk fails).
-	client := mustNew(t, Config{APIURL: srv.URL, ChunkSize: 1, Workers: 1})
+	// Single worker so chunk order is deterministic (first chunk fails). Retries off:
+	// the point is a chunk that stays failed, and a retried 500 would succeed.
+	client := mustNew(t, Config{APIURL: srv.URL, ChunkSize: 1, Workers: 1, MaxRetries: -1})
 	res, err := client.decorate(context.Background(), ServiceVulnerabilities, Components("pkg:a", "pkg:b"))
 	if err != nil {
 		t.Fatalf("expected partial success, got error: %v", err)

@@ -112,11 +112,12 @@ func New(cfg Config) (*Client, error) {
 		workers:   positiveOr(cfg.Workers, DefaultWorkers),
 		log:       logger,
 		transport: &httpTransport{
-			httpClient:    httpClient,
-			apiKey:        cfg.APIKey,
-			maxRetries:    positiveOr(cfg.MaxRetries, DefaultMaxRetries),
-			maxRetryAfter: positiveOr(cfg.MaxRetryAfter, DefaultMaxRetryAfter),
-			log:           logger,
+			httpClient:         httpClient,
+			apiKey:             cfg.APIKey,
+			maxRetries:         retryCount(cfg.MaxRetries),
+			retryBackoffBase:   positiveOr(cfg.RetryBackoffBase, DefaultRetryBackoffBase),
+			maxServerRetryWait: positiveOr(cfg.MaxServerRetryWait, DefaultMaxServerRetryWait),
+			log:                logger,
 		},
 	}
 	// Wire the per-service handles to this client.

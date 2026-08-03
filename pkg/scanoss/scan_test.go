@@ -395,3 +395,105 @@ func TestScanWithoutBOMUnchanged(t *testing.T) {
 		t.Errorf("components should be unchanged: %+v", res.Result.Components)
 	}
 }
+
+// The scenario of issue #64: one chunk of a multi-chunk upload fails transiently. The
+// scan must survive it, and every byte range must still reach the server exactly once —
+// a retry that skipped or duplicated a range would leave the WFP unscannable.
+//
+// The chunk fails with a 503 rather than a dropped connection on purpose: Go's own
+// transport never retries a status, so a scan that completes here proves the SDK
+// retried, not net/http. The network-error path is covered at the transport level by
+// TestTransportRetriesOnNetworkError.
+func TestScanRetriesFailedChunk(t *testing.T) {
+	var mu sync.Mutex
+	accepted := map[string]int{} // Content-Range → times accepted
+	var posts, failed int32
+	var scanID atomic.Value
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			id, _ := scanID.Load().(string)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"scan_id": id, "status": "completed", "phase": "done",
+				"phase_done": 1, "phase_total": 1,
+				"result": json.RawMessage(`{"files":[],"components":{}}`),
+			})
+			return
+		}
+		atomic.AddInt32(&posts, 1)
+		// Fail the first chunk once, then accept everything.
+		if atomic.AddInt32(&failed, 1) == 1 {
+			http.Error(w, "briefly unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		scanID.Store(r.Header.Get("X-Scan-Id"))
+		mu.Lock()
+		accepted[r.Header.Get("Content-Range")]++
+		mu.Unlock()
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	t.Cleanup(srv.Close)
+
+	// One worker so the failing chunk is deterministic; a tiny backoff to stay fast.
+	c := mustNew(t, Config{APIURL: srv.URL, Workers: 1, RetryBackoffBase: time.Millisecond})
+	env, err := c.Scan.WFP(context.Background(), []byte(strings.Repeat("x", 300)), WithChunkBytes(100))
+	if err != nil {
+		t.Fatalf("a scan must survive one transient chunk failure: %v", err)
+	}
+	if env.Status != "completed" {
+		t.Fatalf("status = %q, want completed", env.Status)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	want := []string{"bytes 0-99/300", "bytes 100-199/300", "bytes 200-299/300"}
+	for _, r := range want {
+		if accepted[r] != 1 {
+			t.Errorf("range %q accepted %d times, want exactly 1", r, accepted[r])
+		}
+	}
+	if len(accepted) != len(want) {
+		t.Errorf("ranges accepted = %v, want exactly %v", accepted, want)
+	}
+	if got := atomic.LoadInt32(&posts); got != 4 { // 3 chunks + the one that failed
+		t.Errorf("POSTs = %d, want 4", got)
+	}
+}
+
+// The upload is only half the exposure: a blip while polling would discard a scan the
+// server has already accepted and is working on.
+func TestScanRetriesFailedStatusPoll(t *testing.T) {
+	var polls int32
+	var scanID atomic.Value
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			scanID.Store(r.Header.Get("X-Scan-Id"))
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
+		if atomic.AddInt32(&polls, 1) == 1 {
+			http.Error(w, "briefly unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		id, _ := scanID.Load().(string)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"scan_id": id, "status": "completed", "phase": "done",
+			"phase_done": 1, "phase_total": 1,
+			"result": json.RawMessage(`{"files":[],"components":{}}`),
+		})
+	}))
+	t.Cleanup(srv.Close)
+
+	c := mustNew(t, Config{APIURL: srv.URL, RetryBackoffBase: time.Millisecond})
+	env, err := c.Scan.WFP(context.Background(), []byte("abc"), WithPollInterval(10*time.Millisecond))
+	if err != nil {
+		t.Fatalf("a scan must survive one transient status-poll failure: %v", err)
+	}
+	if env.Status != "completed" {
+		t.Fatalf("status = %q, want completed", env.Status)
+	}
+	if got := atomic.LoadInt32(&polls); got != 2 {
+		t.Errorf("polls = %d, want 2 (one retried)", got)
+	}
+}
