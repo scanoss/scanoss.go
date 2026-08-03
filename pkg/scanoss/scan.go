@@ -24,8 +24,11 @@
 package scanoss
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 
 	scanossapi "github.com/scanoss/scanoss.api-sdk"
 	"sync"
@@ -62,6 +65,11 @@ type ScanAPI interface {
 	// tuned with WithPollInterval.
 	Wait(ctx context.Context, scanID string, opts ...ScanOption) (scanossapi.ScanEnvelope, error)
 }
+
+// ServiceScan is the v3 batch scan endpoint. WFP fingerprints are uploaded as
+// octet-stream byte ranges (Content-Range); the server assigns a scan id and
+// queues the scan once all bytes are received.
+var ServiceScan = Service{Name: "scan", endpoint: "/v3/wfp/scan"}
 
 // Scan defaults applied when the corresponding option is not given.
 // DefaultScanChunkBytes is the WFP upload block size (1 MiB).
@@ -303,8 +311,59 @@ func (s scanService) uploadChunks(ctx context.Context, scanID string, wfp []byte
 	return nil
 }
 
+// chunkRanges splits a payload of total bytes into [off,end] (inclusive) blocks
+// of at most size bytes; the final block is short. size <= 0 yields a single
+// block; total <= 0 yields none.
+func chunkRanges(total, size int) [][2]int {
+	if total <= 0 {
+		return nil
+	}
+	if size <= 0 {
+		return [][2]int{{0, total - 1}}
+	}
+	ranges := make([][2]int, 0, (total+size-1)/size)
+	for off := 0; off < total; off += size {
+		end := off + size - 1
+		if end > total-1 {
+			end = total - 1
+		}
+		ranges = append(ranges, [2]int{off, end})
+	}
+	return ranges
+}
+
 // blockOf returns the WFP byte slice for the inclusive range r = [off, end].
 func blockOf(wfp []byte, r [2]int) []byte { return wfp[r[0] : r[1]+1] }
+
+// uploadChunk POSTs one WFP byte range to the scan endpoint. The client-generated
+// scanID is sent on every chunk via the X-Scan-Id request header.
+//
+// A 409 counts as success: it is what the server answers when it already holds the range,
+// which is the normal outcome of a retry whose predecessor landed and whose response was
+// lost to a timeout. The ranges this client sends are deterministic and never overlap, so
+// a conflict cannot mean anything else. Treating it as a failure would report a scan as
+// broken when its upload in fact completed — and the session it names is still resumable.
+func (c *Client) uploadChunk(ctx context.Context, scanID string, off, end, total int, block []byte) error {
+	req, err := c.newRequest(http.MethodPost, ServiceScan.endpoint, bytes.NewReader(block))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/octet-stream")
+	req.Header.Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", off, end, total))
+	req.Header.Set("X-Scan-Id", scanID)
+
+	if _, err := c.do(ctx, req); err != nil {
+		var statusErr *StatusError
+		if errors.As(err, &statusErr) && statusErr.StatusCode == http.StatusConflict {
+			c.log.Debug("chunk already accepted by the server",
+				"scanID", scanID, "range", fmt.Sprintf("%d-%d/%d", off, end, total),
+				"body", statusErr.Body)
+			return nil
+		}
+		return fmt.Errorf("chunk %d-%d/%d: %w", off, end, total, err)
+	}
+	return nil
+}
 
 // chunkProgress reports upload progress in chunks.
 //
@@ -349,6 +408,18 @@ func (s scanService) Wait(ctx context.Context, scanID string, opts ...ScanOption
 	o := resolveScanOptions(opts)
 	return s.wait(ctx, scanID, o.pollInterval, o.reporter)
 }
+
+// DefaultScanPollInterval is the cadence for polling the scan status endpoint
+// when the caller does not override it with WithPollInterval.
+//
+// The server reports progress per pass, and polling samples it rather than streaming it: at a
+// slower cadence a whole pass can come and go between two polls, leaving a progress display
+// frozen for stretches that look like a hang.
+const DefaultScanPollInterval = 2 * time.Second
+
+// scanPollInitial is the delay before the first status poll. It is clamped to the
+// poll interval when a smaller interval is set (see scanService.wait).
+const scanPollInitial = 1 * time.Second
 
 // wait is the polling loop shared by the full scan flow and the public Wait. The
 // first poll fires after scanPollInitial, clamped to interval so a sub-second
