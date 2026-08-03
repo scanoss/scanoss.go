@@ -29,6 +29,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -186,4 +187,28 @@ func equal(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// A pipeline can only hand back the services PipelineResult has a field for. Any other is
+// refused before the first request, rather than after paying for the chunked round trip and
+// discarding the answer.
+func TestPipelineRejectsNonLayerService(t *testing.T) {
+	var hits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		_, _ = w.Write([]byte(`{"components":[]}`))
+	}))
+	defer srv.Close()
+
+	client := mustNew(t, Config{APIURL: srv.URL})
+	p := client.DecorationPipeline(ServiceLicenses, ServiceLicenseEvidence)
+
+	if _, err := p.Run(context.Background(), Components("pkg:a")); err == nil {
+		t.Fatal("want an error naming the service that has no layer")
+	} else if !strings.Contains(err.Error(), ServiceLicenseEvidence.Name) {
+		t.Errorf("error should name %q, got: %v", ServiceLicenseEvidence.Name, err)
+	}
+	if got := atomic.LoadInt32(&hits); got != 0 {
+		t.Errorf("requests = %d, want 0: the check must happen before any of them", got)
+	}
 }
