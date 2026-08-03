@@ -67,7 +67,8 @@ func (c *Client) DecorationPipeline(services ...Service) *DecorationPipeline {
 	return p.Add(services...)
 }
 
-// Add appends services that are not already present (dedupe by name). Chainable.
+// Add appends services that are not already present (dedupe by name). Chainable, so it does not
+// validate: a service with no field on PipelineResult is rejected by Run, before any request.
 func (p *DecorationPipeline) Add(services ...Service) *DecorationPipeline {
 	for _, s := range services {
 		if p.indexOf(s.Name) < 0 {
@@ -113,6 +114,14 @@ func (p *DecorationPipeline) Run(ctx context.Context, components []Component, op
 	if len(p.services) == 0 {
 		return nil, fmt.Errorf("pipeline has no services")
 	}
+	// Checked before the first request: PipelineResult has a field per decoration layer and
+	// nowhere to put anything else, so running another service would spend the chunked requests
+	// only to discard the answer when it comes back.
+	for _, svc := range p.services {
+		if !isDecorationLayer(svc.Name) {
+			return nil, fmt.Errorf("service %q is not a decoration layer", svc.Name)
+		}
+	}
 	p.client.log.Debug("decoration pipeline run", "services", len(p.services), "components", len(components))
 
 	type outcome struct {
@@ -154,6 +163,18 @@ func (p *DecorationPipeline) Run(ctx context.Context, components []Component, op
 		return nil, fmt.Errorf("all %d pipeline service(s) failed", len(p.services))
 	}
 	return pr, nil
+}
+
+// isDecorationLayer reports whether a service has a field on PipelineResult, and so whether a
+// pipeline can hand its answer back. It lists the same services as setLayer; adding one to either
+// alone surfaces as an error from Run rather than as silence.
+func isDecorationLayer(name string) bool {
+	switch name {
+	case ServiceLicenses.Name, ServiceCryptographyAlgorithms.Name,
+		ServiceGeoprovenanceOrigin.Name, ServiceVulnerabilities.Name:
+		return true
+	}
+	return false
 }
 
 // setLayer merges one service's chunks and decodes them into the matching field. A service with
