@@ -28,6 +28,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 )
 
@@ -36,18 +37,29 @@ import (
 // multi-service pipeline with chunking, and assert the combined keyed output,
 // correct per-service routing, chunk merging, and final progress.
 func TestPipelineEndToEnd(t *testing.T) {
-	// Stub server: echoes the chunk's components back, tagged with the endpoint
-	// path so we can verify each service's response is keyed correctly.
+	// The paths are recorded here rather than echoed back in the body: a typed response only
+	// carries the fields its service declares, so an echoed field would not survive decoding.
+	var pathMu sync.Mutex
+	gotPaths := map[string]bool{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pathMu.Lock()
+		gotPaths[r.URL.Path] = true
+		pathMu.Unlock()
+
 		var req componentsRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		// Each service is decoded into its own type now, so the stub has to answer in that
+		// service's schema: geoprovenance keys its list "components_locations".
+		key := "components"
+		if r.URL.Path == ServiceGeoprovenanceOrigin.endpoint {
+			key = "components_locations"
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"components": req.Components,
-			"endpoint":   r.URL.Path, // scalar — merge keeps it across chunks
-			"status":     map[string]string{"status": "success"},
+			key:      req.Components,
+			"status": map[string]string{"status": "success"},
 		})
 	}))
 	defer srv.Close()
@@ -80,35 +92,34 @@ func TestPipelineEndToEnd(t *testing.T) {
 		"cryptography.algorithms": "/v3/cryptography/algorithms",
 		"geoprovenance.origin":    "/v3/geoprovenance/origin",
 	}
-	if len(res.Services) != len(wantEndpoints) {
-		t.Fatalf("services = %d, want %d (%v)", len(res.Services), len(wantEndpoints), keys(res.Services))
+	if got := populatedLayers(res); len(got) != len(wantEndpoints) {
+		t.Fatalf("layers = %d, want %d (%v)", len(got), len(wantEndpoints), got)
 	}
 
-	// 2) Each service merged all 3 chunks back to 5 components, and was routed
-	//    to the correct endpoint.
+	// 2) Every service was routed to its own endpoint.
+	pathMu.Lock()
 	for name, wantEP := range wantEndpoints {
-		r := res.Services[name]
-		if r == nil {
-			t.Errorf("missing service %q", name)
-			continue
-		}
-		var got struct {
-			Components []Component `json:"components"`
-			Endpoint   string      `json:"endpoint"`
-		}
-		if err := r.Unmarshal(&got); err != nil {
-			t.Errorf("%s unmarshal: %v", name, err)
-			continue
-		}
-		if len(got.Components) != 5 {
-			t.Errorf("%s merged components = %d, want 5", name, len(got.Components))
-		}
-		if got.Endpoint != wantEP {
-			t.Errorf("%s endpoint = %q, want %q", name, got.Endpoint, wantEP)
+		if !gotPaths[wantEP] {
+			t.Errorf("%s was never requested at %q (paths seen: %v)", name, wantEP, gotPaths)
 		}
 	}
+	pathMu.Unlock()
 
-	// 3) Top-level MarshalJSON is a valid object keyed by service.
+	// 3) Each service merged all 3 chunks back to 5 components.
+	if n := len(res.Vulnerabilities.Response.Components); n != 5 {
+		t.Errorf("vulnerabilities merged components = %d, want 5", n)
+	}
+	if n := len(*res.Licenses.Response.Components); n != 5 {
+		t.Errorf("licenses merged components = %d, want 5", n)
+	}
+	if n := len(res.Cryptography.Response.Components); n != 5 {
+		t.Errorf("cryptography merged components = %d, want 5", n)
+	}
+	if n := len(res.Geoprovenance.Response.ComponentsLocations); n != 5 {
+		t.Errorf("geoprovenance merged components = %d, want 5", n)
+	}
+
+	// 4) Top-level MarshalJSON is a valid object keyed by service.
 	var asObject map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(res.String()), &asObject); err != nil {
 		t.Fatalf("res.String() not valid JSON object: %v", err)
@@ -117,7 +128,7 @@ func TestPipelineEndToEnd(t *testing.T) {
 		t.Errorf("marshaled keys = %d, want %d", len(asObject), len(wantEndpoints))
 	}
 
-	// 4) Final progress: every service reached Done==Total==5 purls.
+	// 5) Final progress: every service reached Done==Total==5 purls.
 	final := rec.snapshot()
 	if len(final) != len(wantEndpoints) {
 		t.Fatalf("services that reported = %d, want %d", len(final), len(wantEndpoints))

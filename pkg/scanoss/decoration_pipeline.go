@@ -28,6 +28,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+
+	scanossapi "github.com/scanoss/scanoss.api-sdk"
 )
 
 // DecorationPipeline runs a configurable set of decoration services over the same
@@ -36,7 +38,26 @@ import (
 type DecorationPipeline struct {
 	client   *Client
 	services []Service // ordered, deduped by Service.Name
+}
 
+// Layer is an answer that arrived. Failed lists the chunks lost from it: a decoration is split
+// into chunks, and a partial answer covers fewer components than asked for — those components
+// read exactly like components the service had nothing to say about.
+type Layer[T any] struct {
+	Response *T
+	Failed   []ChunkError
+}
+
+// PipelineResult holds one layer per decoration service. A non-nil layer always carries a
+// response; a nil one was either not requested or did not arrive — see Errors. Go cannot give a
+// map a different value type per key, so the layers are fields rather than entries.
+type PipelineResult struct {
+	Licenses        *Layer[scanossapi.ComponentsLicenseResponse]
+	Cryptography    *Layer[scanossapi.CryptoAlgorithmsResponse]
+	Geoprovenance   *Layer[scanossapi.GeoOriginResponse]
+	Vulnerabilities *Layer[scanossapi.VulnerabilitiesResponse]
+
+	Errors map[string]error // service name → it failed outright, or answered unreadably
 }
 
 // DecorationPipeline creates a pipeline bound to this client, seeded with the given
@@ -113,41 +134,76 @@ func (p *DecorationPipeline) Run(ctx context.Context, components []Component, op
 	wg.Wait() // barrier: every service has finished
 	close(ch)
 
-	pr := &PipelineResult{
-		Services: make(map[string]*Result),
-		Errors:   make(map[string]error),
-	}
+	pr := &PipelineResult{Errors: make(map[string]error)}
+	decoded := 0
 	for o := range ch {
 		if o.err != nil {
 			pr.Errors[o.name] = o.err
 			continue
 		}
-		pr.Services[o.name] = o.res
+		// A response that cannot be decoded is a failure, not an absence: recording it here
+		// keeps a layer from disappearing without explanation.
+		if err := pr.setLayer(o.name, o.res); err != nil {
+			pr.Errors[o.name] = err
+			continue
+		}
+		decoded++
 	}
 
-	if len(pr.Services) == 0 {
+	if decoded == 0 {
 		return nil, fmt.Errorf("all %d pipeline service(s) failed", len(p.services))
 	}
 	return pr, nil
 }
 
-// PipelineResult holds each service's output, keyed by service name, plus any
-// per-service failures.
-type PipelineResult struct {
-	Services map[string]*Result // keyed by service name; full per-service result
-	Errors   map[string]error   // services that failed entirely
+// setLayer merges one service's chunks and decodes them into the matching field. A service with
+// no field here is not a decoration layer: running it would leave its answer unreachable, so it
+// is reported rather than silently dropped.
+func (pr *PipelineResult) setLayer(name string, res *Result) error {
+	raw, err := res.Merged()
+	if err != nil {
+		return fmt.Errorf("merging the %s response: %w", name, err)
+	}
+	switch name {
+	case ServiceLicenses.Name:
+		pr.Licenses, err = decodeLayer[scanossapi.ComponentsLicenseResponse](raw, res.Failed)
+	case ServiceCryptographyAlgorithms.Name:
+		pr.Cryptography, err = decodeLayer[scanossapi.CryptoAlgorithmsResponse](raw, res.Failed)
+	case ServiceGeoprovenanceOrigin.Name:
+		pr.Geoprovenance, err = decodeLayer[scanossapi.GeoOriginResponse](raw, res.Failed)
+	case ServiceVulnerabilities.Name:
+		pr.Vulnerabilities, err = decodeLayer[scanossapi.VulnerabilitiesResponse](raw, res.Failed)
+	default:
+		return fmt.Errorf("service %q is not a decoration layer", name)
+	}
+	return err
 }
 
-// MarshalJSON renders the result as {"<service>": <merged response>, …}, where
-// each value is that service's full merged response object.
+// decodeLayer returns nil on failure, never a layer with no response: a non-nil layer is the
+// caller's guarantee that Response is safe to read.
+func decodeLayer[T any](raw json.RawMessage, failed []ChunkError) (*Layer[T], error) {
+	var v T
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return nil, fmt.Errorf("decoding the response: %w", err)
+	}
+	return &Layer[T]{Response: &v, Failed: failed}, nil
+}
+
+// MarshalJSON renders the result as {"<service>": <response>, …}, where each value is that
+// service's full response object — the shape callers persisting this document already read.
 func (pr *PipelineResult) MarshalJSON() ([]byte, error) {
-	out := make(map[string]json.RawMessage, len(pr.Services))
-	for name, res := range pr.Services {
-		merged, err := res.Merged()
-		if err != nil {
-			return nil, fmt.Errorf("merging %q: %w", name, err)
-		}
-		out[name] = merged
+	out := make(map[string]any, 4)
+	if pr.Licenses != nil {
+		out[ServiceLicenses.Name] = pr.Licenses.Response
+	}
+	if pr.Cryptography != nil {
+		out[ServiceCryptographyAlgorithms.Name] = pr.Cryptography.Response
+	}
+	if pr.Geoprovenance != nil {
+		out[ServiceGeoprovenanceOrigin.Name] = pr.Geoprovenance.Response
+	}
+	if pr.Vulnerabilities != nil {
+		out[ServiceVulnerabilities.Name] = pr.Vulnerabilities.Response
 	}
 	return json.Marshal(out)
 }

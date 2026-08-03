@@ -65,13 +65,11 @@ func TestPipelineRunKeyedOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
 	}
-	if len(res.Services) != 3 {
-		t.Fatalf("got %d services, want 3: %v", len(res.Services), keys(res.Services))
+	if res.Vulnerabilities == nil || res.Licenses == nil || res.Geoprovenance == nil {
+		t.Fatalf("a requested layer is missing: %v", populatedLayers(res))
 	}
-	for _, name := range []string{"vulnerabilities", "licenses", "geoprovenance.origin"} {
-		if res.Services[name] == nil {
-			t.Errorf("missing service %q in result", name)
-		}
+	if res.Cryptography != nil {
+		t.Error("cryptography was not requested, so its layer must stay nil")
 	}
 
 	// MarshalJSON yields {"<service>": {components,status}}.
@@ -127,8 +125,8 @@ func TestPipelinePartialFailure(t *testing.T) {
 	if _, ok := res.Errors["licenses"]; !ok {
 		t.Errorf("expected licenses in Errors, got %v", res.Errors)
 	}
-	if res.Services["vulnerabilities"] == nil || res.Services["geoprovenance.origin"] == nil {
-		t.Errorf("expected the other two services to succeed: %v", keys(res.Services))
+	if res.Vulnerabilities == nil || res.Geoprovenance == nil {
+		t.Errorf("expected the other two services to succeed: %v", populatedLayers(res))
 	}
 }
 
@@ -160,10 +158,20 @@ func serviceNames(p *DecorationPipeline) []string {
 	return out
 }
 
-func keys(m map[string]*Result) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
+// populatedLayers names the layers a result carries, for a failure message.
+func populatedLayers(res *PipelineResult) []string {
+	var out []string
+	if res.Licenses != nil {
+		out = append(out, ServiceLicenses.Name)
+	}
+	if res.Cryptography != nil {
+		out = append(out, ServiceCryptographyAlgorithms.Name)
+	}
+	if res.Geoprovenance != nil {
+		out = append(out, ServiceGeoprovenanceOrigin.Name)
+	}
+	if res.Vulnerabilities != nil {
+		out = append(out, ServiceVulnerabilities.Name)
 	}
 	return out
 }

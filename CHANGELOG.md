@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A chunk the server already holds no longer fails the scan.** When a retry's predecessor
   landed but its response was lost, the server answers `409 RANGE_CONFLICT` — the upload is
   complete, so it now counts as success and the scan proceeds to polling.
+- **A partial enrichment no longer passes for a complete one.** When some requests of a layer
+  fail, the components left without data were indistinguishable from components the service had
+  nothing to say about; they are now named on stderr.
 
 ### Added
 
@@ -27,6 +30,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Retry-After`. A negative value now disables retries, as `Timeout` does.
 - **BREAKING — `Config.MaxRetryAfter` is now `Config.MaxServerRetryWait`**: it bounds the
   wait the server asks for, not the one the SDK computes.
+- **BREAKING — `scansource.LicenseKey` is now `scansource.Key`**: it keys a component at a
+  version, which every per-component layer joins on, not just licenses.
+- **BREAKING — the decoration pipeline result is typed per layer.** `PipelineResult.Services`
+  (a `map[string]*Result`) gives way to one field per layer — `Licenses`, `Cryptography`,
+  `Geoprovenance`, `Vulnerabilities` — each a `*Layer[T]` holding the decoded response and the
+  chunks it lost. A response that cannot be decoded is now recorded in `Errors`.
+- **BREAKING — `ChunkError.Index` is now `ChunkError.Purls`**: it names the components left
+  without data instead of an internal batch number a caller cannot act on.
 
 ### Fixed
 
