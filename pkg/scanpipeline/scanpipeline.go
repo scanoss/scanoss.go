@@ -350,40 +350,58 @@ func Enrich(ctx context.Context, client *scanoss.Client, inv *sbom.Inventory, se
 	}
 
 	// Per-component layers attach inline by PURL (+ version where the response echoes it).
-	if r := res.Services[scanoss.ServiceLicenses.Name]; r != nil {
-		if lr, decErr := scanoss.As[scanossapi.ComponentsLicenseResponse](r); decErr == nil {
-			byKey := scansource.LicensesFrom(lr)
-			for i := range inv.Components {
-				c := &inv.Components[i]
-				c.Licenses = byKey[scansource.LicenseKey(c.Purl, c.Version)]
-			}
+	if lic := res.Licenses; lic != nil {
+		warnPartial(scanoss.ServiceLicenses.Name, lic.Failed)
+		byKey := scansource.LicensesFrom(lic.Response)
+		for i := range inv.Components {
+			c := &inv.Components[i]
+			c.Licenses = byKey[scansource.Key(c.Purl, c.Version)]
 		}
 	}
-	if r := res.Services[scanoss.ServiceCryptographyAlgorithms.Name]; r != nil {
-		if cr, decErr := scanoss.As[scanossapi.CryptoAlgorithmsResponse](r); decErr == nil {
-			byKey := scansource.CryptographyFrom(cr)
-			for i := range inv.Components {
-				c := &inv.Components[i]
-				c.Cryptography = byKey[scansource.LicenseKey(c.Purl, c.Version)]
-			}
+	if cry := res.Cryptography; cry != nil {
+		warnPartial(scanoss.ServiceCryptographyAlgorithms.Name, cry.Failed)
+		byKey := scansource.CryptographyFrom(cry.Response)
+		for i := range inv.Components {
+			c := &inv.Components[i]
+			c.Cryptography = byKey[scansource.Key(c.Purl, c.Version)]
 		}
 	}
-	if r := res.Services[scanoss.ServiceGeoprovenanceOrigin.Name]; r != nil {
-		if gr, decErr := scanoss.As[scanossapi.GeoOriginResponse](r); decErr == nil {
-			byPurl := scansource.GeoprovenanceFrom(gr)
-			for i := range inv.Components {
-				c := &inv.Components[i]
-				c.Geoprovenance = byPurl[c.Purl]
-			}
+	if geo := res.Geoprovenance; geo != nil {
+		warnPartial(scanoss.ServiceGeoprovenanceOrigin.Name, geo.Failed)
+		byPurl := scansource.GeoprovenanceFrom(geo.Response)
+		for i := range inv.Components {
+			c := &inv.Components[i]
+			c.Geoprovenance = byPurl[c.Purl]
 		}
 	}
 
 	// Vulnerabilities → flat top-level list joined by base PURL.
-	if r := res.Services[scanoss.ServiceVulnerabilities.Name]; r != nil {
-		if vr, decErr := scanoss.As[scanossapi.VulnerabilitiesResponse](r); decErr == nil {
-			inv.Vulnerabilities = scansource.VulnerabilitiesFrom(vr)
-		}
+	if vul := res.Vulnerabilities; vul != nil {
+		warnPartial(scanoss.ServiceVulnerabilities.Name, vul.Failed)
+		inv.Vulnerabilities = scansource.VulnerabilitiesFrom(vul.Response)
 	}
+}
+
+// warnPartial reports a layer that arrived incomplete, naming the components it left out.
+// Without it the gap is invisible: a component missing from a partial response is
+// indistinguishable from one the service had nothing to say about.
+func warnPartial(svc string, failed []scanoss.ChunkError) {
+	if len(failed) == 0 {
+		return
+	}
+	var purls []string
+	for _, f := range failed {
+		purls = append(purls, f.Purls...)
+	}
+	// A long list is truncated: the point is to name what is missing, not to fill the terminal
+	// when a whole scan's worth of components went unanswered.
+	shown := purls
+	suffix := ""
+	if len(shown) > 5 {
+		shown, suffix = shown[:5], fmt.Sprintf(" (and %d more)", len(purls)-5)
+	}
+	fmt.Fprintf(os.Stderr, "Warning: %s has no data for %d component(s): %s%s\n",
+		svc, len(purls), strings.Join(shown, ", "), suffix)
 }
 
 // sourceDeclared builds ScopeDeclared components directly from the manifests parsed from the

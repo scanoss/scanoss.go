@@ -79,14 +79,16 @@ func FromScanResult(result *scanossapi.ScanResult) sbom.Inventory {
 	return sbom.Inventory{Components: components}
 }
 
-// LicenseKey is the join key matching a decoration response entry to a component: its PURL plus
+// Key is the join key matching a decoration response entry to a component: its PURL plus
 // the queried version (the decoration echoes the queried version back as `requirement`).
-func LicenseKey(purl, version string) string {
+// It identifies a component at a version, so every per-component layer shares it — licenses
+// and cryptography today — which is why it is named after none of them.
+func Key(purl, version string) string {
 	return purl + "\x00" + version
 }
 
 // LicensesFrom maps a licenses decoration response into declared licenses keyed by
-// LicenseKey(purl, requirement). Duplicate ids per key are dropped. (The decoration service has
+// Key(purl, requirement). Duplicate ids per key are dropped. (The decoration service has
 // no declared/concluded distinction — its licenses are declared.)
 func LicensesFrom(resp *scanossapi.ComponentsLicenseResponse) map[string][]sbom.License {
 	if resp == nil || resp.Components == nil {
@@ -99,7 +101,7 @@ func LicensesFrom(resp *scanossapi.ComponentsLicenseResponse) map[string][]sbom.
 		if ci.Purl == nil || ci.Licenses == nil {
 			continue
 		}
-		key := LicenseKey(*ci.Purl, strVal(ci.Requirement))
+		key := Key(*ci.Purl, strVal(ci.Requirement))
 		if seen[key] == nil {
 			seen[key] = make(map[string]bool)
 		}
@@ -116,7 +118,7 @@ func LicensesFrom(resp *scanossapi.ComponentsLicenseResponse) map[string][]sbom.
 }
 
 // CryptographyFrom maps a cryptography-algorithms decoration response into algorithms keyed by
-// LicenseKey(purl, requirement).
+// Key(purl, requirement).
 func CryptographyFrom(resp *scanossapi.CryptoAlgorithmsResponse) map[string][]sbom.CryptoAlgorithm {
 	if resp == nil {
 		return nil
@@ -126,7 +128,7 @@ func CryptographyFrom(resp *scanossapi.CryptoAlgorithmsResponse) map[string][]sb
 		if ci.Purl == nil || ci.Algorithms == nil {
 			continue
 		}
-		key := LicenseKey(*ci.Purl, strVal(ci.Requirement))
+		key := Key(*ci.Purl, strVal(ci.Requirement))
 		for _, a := range *ci.Algorithms {
 			name := strVal(a.Algorithm)
 			if name == "" {

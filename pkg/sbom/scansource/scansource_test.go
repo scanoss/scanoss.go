@@ -224,15 +224,15 @@ func TestLicensesFrom(t *testing.T) {
 	byKey := LicensesFrom(resp)
 
 	// Keyed by PURL + requirement (queried version), so each version is distinct.
-	v20 := byKey[LicenseKey("pkg:npm/lodash", "4.17.20")]
+	v20 := byKey[Key("pkg:npm/lodash", "4.17.20")]
 	if len(v20) != 2 || v20[0].ID != "MIT" || v20[0].Acknowledgement != sbom.AckDeclared || v20[1].ID != "ISC" {
 		t.Errorf("4.17.20 licenses = %v, want [MIT ISC] declared (in-entry dup dropped)", v20)
 	}
-	v21 := byKey[LicenseKey("pkg:npm/lodash", "4.17.21")]
+	v21 := byKey[Key("pkg:npm/lodash", "4.17.21")]
 	if len(v21) != 2 || v21[0].ID != "MIT" || v21[1].ID != "GPL-2.0-only" {
 		t.Errorf("4.17.21 licenses = %v, want [MIT GPL-2.0-only]", v21)
 	}
-	if _, ok := byKey[LicenseKey("pkg:gem/rails", "")]; ok {
+	if _, ok := byKey[Key("pkg:gem/rails", "")]; ok {
 		t.Error("component with no licenses should be absent from the map")
 	}
 }

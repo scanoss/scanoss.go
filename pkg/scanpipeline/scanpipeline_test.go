@@ -25,6 +25,7 @@ package scanpipeline
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -411,5 +412,43 @@ func TestRunRequiresAClient(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "client is required") {
 		t.Errorf("error should name the missing client, got: %v", err)
+	}
+}
+
+// A service that answers with an unexpected shape must not make its layer vanish in silence:
+// the SBOM would come out valid and smaller, with no hint that licenses were dropped. The SDK
+// now reports it as that service's failure, so the existing per-service warning names it.
+func TestEnrichWarnsOnUndecodableLayer(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/licenses") {
+			// Valid JSON, wrong shape: components must be an array.
+			_, _ = w.Write([]byte(`{"components":"not-an-array"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"components":[]}`))
+	}))
+	defer srv.Close()
+	client := mustNewClient(t, srv.URL)
+
+	// Enrich reports to stderr, so the warning is captured by swapping it for a pipe.
+	real := os.Stderr
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = pw
+
+	inv := sbom.Inventory{Components: []sbom.Component{{Purl: "pkg:npm/lodash", Version: "4.17.20"}}}
+	Enrich(context.Background(), client, &inv, []scanoss.Service{scanoss.ServiceLicenses, scanoss.ServiceVulnerabilities}, nil)
+
+	_ = pw.Close()
+	os.Stderr = real
+	out, _ := io.ReadAll(pr)
+
+	if !strings.Contains(string(out), scanoss.ServiceLicenses.Name) {
+		t.Errorf("no warning naming the licenses service; stderr was %q", out)
+	}
+	if lodash := findComponent(inv, "pkg:npm/lodash"); lodash != nil && len(lodash.Licenses) != 0 {
+		t.Errorf("licenses should be absent when the response cannot be read, got %v", lodash.Licenses)
 	}
 }

@@ -30,15 +30,20 @@ import (
 	"net/url"
 )
 
-// ChunkError records the failure of a single chunk request.
+// ChunkError records a batch of components the service never answered for. It names the
+// components rather than the batch: chunking is this SDK's own arithmetic, so a batch number
+// tells a caller nothing it can act on, while the PURLs say exactly which components came back
+// without data.
 type ChunkError struct {
-	// Index is the zero-based position of the failed chunk.
-	Index int
+	// Purls are the components left without data.
+	Purls []string
 	// Err is the underlying error.
 	Err error
 }
 
-func (e ChunkError) Error() string { return fmt.Sprintf("chunk %d: %v", e.Index, e.Err) }
+func (e ChunkError) Error() string {
+	return fmt.Sprintf("%d component(s) unanswered: %v", len(e.Purls), e.Err)
+}
 
 // Result holds the outcome of a chunked, multi-request query. Successful chunk
 // responses are kept in input order; any per-chunk failures are reported in
@@ -180,7 +185,7 @@ func (c *Client) decorate(ctx context.Context, svc Service, components []Compone
 			o.reporter.Decorating(svc.Name, done, len(components))
 		}
 		if r.err != nil {
-			res.Failed = append(res.Failed, ChunkError{Index: r.idx, Err: r.err})
+			res.Failed = append(res.Failed, ChunkError{Purls: purlsOf(chunks[r.idx]), Err: r.err})
 			continue
 		}
 		res.responses = append(res.responses, r.response)
