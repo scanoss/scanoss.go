@@ -5,7 +5,25 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.6.0] - 2026-07-31
+## [Unreleased]
+
+### Fixed
+
+- **A transient network error no longer discards a whole scan.** A DNS blip on one WFP
+  chunk used to fail the entire upload, and one while polling threw away work the server
+  had already done. Network errors, truncated responses and 429/5xx are now retried with
+  exponential backoff; a `Retry-After` is still obeyed first.
+
+### Added
+
+- **`Config.RetryBackoffBase`** — the first backoff wait, doubled per attempt (default 250ms).
+
+### Changed
+
+- **`Config.MaxRetries` covers every transient failure**, not only a 429/503 carrying
+  `Retry-After`. A negative value now disables retries, as `Timeout` does.
+- **BREAKING — `Config.MaxRetryAfter` is now `Config.MaxServerRetryWait`**: it bounds the
+  wait the server asks for, not the one the SDK computes.
 
 ### Fixed
 
