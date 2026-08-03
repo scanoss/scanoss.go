@@ -71,7 +71,7 @@ func (s cryptographyService) Algorithms(ctx context.Context, comps []Component, 
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.CryptoAlgorithmsResponse](res)
+	return as[scanossapi.CryptoAlgorithmsResponse](res)
 }
 
 // Algorithm returns cryptographic algorithms for a single component.
@@ -80,7 +80,7 @@ func (s cryptographyService) Algorithm(ctx context.Context, comp Component, opts
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.CryptoAlgorithmsResponse](res)
+	return as[scanossapi.CryptoAlgorithmsResponse](res)
 }
 
 // AlgorithmsInRange returns algorithms across a version range (batch).
@@ -89,7 +89,7 @@ func (s cryptographyService) AlgorithmsInRange(ctx context.Context, comps []Comp
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.CryptoAlgorithmsInRangeResponse](res)
+	return as[scanossapi.CryptoAlgorithmsInRangeResponse](res)
 }
 
 // AlgorithmInRange returns algorithms across a version range for a single component.
@@ -98,7 +98,7 @@ func (s cryptographyService) AlgorithmInRange(ctx context.Context, comp Componen
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.CryptoAlgorithmsInRangeResponse](res)
+	return as[scanossapi.CryptoAlgorithmsInRangeResponse](res)
 }
 
 // VersionsInRange returns algorithm versions across a range (batch).
@@ -107,7 +107,7 @@ func (s cryptographyService) VersionsInRange(ctx context.Context, comps []Compon
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.CryptoVersionsInRangeResponse](res)
+	return as[scanossapi.CryptoVersionsInRangeResponse](res)
 }
 
 // VersionInRange returns algorithm versions across a range for a single component.
@@ -116,7 +116,7 @@ func (s cryptographyService) VersionInRange(ctx context.Context, comp Component,
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.CryptoVersionsInRangeResponse](res)
+	return as[scanossapi.CryptoVersionsInRangeResponse](res)
 }
 
 // Hints returns cryptographic library hints for the given components (batch).
@@ -125,7 +125,7 @@ func (s cryptographyService) Hints(ctx context.Context, comps []Component, opts 
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.CryptoHintsResponse](res)
+	return as[scanossapi.CryptoHintsResponse](res)
 }
 
 // Hint returns cryptographic library hints for a single component.
@@ -134,7 +134,7 @@ func (s cryptographyService) Hint(ctx context.Context, comp Component, opts ...D
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.CryptoHintsResponse](res)
+	return as[scanossapi.CryptoHintsResponse](res)
 }
 
 // HintsInRange returns library hints across a version range (batch).
@@ -143,7 +143,7 @@ func (s cryptographyService) HintsInRange(ctx context.Context, comps []Component
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.CryptoHintsInRangeResponse](res)
+	return as[scanossapi.CryptoHintsInRangeResponse](res)
 }
 
 // HintInRange returns library hints across a version range for a single component.
@@ -152,5 +152,5 @@ func (s cryptographyService) HintInRange(ctx context.Context, comp Component, op
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.CryptoHintsInRangeResponse](res)
+	return as[scanossapi.CryptoHintsInRangeResponse](res)
 }

@@ -39,6 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING — `ChunkError.Index` is now `ChunkError.Purls`**: it names the components left
   without data instead of an internal batch number a caller cannot act on.
 
+### Removed
+
+- **`scanoss.As`, `scanoss.Result` and its methods are no longer exported.** No exported function
+  returned a `*Result`, so the pair documented an API a caller had no way to obtain a value for.
+  `Result.String` and `Result.Responses` had no callers at all; `Unmarshal` existed only for `As`.
+
 ### Fixed
 
 - **A component's `rank`, `release_date` and `artifact_name` reach the inventory.** All three

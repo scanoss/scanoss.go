@@ -117,7 +117,7 @@ func (p *DecorationPipeline) Run(ctx context.Context, components []Component, op
 
 	type outcome struct {
 		name string
-		res  *Result
+		res  *result
 		err  error
 	}
 	ch := make(chan outcome, len(p.services))
@@ -159,20 +159,20 @@ func (p *DecorationPipeline) Run(ctx context.Context, components []Component, op
 // setLayer merges one service's chunks and decodes them into the matching field. A service with
 // no field here is not a decoration layer: running it would leave its answer unreachable, so it
 // is reported rather than silently dropped.
-func (pr *PipelineResult) setLayer(name string, res *Result) error {
-	raw, err := res.Merged()
+func (pr *PipelineResult) setLayer(name string, res *result) error {
+	raw, err := res.merged()
 	if err != nil {
 		return fmt.Errorf("merging the %s response: %w", name, err)
 	}
 	switch name {
 	case ServiceLicenses.Name:
-		pr.Licenses, err = decodeLayer[scanossapi.ComponentsLicenseResponse](raw, res.Failed)
+		pr.Licenses, err = decodeLayer[scanossapi.ComponentsLicenseResponse](raw, res.failed)
 	case ServiceCryptographyAlgorithms.Name:
-		pr.Cryptography, err = decodeLayer[scanossapi.CryptoAlgorithmsResponse](raw, res.Failed)
+		pr.Cryptography, err = decodeLayer[scanossapi.CryptoAlgorithmsResponse](raw, res.failed)
 	case ServiceGeoprovenanceOrigin.Name:
-		pr.Geoprovenance, err = decodeLayer[scanossapi.GeoOriginResponse](raw, res.Failed)
+		pr.Geoprovenance, err = decodeLayer[scanossapi.GeoOriginResponse](raw, res.failed)
 	case ServiceVulnerabilities.Name:
-		pr.Vulnerabilities, err = decodeLayer[scanossapi.VulnerabilitiesResponse](raw, res.Failed)
+		pr.Vulnerabilities, err = decodeLayer[scanossapi.VulnerabilitiesResponse](raw, res.failed)
 	default:
 		return fmt.Errorf("service %q is not a decoration layer", name)
 	}

@@ -53,7 +53,7 @@ func (s copyrightService) Evidence(ctx context.Context, comps []Component, opts 
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.CopyrightEvidenceResponse](res)
+	return as[scanossapi.CopyrightEvidenceResponse](res)
 }
 
 // Holders returns the distinct copyright holders for the given components.
@@ -62,5 +62,5 @@ func (s copyrightService) Holders(ctx context.Context, comps []Component, opts .
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.CopyrightHoldersResponse](res)
+	return as[scanossapi.CopyrightHoldersResponse](res)
 }

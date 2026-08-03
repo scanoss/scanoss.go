@@ -64,7 +64,7 @@ func (s dependencyService) Dependencies(ctx context.Context, comps []Component, 
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.DependenciesResolveResponse](res)
+	return as[scanossapi.DependenciesResolveResponse](res)
 }
 
 // Dependency resolves declared dependencies for a single component.
@@ -73,7 +73,7 @@ func (s dependencyService) Dependency(ctx context.Context, comp Component, opts 
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.DependenciesResolveResponse](res)
+	return as[scanossapi.DependenciesResolveResponse](res)
 }
 
 // transitiveRequest is the /v3/dependencies/transitive body: components plus an

@@ -45,59 +45,34 @@ func (e ChunkError) Error() string {
 	return fmt.Sprintf("%d component(s) unanswered: %v", len(e.Purls), e.Err)
 }
 
-// Result holds the outcome of a chunked, multi-request query. Successful chunk
-// responses are kept in input order; any per-chunk failures are reported in
-// Failed (a partial result is still returned as long as at least one chunk
-// succeeds).
-type Result struct {
+// result holds the outcome of a chunked, multi-request query: one raw body per chunk that
+// succeeded, in input order, plus the chunks that did not. A partial result is still returned as
+// long as one chunk succeeded — the API never sends a document of this shape, the SDK assembles
+// it because one logical query is several requests.
+//
+// Unexported, along with as and merged: no exported function hands one out, so a caller outside
+// this package has no way to obtain one.
+type result struct {
 	responses []json.RawMessage
-	// Failed lists the chunks that did not succeed, if any.
-	Failed []ChunkError
+	failed    []ChunkError
 }
 
-// Responses returns the raw JSON body of each successful chunk, in input order.
-func (r *Result) Responses() []json.RawMessage { return r.responses }
-
-// Merged combines the chunk responses into a single JSON document, concatenating
-// top-level array fields (e.g. "components") across chunks and keeping the last
-// value seen for scalar/object fields (e.g. "status").
-func (r *Result) Merged() (json.RawMessage, error) {
+// merged combines the chunk responses into a single JSON document, concatenating top-level array
+// fields (e.g. "components") across chunks and keeping the last value seen for scalar/object
+// fields (e.g. "status").
+func (r *result) merged() (json.RawMessage, error) {
 	return mergeResponses(r.responses)
 }
 
-// Unmarshal decodes the merged JSON document into v.
-func (r *Result) Unmarshal(v interface{}) error {
-	merged, err := r.Merged()
+// as decodes the merged JSON document into the typed response T. Every per-service method ends
+// in a call to it, which is how they return the generated OpenAPI models.
+func as[T any](r *result) (*T, error) {
+	merged, err := r.merged()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return json.Unmarshal(merged, v)
-}
-
-// String returns the merged document pretty-printed. It implements fmt.Stringer
-// on a best-effort basis (returns an error marker if merging fails).
-func (r *Result) String() string {
-	merged, err := r.Merged()
-	if err != nil {
-		return fmt.Sprintf("<scanoss.Result: merge error: %v>", err)
-	}
-	var v interface{}
-	if err := json.Unmarshal(merged, &v); err != nil {
-		return string(merged)
-	}
-	pretty, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return string(merged)
-	}
-	return string(pretty)
-}
-
-// As decodes a Result's merged JSON document into the typed response T. The
-// per-service methods use it to return the generated OpenAPI models; it is also
-// exported for callers that hold a raw *Result.
-func As[T any](r *Result) (*T, error) {
 	var v T
-	if err := r.Unmarshal(&v); err != nil {
+	if err := json.Unmarshal(merged, &v); err != nil {
 		return nil, err
 	}
 	return &v, nil
@@ -115,7 +90,7 @@ func purlsOf(components []Component) []string {
 // decorate splits components into chunks and queries the given batch service
 // concurrently, merging the responses. It is the batch engine behind the plural
 // per-service methods (e.g. client.Vulnerabilities.Components).
-func (c *Client) decorate(ctx context.Context, svc Service, components []Component, opts ...DecorateOption) (*Result, error) {
+func (c *Client) decorate(ctx context.Context, svc Service, components []Component, opts ...DecorateOption) (*result, error) {
 	o := resolveDecorateOptions(opts)
 	if svc.endpoint == "" {
 		return nil, fmt.Errorf("service %q has no endpoint", svc.Name)
@@ -176,7 +151,7 @@ func (c *Client) decorate(ctx context.Context, svc Service, components []Compone
 	close(jobs)
 
 	// Collect exactly one result per chunk. Order does not matter.
-	res := &Result{}
+	res := &result{}
 	done := 0
 	for n := 0; n < len(chunks); n++ {
 		r := <-resultsCh
@@ -185,15 +160,15 @@ func (c *Client) decorate(ctx context.Context, svc Service, components []Compone
 			o.reporter.Decorating(svc.Name, done, len(components))
 		}
 		if r.err != nil {
-			res.Failed = append(res.Failed, ChunkError{Purls: purlsOf(chunks[r.idx]), Err: r.err})
+			res.failed = append(res.failed, ChunkError{Purls: purlsOf(chunks[r.idx]), Err: r.err})
 			continue
 		}
 		res.responses = append(res.responses, r.response)
 	}
 
 	if len(res.responses) == 0 {
-		if len(res.Failed) > 0 {
-			return nil, fmt.Errorf("all %d chunk(s) failed: %w", len(chunks), res.Failed[0].Err)
+		if len(res.failed) > 0 {
+			return nil, fmt.Errorf("all %d chunk(s) failed: %w", len(chunks), res.failed[0].Err)
 		}
 		return nil, fmt.Errorf("no results")
 	}
@@ -205,7 +180,7 @@ func (c *Client) decorate(ctx context.Context, svc Service, components []Compone
 // purl (and optional requirement) as query parameters, wrapping the response in a
 // *Result. It is the single path behind the singular per-service methods (e.g.
 // client.Vulnerabilities.Component). No chunking or worker pool — single is one request.
-func (c *Client) decorateOne(ctx context.Context, svc Service, comp Component, opts ...DecorateOption) (*Result, error) {
+func (c *Client) decorateOne(ctx context.Context, svc Service, comp Component, opts ...DecorateOption) (*result, error) {
 	if svc.endpoint == "" {
 		return nil, fmt.Errorf("service %q has no endpoint", svc.Name)
 	}
@@ -231,12 +206,12 @@ func (c *Client) decorateOne(ctx context.Context, svc Service, comp Component, o
 // getResult issues a GET to endpoint with the given query parameters and wraps the
 // raw body in a *Result. It is the single-shot GET path shared by decorateOne and
 // by non-component GET endpoints (e.g. license details/obligations).
-func (c *Client) getResult(ctx context.Context, endpoint string, query url.Values) (*Result, error) {
+func (c *Client) getResult(ctx context.Context, endpoint string, query url.Values) (*result, error) {
 	body, err := c.get(ctx, endpoint, query)
 	if err != nil {
 		return nil, err
 	}
-	return &Result{responses: []json.RawMessage{json.RawMessage(body)}}, nil
+	return &result{responses: []json.RawMessage{json.RawMessage(body)}}, nil
 }
 
 // postComponents sends one chunk of components as a ComponentsRequest body (POST)
