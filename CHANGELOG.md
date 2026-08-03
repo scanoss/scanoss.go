@@ -32,6 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wait the server asks for, not the one the SDK computes.
 - **BREAKING — `scansource.LicenseKey` is now `scansource.Key`**: it keys a component at a
   version, which every per-component layer joins on, not just licenses.
+- **BREAKING — the `scansource` adapters drop their `From` suffix**: `FromScanResult` → `Inventory`,
+  `LicensesFrom` → `Licenses`, and likewise `Cryptography`, `Geoprovenance`, `Vulnerabilities`. The
+  package name already says where the data comes from.
 - **BREAKING — the decoration pipeline result is typed per layer.** `PipelineResult.Services`
   (a `map[string]*Result`) gives way to one field per layer — `Licenses`, `Cryptography`,
   `Geoprovenance`, `Vulnerabilities` — each a `*Layer[T]` holding the decoded response and the

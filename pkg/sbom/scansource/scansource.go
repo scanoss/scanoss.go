@@ -35,12 +35,11 @@ import (
 	"github.com/scanoss/scanoss.go/pkg/sbom"
 )
 
-// FromScanResult builds an Inventory from a v3 scan result. The deduplicated component
-// catalog becomes the components; each component's matched files (joined by url_hash)
-// become its file evidence. The version is taken from the component entry. Licenses and
-// vulnerabilities are not populated here — they come from decoration services
-// (LicensesFrom, VulnerabilitiesFrom).
-func FromScanResult(result *scanossapi.ScanResult) sbom.Inventory {
+// Inventory builds one from a v3 scan result. The deduplicated component catalog becomes the
+// components; each component's matched files (joined by url_hash) become its file evidence. The
+// version is taken from the component entry. Licenses and vulnerabilities are not populated here
+// — they come from the decoration services (see Licenses, Vulnerabilities).
+func Inventory(result *scanossapi.ScanResult) sbom.Inventory {
 	if result == nil {
 		return sbom.Inventory{}
 	}
@@ -87,10 +86,10 @@ func Key(purl, version string) string {
 	return purl + "\x00" + version
 }
 
-// LicensesFrom maps a licenses decoration response into declared licenses keyed by
+// Licenses maps a licenses decoration response into declared licenses keyed by
 // Key(purl, requirement). Duplicate ids per key are dropped. (The decoration service has
 // no declared/concluded distinction — its licenses are declared.)
-func LicensesFrom(resp *scanossapi.ComponentsLicenseResponse) map[string][]sbom.License {
+func Licenses(resp *scanossapi.ComponentsLicenseResponse) map[string][]sbom.License {
 	if resp == nil || resp.Components == nil {
 		return nil
 	}
@@ -117,9 +116,9 @@ func LicensesFrom(resp *scanossapi.ComponentsLicenseResponse) map[string][]sbom.
 	return byKey
 }
 
-// CryptographyFrom maps a cryptography-algorithms decoration response into algorithms keyed by
+// Cryptography maps a cryptography-algorithms decoration response into algorithms keyed by
 // Key(purl, requirement).
-func CryptographyFrom(resp *scanossapi.CryptoAlgorithmsResponse) map[string][]sbom.CryptoAlgorithm {
+func Cryptography(resp *scanossapi.CryptoAlgorithmsResponse) map[string][]sbom.CryptoAlgorithm {
 	if resp == nil {
 		return nil
 	}
@@ -140,9 +139,9 @@ func CryptographyFrom(resp *scanossapi.CryptoAlgorithmsResponse) map[string][]sb
 	return byKey
 }
 
-// GeoprovenanceFrom maps a geoprovenance-origin decoration response into contributor locations
+// Geoprovenance maps a geoprovenance-origin decoration response into contributor locations
 // keyed by PURL (the response carries no requirement to join on).
-func GeoprovenanceFrom(resp *scanossapi.GeoOriginResponse) map[string][]sbom.GeoLocation {
+func Geoprovenance(resp *scanossapi.GeoOriginResponse) map[string][]sbom.GeoLocation {
 	if resp == nil {
 		return nil
 	}
@@ -166,10 +165,10 @@ func GeoprovenanceFrom(resp *scanossapi.GeoOriginResponse) map[string][]sbom.Geo
 	return byPurl
 }
 
-// VulnerabilitiesFrom maps a vulnerabilities decoration response into neutral
+// Vulnerabilities maps a vulnerabilities decoration response into neutral
 // vulnerabilities, deduplicated by id (falling back to the CVE), accumulating the
 // affected component PURLs.
-func VulnerabilitiesFrom(resp *scanossapi.VulnerabilitiesResponse) []sbom.Vulnerability {
+func Vulnerabilities(resp *scanossapi.VulnerabilitiesResponse) []sbom.Vulnerability {
 	if resp == nil {
 		return nil
 	}

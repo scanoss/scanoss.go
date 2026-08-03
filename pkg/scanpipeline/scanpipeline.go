@@ -273,7 +273,7 @@ func Build(ctx context.Context, client *scanoss.Client, result *scanossapi.ScanR
 // purl-layers. With no purl-layer requested the enrich step is a no-op — a bare scan does no
 // decoration work.
 func assemble(ctx context.Context, client *scanoss.Client, result *scanossapi.ScanResult, declaredComps []sbom.Component, services []scanoss.Service, r scanoss.DecorationReporter) sbom.Inventory {
-	inv := scansource.FromScanResult(result)
+	inv := scansource.Inventory(result)
 	inv.Components = append(inv.Components, declaredComps...)
 	inv.Components = dedupeComponents(inv.Components)
 	if len(inv.Components) > 0 {
@@ -352,7 +352,7 @@ func Enrich(ctx context.Context, client *scanoss.Client, inv *sbom.Inventory, se
 	// Per-component layers attach inline by PURL (+ version where the response echoes it).
 	if lic := res.Licenses; lic != nil {
 		warnPartial(scanoss.ServiceLicenses.Name, lic.Failed)
-		byKey := scansource.LicensesFrom(lic.Response)
+		byKey := scansource.Licenses(lic.Response)
 		for i := range inv.Components {
 			c := &inv.Components[i]
 			c.Licenses = byKey[scansource.Key(c.Purl, c.Version)]
@@ -360,7 +360,7 @@ func Enrich(ctx context.Context, client *scanoss.Client, inv *sbom.Inventory, se
 	}
 	if cry := res.Cryptography; cry != nil {
 		warnPartial(scanoss.ServiceCryptographyAlgorithms.Name, cry.Failed)
-		byKey := scansource.CryptographyFrom(cry.Response)
+		byKey := scansource.Cryptography(cry.Response)
 		for i := range inv.Components {
 			c := &inv.Components[i]
 			c.Cryptography = byKey[scansource.Key(c.Purl, c.Version)]
@@ -368,7 +368,7 @@ func Enrich(ctx context.Context, client *scanoss.Client, inv *sbom.Inventory, se
 	}
 	if geo := res.Geoprovenance; geo != nil {
 		warnPartial(scanoss.ServiceGeoprovenanceOrigin.Name, geo.Failed)
-		byPurl := scansource.GeoprovenanceFrom(geo.Response)
+		byPurl := scansource.Geoprovenance(geo.Response)
 		for i := range inv.Components {
 			c := &inv.Components[i]
 			c.Geoprovenance = byPurl[c.Purl]
@@ -378,7 +378,7 @@ func Enrich(ctx context.Context, client *scanoss.Client, inv *sbom.Inventory, se
 	// Vulnerabilities → flat top-level list joined by base PURL.
 	if vul := res.Vulnerabilities; vul != nil {
 		warnPartial(scanoss.ServiceVulnerabilities.Name, vul.Failed)
-		inv.Vulnerabilities = scansource.VulnerabilitiesFrom(vul.Response)
+		inv.Vulnerabilities = scansource.Vulnerabilities(vul.Response)
 	}
 }
 
