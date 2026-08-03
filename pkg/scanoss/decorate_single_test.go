@@ -25,8 +25,11 @@ package scanoss
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -102,5 +105,28 @@ func TestComponentVersionsGET(t *testing.T) {
 
 	if _, err := client.Components.Versions(context.Background(), "", 0); err == nil {
 		t.Error("expected error for empty purl")
+	}
+}
+
+// The whole point of naming the components is that the name reaches a caller who only ever
+// formats the error — logs it, or wraps it with %w. A count alone is what the batch index gave.
+func TestChunkErrorNamesTheComponents(t *testing.T) {
+	err := ChunkError{Purls: []string{"pkg:npm/lodash", "pkg:npm/left-pad"}, Err: errors.New("boom")}
+
+	got := fmt.Errorf("licenses: %w", err).Error()
+	for _, want := range []string{"pkg:npm/lodash", "pkg:npm/left-pad", "2 component(s)", "boom"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("formatted error missing %q: %s", want, got)
+		}
+	}
+
+	// A long chunk is truncated, and says so rather than pretending it listed everything.
+	many := make([]string, 25)
+	for i := range many {
+		many[i] = fmt.Sprintf("pkg:npm/p%d", i)
+	}
+	long := ChunkError{Purls: many, Err: errors.New("boom")}.Error()
+	if !strings.Contains(long, "(+15 more)") || !strings.Contains(long, "25 component(s)") {
+		t.Errorf("a truncated list must report the full count and the remainder: %s", long)
 	}
 }
