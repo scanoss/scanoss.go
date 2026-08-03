@@ -191,7 +191,7 @@ func cycloneDXLicense(l License) cdx.License {
 // cdxAcknowledgement maps a neutral acknowledgement to the CycloneDX enum, defaulting
 // to declared.
 func cdxAcknowledgement(ack LicenseAcknowledgement) cdx.LicenseAcknowledgement {
-	if ack == AckConcluded {
+	if ack.resolved() == AckConcluded {
 		return cdx.LicenseAcknowledgementConcluded
 	}
 	return cdx.LicenseAcknowledgementDeclared
