@@ -26,6 +26,7 @@ package scanoss
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -71,6 +72,12 @@ func chunkRanges(total, size int) [][2]int {
 
 // uploadChunk POSTs one WFP byte range to the scan endpoint. The client-generated
 // scanID is sent on every chunk via the X-Scan-Id request header.
+//
+// A 409 counts as success: it is what the server answers when it already holds the range,
+// which is the normal outcome of a retry whose predecessor landed and whose response was
+// lost to a timeout. The ranges this client sends are deterministic and never overlap, so
+// a conflict cannot mean anything else. Treating it as a failure would report a scan as
+// broken when its upload in fact completed — and the session it names is still resumable.
 func (c *Client) uploadChunk(ctx context.Context, scanID string, off, end, total int, block []byte) error {
 	req, err := c.newRequest(http.MethodPost, ServiceScan.endpoint, bytes.NewReader(block))
 	if err != nil {
@@ -81,6 +88,13 @@ func (c *Client) uploadChunk(ctx context.Context, scanID string, off, end, total
 	req.Header.Set("X-Scan-Id", scanID)
 
 	if _, err := c.do(ctx, req); err != nil {
+		var statusErr *StatusError
+		if errors.As(err, &statusErr) && statusErr.StatusCode == http.StatusConflict {
+			c.log.Debug("chunk already accepted by the server",
+				"scanID", scanID, "range", fmt.Sprintf("%d-%d/%d", off, end, total),
+				"body", statusErr.Body)
+			return nil
+		}
 		return fmt.Errorf("chunk %d-%d/%d: %w", off, end, total, err)
 	}
 	return nil
