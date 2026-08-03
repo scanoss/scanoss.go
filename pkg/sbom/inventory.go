@@ -131,6 +131,16 @@ const (
 	AckConcluded LicenseAcknowledgement = "concluded"
 )
 
+// resolved settles the zero value: a license with no acknowledgement was stated by the project,
+// so it counts as declared. Every writer needs this before it can compare or translate an
+// acknowledgement, which is why the rule lives here rather than in each of them.
+func (a LicenseAcknowledgement) resolved() LicenseAcknowledgement {
+	if a == AckConcluded {
+		return AckConcluded
+	}
+	return AckDeclared
+}
+
 // License is a single license on a component, with its acknowledgement. The same id may
 // appear more than once (e.g. both declared and concluded).
 type License struct {

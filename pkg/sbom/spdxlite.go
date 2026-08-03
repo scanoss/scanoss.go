@@ -170,7 +170,7 @@ func joinLicenseIDs(licenses []License, ack LicenseAcknowledgement) string {
 	seen := make(map[string]bool)
 	var ids []string
 	for _, l := range licenses {
-		if l.ID == "" || effectiveAck(l.Acknowledgement) != ack || seen[l.ID] {
+		if l.ID == "" || l.Acknowledgement.resolved() != ack || seen[l.ID] {
 			continue
 		}
 		seen[l.ID] = true
@@ -196,14 +196,6 @@ func joinLicenseIDs(licenses []License, ack LicenseAcknowledgement) string {
 		return noAssertion
 	}
 	return strings.Join(ids, " AND ")
-}
-
-// effectiveAck treats an unset acknowledgement as declared.
-func effectiveAck(ack LicenseAcknowledgement) LicenseAcknowledgement {
-	if ack == AckConcluded {
-		return AckConcluded
-	}
-	return AckDeclared
 }
 
 // licenseRefPattern matches LicenseRef-* identifiers.
