@@ -69,8 +69,8 @@ func sampleResult() *scanossapi.ScanResult {
 	}
 }
 
-func TestFromScanResult_Extraction(t *testing.T) {
-	inv := FromScanResult(sampleResult())
+func TestInventory_Extraction(t *testing.T) {
+	inv := Inventory(sampleResult())
 	if len(inv.Components) != 2 {
 		t.Fatalf("want 2 components (empty-purl skipped), got %d", len(inv.Components))
 	}
@@ -84,7 +84,7 @@ func TestFromScanResult_Extraction(t *testing.T) {
 		t.Errorf("version should come from the component entry, got %q", engine.Version)
 	}
 	if len(engine.Licenses) != 0 {
-		t.Errorf("FromScanResult should not populate licenses (they come from decoration), got %v", engine.Licenses)
+		t.Errorf("Inventory should not populate licenses (they come from decoration), got %v", engine.Licenses)
 	}
 
 	lodash := inv.Components[1]
@@ -95,8 +95,8 @@ func TestFromScanResult_Extraction(t *testing.T) {
 
 // Every field the engine reports about a component reaches the inventory. Rank in
 // particular: two components matching the same file are told apart by nothing else.
-func TestFromScanResult_ComponentFieldsAreNotDropped(t *testing.T) {
-	engine := FromScanResult(sampleResult()).Components[0]
+func TestInventory_ComponentFieldsAreNotDropped(t *testing.T) {
+	engine := Inventory(sampleResult()).Components[0]
 
 	if engine.Rank != 6 {
 		t.Errorf("Rank = %d, want 6", engine.Rank)
@@ -117,8 +117,8 @@ func TestFromScanResult_ComponentFieldsAreNotDropped(t *testing.T) {
 
 // A component the engine reported without them leaves them empty rather than inventing a
 // value — the fields are omitempty, so an absent rank must not render as 0.
-func TestFromScanResult_AbsentComponentFieldsStayEmpty(t *testing.T) {
-	lodash := FromScanResult(sampleResult()).Components[1]
+func TestInventory_AbsentComponentFieldsStayEmpty(t *testing.T) {
+	lodash := Inventory(sampleResult()).Components[1]
 
 	if lodash.Rank != 0 || lodash.ReleaseDate != "" || lodash.ArtifactName != "" {
 		t.Errorf("want the three unset, got rank=%d release=%q artifact=%q",
@@ -126,8 +126,8 @@ func TestFromScanResult_AbsentComponentFieldsStayEmpty(t *testing.T) {
 	}
 }
 
-func TestFromScanResult_FileEvidence(t *testing.T) {
-	inv := FromScanResult(sampleResult())
+func TestInventory_FileEvidence(t *testing.T) {
+	inv := Inventory(sampleResult())
 	files := inv.Components[0].Evidence
 	if len(files) != 2 {
 		t.Fatalf("want 2 file evidences (none-match excluded), got %d", len(files))
@@ -141,13 +141,13 @@ func TestFromScanResult_FileEvidence(t *testing.T) {
 	}
 }
 
-func TestFromScanResult_Nil(t *testing.T) {
-	if inv := FromScanResult(nil); len(inv.Components) != 0 {
+func TestInventory_Nil(t *testing.T) {
+	if inv := Inventory(nil); len(inv.Components) != 0 {
 		t.Errorf("nil result should yield empty inventory, got %+v", inv)
 	}
 }
 
-func TestFromScanResult_MultiMatchFile(t *testing.T) {
+func TestInventory_MultiMatchFile(t *testing.T) {
 	// One snippet file matching two components yields one file evidence under each
 	// component's url_hash, with that match's own line ranges.
 	result := &scanossapi.ScanResult{
@@ -167,7 +167,7 @@ func TestFromScanResult_MultiMatchFile(t *testing.T) {
 		},
 	}
 
-	inv := FromScanResult(result)
+	inv := Inventory(result)
 	if len(inv.Components) != 2 {
 		t.Fatalf("want 2 components, got %d", len(inv.Components))
 	}
@@ -199,7 +199,7 @@ func TestFromScanResult_MultiMatchFile(t *testing.T) {
 
 func ptr[T any](v T) *T { return &v }
 
-func TestLicensesFrom(t *testing.T) {
+func TestLicenses(t *testing.T) {
 	resp := &scanossapi.ComponentsLicenseResponse{
 		Components: &[]scanossapi.ComponentLicenseInfo{
 			{
@@ -221,7 +221,7 @@ func TestLicensesFrom(t *testing.T) {
 		},
 	}
 
-	byKey := LicensesFrom(resp)
+	byKey := Licenses(resp)
 
 	// Keyed by PURL + requirement (queried version), so each version is distinct.
 	v20 := byKey[Key("pkg:npm/lodash", "4.17.20")]
@@ -237,13 +237,13 @@ func TestLicensesFrom(t *testing.T) {
 	}
 }
 
-func TestLicensesFrom_Nil(t *testing.T) {
-	if v := LicensesFrom(nil); v != nil {
+func TestLicenses_Nil(t *testing.T) {
+	if v := Licenses(nil); v != nil {
 		t.Errorf("nil resp should yield nil, got %v", v)
 	}
 }
 
-func TestVulnerabilitiesFrom(t *testing.T) {
+func TestVulnerabilities(t *testing.T) {
 	src := scanossapi.VulnerabilitySource("NVD")
 	resp := &scanossapi.VulnerabilitiesResponse{
 		Components: []scanossapi.ComponentVulnerabilityInfo{
@@ -264,7 +264,7 @@ func TestVulnerabilitiesFrom(t *testing.T) {
 		},
 	}
 
-	vulns := VulnerabilitiesFrom(resp)
+	vulns := Vulnerabilities(resp)
 	if len(vulns) != 2 {
 		t.Fatalf("want 2 deduped vulnerabilities, got %d: %+v", len(vulns), vulns)
 	}
@@ -287,8 +287,8 @@ func TestVulnerabilitiesFrom(t *testing.T) {
 	}
 }
 
-func TestVulnerabilitiesFrom_Nil(t *testing.T) {
-	if v := VulnerabilitiesFrom(nil); v != nil {
+func TestVulnerabilities_Nil(t *testing.T) {
+	if v := Vulnerabilities(nil); v != nil {
 		t.Errorf("nil resp should yield nil, got %v", v)
 	}
 }
@@ -316,7 +316,7 @@ func TestVulnerabilitiesKeepTheVersionTheyAnswerFor(t *testing.T) {
 	}
 
 	byID := map[string][]string{}
-	for _, v := range VulnerabilitiesFrom(resp) {
+	for _, v := range Vulnerabilities(resp) {
 		byID[v.ID] = v.Purls
 	}
 
@@ -337,7 +337,7 @@ func TestVulnerabilitiesWithoutAVersionKeepTheBarePurl(t *testing.T) {
 			{Purl: &purl, Vulnerabilities: &[]scanossapi.Vulnerability{{Cve: &cve}}},
 		},
 	}
-	got := VulnerabilitiesFrom(resp)
+	got := Vulnerabilities(resp)
 	if len(got) != 1 || len(got[0].Purls) != 1 || got[0].Purls[0] != purl {
 		t.Errorf("purls = %v, want [%s]", got, purl)
 	}
