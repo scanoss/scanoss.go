@@ -58,7 +58,7 @@ func TestSingleComponentGET(t *testing.T) {
 		t.Errorf("expected purl/requirement params, got purl=%q requirement=%q", gotPurl, gotReq)
 	}
 
-	merged, err := res.Merged()
+	merged, err := res.merged()
 	if err != nil {
 		t.Fatalf("Merged failed: %v", err)
 	}

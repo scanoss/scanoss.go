@@ -93,7 +93,7 @@ func (s componentsService) Search(ctx context.Context, q ComponentSearch) (*scan
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.ComponentsSearchResponse](res)
+	return as[scanossapi.ComponentsSearchResponse](res)
 }
 
 // Versions lists the known versions (with licenses) for a purl, most recent
@@ -110,7 +110,7 @@ func (s componentsService) Versions(ctx context.Context, purl string, limit int)
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.ComponentVersionsResponse](res)
+	return as[scanossapi.ComponentVersionsResponse](res)
 }
 
 // Status resolves the lifecycle status for the given components (batch).
@@ -119,7 +119,7 @@ func (s componentsService) Status(ctx context.Context, comps []Component, opts .
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.ComponentsStatusResponse](res)
+	return as[scanossapi.ComponentsStatusResponse](res)
 }
 
 // StatusOne resolves the lifecycle status for a single component.
@@ -128,5 +128,5 @@ func (s componentsService) StatusOne(ctx context.Context, comp Component, opts .
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.ComponentsStatusResponse](res)
+	return as[scanossapi.ComponentsStatusResponse](res)
 }

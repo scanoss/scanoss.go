@@ -67,7 +67,7 @@ func (s licenseService) Attribution(ctx context.Context, comps []Component, opts
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.AttributionResponse](res)
+	return as[scanossapi.AttributionResponse](res)
 }
 
 // Evidence returns per-file license evidence for the given components.
@@ -76,7 +76,7 @@ func (s licenseService) Evidence(ctx context.Context, comps []Component, opts ..
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.LicenseEvidenceResponse](res)
+	return as[scanossapi.LicenseEvidenceResponse](res)
 }
 
 // Components returns the declared licenses for the given components (batch).
@@ -85,7 +85,7 @@ func (s licenseService) Components(ctx context.Context, comps []Component, opts 
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.ComponentsLicenseResponse](res)
+	return as[scanossapi.ComponentsLicenseResponse](res)
 }
 
 // Component returns the declared licenses for a single component.
@@ -94,7 +94,7 @@ func (s licenseService) Component(ctx context.Context, comp Component, opts ...D
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.ComponentLicenseResponse](res)
+	return as[scanossapi.ComponentLicenseResponse](res)
 }
 
 // Details returns the SPDX-registry metadata for a license id (e.g. "MIT").
@@ -106,7 +106,7 @@ func (s licenseService) Details(ctx context.Context, license string) (*scanossap
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.LicenseDetailsResponse](res)
+	return as[scanossapi.LicenseDetailsResponse](res)
 }
 
 // Obligations returns the OSADL compliance obligations for a license id.
@@ -118,5 +118,5 @@ func (s licenseService) Obligations(ctx context.Context, license string) (*scano
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.ObligationsResponse](res)
+	return as[scanossapi.ObligationsResponse](res)
 }

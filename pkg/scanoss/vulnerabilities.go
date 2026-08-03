@@ -58,7 +58,7 @@ func (s vulnerabilityService) Components(ctx context.Context, comps []Component,
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.VulnerabilitiesResponse](res)
+	return as[scanossapi.VulnerabilitiesResponse](res)
 }
 
 // Component returns known vulnerabilities for a single component.
@@ -67,7 +67,7 @@ func (s vulnerabilityService) Component(ctx context.Context, comp Component, opt
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.VulnerabilitiesResponse](res)
+	return as[scanossapi.VulnerabilitiesResponse](res)
 }
 
 // Cpes returns CPEs for the given components (batch).
@@ -76,7 +76,7 @@ func (s vulnerabilityService) Cpes(ctx context.Context, comps []Component, opts 
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.CpesResponse](res)
+	return as[scanossapi.CpesResponse](res)
 }
 
 // Cpe returns CPEs for a single component.
@@ -85,5 +85,5 @@ func (s vulnerabilityService) Cpe(ctx context.Context, comp Component, opts ...D
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.CpesResponse](res)
+	return as[scanossapi.CpesResponse](res)
 }

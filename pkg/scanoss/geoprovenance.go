@@ -58,7 +58,7 @@ func (s geoprovenanceService) Origins(ctx context.Context, comps []Component, op
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.GeoOriginResponse](res)
+	return as[scanossapi.GeoOriginResponse](res)
 }
 
 // Origin returns the country of origin for a single component.
@@ -67,7 +67,7 @@ func (s geoprovenanceService) Origin(ctx context.Context, comp Component, opts .
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.GeoOriginResponse](res)
+	return as[scanossapi.GeoOriginResponse](res)
 }
 
 // Countries returns contributor countries for the given components (batch).
@@ -76,7 +76,7 @@ func (s geoprovenanceService) Countries(ctx context.Context, comps []Component, 
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.GeoContributorsResponse](res)
+	return as[scanossapi.GeoContributorsResponse](res)
 }
 
 // Country returns contributor countries for a single component.
@@ -85,5 +85,5 @@ func (s geoprovenanceService) Country(ctx context.Context, comp Component, opts 
 	if err != nil {
 		return nil, err
 	}
-	return As[scanossapi.GeoContributorsResponse](res)
+	return as[scanossapi.GeoContributorsResponse](res)
 }

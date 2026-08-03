@@ -107,18 +107,19 @@ func TestVulnerabilitiesChunksAndAggregates(t *testing.T) {
 		t.Errorf("expected 25 components received, got %d", got)
 	}
 
-	var result struct {
+	type merged struct {
 		Components []Component       `json:"components"`
 		Status     map[string]string `json:"status"`
 	}
-	if err := res.Unmarshal(&result); err != nil {
-		t.Fatalf("Unmarshal failed: %v", err)
+	decoded, err := as[merged](res)
+	if err != nil {
+		t.Fatalf("as: %v", err)
 	}
-	if len(result.Components) != 25 {
-		t.Errorf("expected 25 merged components, got %d", len(result.Components))
+	if len(decoded.Components) != 25 {
+		t.Errorf("expected 25 merged components, got %d", len(decoded.Components))
 	}
-	if result.Status["status"] != "success" {
-		t.Errorf("expected merged status preserved, got %v", result.Status)
+	if decoded.Status["status"] != "success" {
+		t.Errorf("expected merged status preserved, got %v", decoded.Status)
 	}
 }
 
@@ -220,11 +221,11 @@ func TestPartialFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected partial success, got error: %v", err)
 	}
-	if len(res.Failed) != 1 {
-		t.Errorf("expected 1 failed chunk, got %d", len(res.Failed))
+	if len(res.failed) != 1 {
+		t.Errorf("expected 1 failed chunk, got %d", len(res.failed))
 	}
-	if len(res.Responses()) != 1 {
-		t.Errorf("expected 1 successful response, got %d", len(res.Responses()))
+	if len(res.responses) != 1 {
+		t.Errorf("expected 1 successful response, got %d", len(res.responses))
 	}
 }
 
