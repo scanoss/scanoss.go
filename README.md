@@ -17,7 +17,7 @@ version.
 - `cmd/` — the CLI (Cobra); `cmd/scanoss-cli` is the `go install` entrypoint.
 - `pkg/` — the reusable Go SDK: scan and decoration services, fingerprinting,
   file filtering, SBOM read/write, and the low-level API client.
-- `internal/` — private helpers (config, version).
+- `internal/` — private helpers (CLI config, build config, logging, output, version).
 - `libscanoss/` — C shared library with Python and Node.js wrappers.
 
 OpenAPI types come from the published SDK `github.com/scanoss/scanoss.api-sdk`
@@ -281,7 +281,6 @@ client, err := scanoss.New(scanoss.Config{
     APIKey:    os.Getenv("SCANOSS_API_KEY"),
     ChunkSize: 20, // PURLs per request
     Workers:   10, // max concurrent requests
-    // Logger: logger, // optional: route SDK diagnostics via log/slog (default slog.Default())
 })
 if err != nil {
     return err
@@ -329,6 +328,29 @@ The per-service methods take it too:
 ```go
 res, err := client.Vulnerabilities.Components(ctx, comps, scanoss.WithDecorationReporter(&bars{}))
 ```
+
+### Logging
+
+The SDK writes nothing until you ask it to — it will not put lines in your program's
+output uninvited. One call covers every package it is built from, not just the client:
+
+```go
+scanoss.SetLogger(slog.Default())                    // fold into your own stream
+scanoss.SetLogger(slog.New(myHandler))               // keep them apart, or drop them
+scanoss.SetLogger(nil)                               // back to silence
+```
+
+At `Debug` this also explains file selection — which rules a collection applied, and
+which rule excluded each file:
+
+```
+level=DEBUG msg="filters applied"  builtinFolderRules=true gitignore=true matchers=51
+level=DEBUG msg="file excluded"    path=CHANGELOG.md rule=ext:.md
+level=DEBUG msg="directory pruned" path=node_modules rule=dir:node_modules
+```
+
+Call it during initialisation: it is process-wide, so changing it while calls are in
+flight can split a run's output across two destinations.
 
 ### Version requirements
 
