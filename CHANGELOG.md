@@ -7,18 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-03
 ### Fixed
 
-- **A transient network error no longer discards a whole scan.** A DNS blip on one WFP
-  chunk used to fail the entire upload, and one while polling threw away work the server
-  had already done. Network errors, truncated responses and 429/5xx are now retried with
-  exponential backoff; a `Retry-After` is still obeyed first.
-- **A chunk the server already holds no longer fails the scan.** When a retry's predecessor
-  landed but its response was lost, the server answers `409 RANGE_CONFLICT` — the upload is
-  complete, so it now counts as success and the scan proceeds to polling.
-- **A partial enrichment no longer passes for a complete one.** When some requests of a layer
-  fail, the components left without data were indistinguishable from components the service had
-  nothing to say about; they are now named on stderr.
+- **A transient network error no longer discards a whole scan.** Network errors, truncated
+  responses and 429/5xx are retried with exponential backoff; a `Retry-After` still wins.
+- **A chunk the server already holds no longer fails the scan.** `409 RANGE_CONFLICT` means the
+  upload completed, so it counts as success.
+- **A partial enrichment no longer passes for a complete one.** The components a failed request
+  left without data are named on stderr.
 
 ### Added
 
@@ -26,27 +23,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **`Config.MaxRetries` covers every transient failure**, not only a 429/503 carrying
-  `Retry-After`. A negative value now disables retries, as `Timeout` does.
-- **BREAKING — `Config.MaxRetryAfter` is now `Config.MaxServerRetryWait`**: it bounds the
-  wait the server asks for, not the one the SDK computes.
-- **BREAKING — `scansource.LicenseKey` is now `scansource.Key`**: it keys a component at a
-  version, which every per-component layer joins on, not just licenses.
-- **BREAKING — the `scansource` adapters drop their `From` suffix**: `FromScanResult` → `Inventory`,
-  `LicensesFrom` → `Licenses`, and likewise `Cryptography`, `Geoprovenance`, `Vulnerabilities`. The
-  package name already says where the data comes from.
+- **`Config.MaxRetries` covers every transient failure**, not only a 429/503 with `Retry-After`.
+  A negative value disables retries, as `Timeout` does.
+- **BREAKING — `Config.MaxRetryAfter` is now `Config.MaxServerRetryWait`.**
 - **BREAKING — the decoration pipeline result is typed per layer.** `PipelineResult.Services`
-  (a `map[string]*Result`) gives way to one field per layer — `Licenses`, `Cryptography`,
-  `Geoprovenance`, `Vulnerabilities` — each a `*Layer[T]` holding the decoded response and the
-  chunks it lost. A response that cannot be decoded is now recorded in `Errors`.
-- **BREAKING — `ChunkError.Index` is now `ChunkError.Purls`**: it names the components left
-  without data instead of an internal batch number a caller cannot act on.
+  gives way to `Licenses`, `Cryptography`, `Geoprovenance` and `Vulnerabilities`, each a
+  `*Layer[T]`; an unreadable response lands in `Errors`.
+- **BREAKING — `ChunkError.Index` is now `ChunkError.Purls`**, naming the components left
+  without data.
+- **BREAKING — the `scansource` adapters lose their `From` suffix**: `FromScanResult` →
+  `Inventory`, `LicensesFrom` → `Licenses` and likewise the rest; `LicenseKey` → `Key`.
 
 ### Removed
 
-- **`scanoss.As`, `scanoss.Result` and its methods are no longer exported.** No exported function
-  returned a `*Result`, so the pair documented an API a caller had no way to obtain a value for.
-  `Result.String` and `Result.Responses` had no callers at all; `Unmarshal` existed only for `As`.
+- **`scanoss.As` and `scanoss.Result`** (with `Responses`, `Merged`, `Unmarshal` and `String`) —
+  no exported function returned a `*Result`, so none of them could be reached from outside.
+
+## [0.6.0] - 2026-07-31
 
 ### Fixed
 
@@ -235,6 +228,7 @@ Initial release of the SCANOSS Go CLI and SDK (`scanoss`).
   CycloneDX and SPDX (with `WithTool`/`WithAuthor`/`WithTimestamp` document-metadata options).
 - **C shared library** (`libscanoss`) with Node.js and Python bindings.
 
+[0.7.0]: https://github.com/scanoss/scanoss.go/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/scanoss/scanoss.go/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/scanoss/scanoss.go/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/scanoss/scanoss.go/compare/v0.3.0...v0.4.0
