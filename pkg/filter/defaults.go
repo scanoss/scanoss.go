@@ -27,8 +27,8 @@
 // one pass over the source tree. Skipped files are simply excluded from the
 // scan; the list of them is not tracked, only counted.
 //
-// The package is standalone: it does not import any other scanoss package, so
-// it can be consumed on its own.
+// The package is low-level: it never imports pkg/scanoss or anything that talks to
+// the API, so file selection can be reasoned about — and used — without a client.
 package filter
 
 // Default skip lists are the canonical Go source, ported from scanoss.py

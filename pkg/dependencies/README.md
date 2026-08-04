@@ -66,9 +66,13 @@ files := []string{
     "path/to/pom.xml",
 }
 
-results, err := parser.ParseFiles(files)
-if err != nil {
-    panic(err)
+// Parsing is best-effort: a file that fails is skipped and its error returned in
+// failed, keyed by path. The rest still parse, so failed is not a reason to stop —
+// compare len(failed) against len(files) to tell "every manifest failed" from
+// "the manifests declared nothing".
+results, failed := parser.ParseFiles(files)
+for path, err := range failed {
+    log.Printf("could not parse %s: %v", path, err)
 }
 
 for _, fileDep := range results.Files {
@@ -247,8 +251,10 @@ pkg:nuget/Newtonsoft.Json@13.0.1
 The parser handles errors gracefully:
 
 - **ParseFile**: Returns error if file can't be read or parsed
-- **ParseFiles**: Logs warnings to stderr but continues processing other files
-- **Invalid files**: Returns empty result instead of failing
+- **ParseFiles**: Skips the files that fail and returns their errors keyed by path; it
+  writes nothing to stderr, so the caller decides what a failure is worth
+- **Unsupported files**: Returns an empty result rather than an error — check
+  `IsSupportedFile` first if the difference from "declared nothing" matters
 
 Example:
 

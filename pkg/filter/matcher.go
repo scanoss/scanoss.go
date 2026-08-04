@@ -316,3 +316,15 @@ func (m scopedSizeMatcher) Match(rel string, info os.FileInfo) bool {
 }
 
 func (m scopedSizeMatcher) Key() string { return m.key }
+
+// matchKey reports which contained rule skips the path, or "" when none does. It is
+// Match with the reason attached: the keys already exist to deduplicate matchers, and
+// they happen to be exactly what answers "why was this file not scanned?".
+func (c *composite) matchKey(rel string, info os.FileInfo) string {
+	for _, m := range c.matchers {
+		if m.Match(rel, info) {
+			return m.Key()
+		}
+	}
+	return ""
+}

@@ -21,24 +21,66 @@
  * THE SOFTWARE.
  */
 
-// Package logging configures the CLI's structured logger (log/slog). Logs go to
-// stderr so stdout stays reserved for results/SBOM/JSON output.
+// Package logging is where this module's logging is wired: the sink every package
+// reports through, and the handler the CLI installs into it.
+//
+// Nothing takes a logger as a parameter or holds one in a field. Most of this module is
+// local computation — filtering, fingerprinting, parsing manifests, rendering SBOMs —
+// with no client to hang a logger off, so a per-instance logger would reach a fraction
+// of it. A single sink with a global setter covers all of it in one call.
+// Logs go to stderr so stdout stays reserved for results/SBOM/JSON output.
 package logging
 
 import (
+	"context"
 	"log/slog"
 	"os"
+	"sync/atomic"
 )
 
-// Configure builds a text slog.Logger on stderr, installs it as the default
-// logger, and returns it. When verbose is true the level is Debug; otherwise
-// Warn — so normal runs stay quiet and only surface warnings and errors.
+// sink receives every log this module emits. It discards until an application asks for
+// logs: a library writing to its consumer's stderr uninvited is a bug, not a feature.
+// The silence is paired with a global setter, so one call covers every package rather
+// than one client.
+var sink atomic.Pointer[slog.Logger]
+
+func init() { Set(nil) }
+
+// Set routes this module's logs to lg. A nil lg restores silence.
+//
+// The pointer swap is atomic, but a logger changed while calls are in flight can still
+// split a run's output across two destinations. Call it during initialisation.
+func Set(lg *slog.Logger) {
+	if lg == nil {
+		lg = slog.New(slog.DiscardHandler)
+	}
+	sink.Store(lg)
+}
+
+// Debug and Warn are what this module's packages call. There is no Info: a library has
+// nothing to say about its normal operation that its consumer did not already ask for —
+// that is Debug — and nothing between "working" and "something is wrong".
+func Debug(msg string, args ...any) { sink.Load().Debug(msg, args...) }
+
+// Warn reports something the caller may want to act on but that did not stop the work.
+func Warn(msg string, args ...any) { sink.Load().Warn(msg, args...) }
+
+// Enabled reports whether a record at level would be written. Use it to skip building
+// arguments nobody will read — a per-file skip reason over a large tree, for one.
+func Enabled(level slog.Level) bool {
+	return sink.Load().Enabled(context.Background(), level)
+}
+
+// Configure builds the CLI's handler on stderr, installs it as both the process default
+// and this module's sink, and returns it. Debug when verbose, Warn otherwise, so a normal
+// run stays quiet and only surfaces warnings and errors.
 func Configure(verbose bool) *slog.Logger {
 	level := slog.LevelWarn
 	if verbose {
 		level = slog.LevelDebug
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
-	slog.SetDefault(logger)
+	slog.SetDefault(logger) // for cmd/ and internal/, which log through slog directly
+	Set(logger)             // for pkg/, which logs through this sink
 	return logger
 }

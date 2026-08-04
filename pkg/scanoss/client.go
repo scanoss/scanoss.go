@@ -54,8 +54,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
+
+	"github.com/scanoss/scanoss.go/internal/logging"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -72,10 +74,6 @@ type Client struct {
 	// shared by every decoration service.
 	chunkSize int
 	workers   int
-	// log receives the SDK's diagnostic logging (Config.Logger); defaults to
-	// slog.Default(). The SDK never writes to stdout, only through this logger.
-	log *slog.Logger
-
 	// Decoration services (grouped public API). Wired in New.
 	Vulnerabilities VulnerabilityAPI
 	Licenses        LicenseAPI
@@ -97,10 +95,6 @@ func New(cfg Config) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	logger := cfg.Logger
-	if logger == nil {
-		logger = slog.Default()
-	}
 	apiURL := DefaultAPIURL
 	if cfg.APIURL != "" {
 		apiURL = strings.TrimRight(cfg.APIURL, "/")
@@ -110,14 +104,12 @@ func New(cfg Config) (*Client, error) {
 		apiURL:    apiURL,
 		chunkSize: positiveOr(cfg.ChunkSize, DefaultChunkSize),
 		workers:   positiveOr(cfg.Workers, DefaultWorkers),
-		log:       logger,
 		transport: &httpTransport{
 			httpClient:         httpClient,
 			apiKey:             cfg.APIKey,
 			maxRetries:         retryCount(cfg.MaxRetries),
 			retryBackoffBase:   positiveOr(cfg.RetryBackoffBase, DefaultRetryBackoffBase),
 			maxServerRetryWait: positiveOr(cfg.MaxServerRetryWait, DefaultMaxServerRetryWait),
-			log:                logger,
 		},
 	}
 	// Wire the per-service handles to this client.
@@ -193,3 +185,15 @@ func (c *Client) postJSON(ctx context.Context, endpoint string, payload any) ([]
 	res, err := c.do(ctx, req)
 	return res.Body, err
 }
+
+// SetLogger routes the SDK's diagnostics to lg — every package it is built from, not
+// just this one. A nil lg restores silence.
+//
+// The SDK logs nothing until this is called: it will not write to its consumer's stderr
+// uninvited. Pass slog.Default() to fold its records into the application's own stream,
+// or a handler of your own to keep them apart or drop them.
+//
+// It is process-wide rather than per-client because most of this SDK is local work —
+// filtering, fingerprinting, parsing manifests, rendering SBOMs — with no client to hang
+// a logger off. Call it during initialisation.
+func SetLogger(lg *slog.Logger) { logging.Set(lg) }

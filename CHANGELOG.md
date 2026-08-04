@@ -16,8 +16,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   but has no notes for the resolved version (`RELEASE_NOTES_UNAVAILABLE`), it
   prints a "no release notes available" notice and exits 0 rather than erroring.
 
+### Added
+
+- **`scanoss.SetLogger`** routes the SDK's diagnostics — every package, not one client.
+- **`pkg/filter` reports its work at Debug**: the rules a `Collect` applied, and which rule excluded
+  each file — what `SkippedCount` alone could not answer.
+
 ### Fixed
 
+- **The SDK no longer writes to its consumer's stderr uninvited**, nor logs normal operations at
+  Info. It is silent until `SetLogger` is called.
 - **`Options.SkipDirs` and friends were silently ignored** when the matching built-in flag was
   off, and otherwise replaced the built-in list instead of adding to it.
 - **`scan --include deps` no longer applies the scanning folder rules to the manifest stage**,
@@ -38,6 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   → `KeepManifests`, `SkipExtensions` → `SkipExts`.
 - **BREAKING — `scanpipeline.Options.Filter` and `DependencySettings` are now `ScanFilters` and
   `DependencyFilters`.** The caller builds both; the pipeline no longer derives one from the other.
+- **BREAKING — `DependencyParser.ParseFiles` returns the per-file errors** (`map[string]error`)
+  instead of printing them, so "every manifest failed" is distinguishable from "no dependencies".
 - **BREAKING — `pkg/scanner` and `pkg/fingerprint/wfp` merge into `pkg/wfp`.**
 - **BREAKING — `wfp.Generate` is the only entry point**, returning a `Result` with the combined
   stream, the per-file detail and the files it skipped. One file is a one-file slice.
@@ -58,6 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Use `ParseFile`.
 - **BREAKING — `settings.GetSBOMData`, `SBOMData`, `FormatSBOMParam`** — the v2 BOM parameter
   pair. v3 applies BOM rules post-scan through `pkg/postprocess`.
+- **BREAKING — `Config.Logger`** — it only ever covered `pkg/scanoss`. Use `scanoss.SetLogger`.
 - **BREAKING — `parsers.RemoveDuplicates`, `output.Writer.WriteFormat`** — never called.
 - **BREAKING — the filter matcher machinery**: `Matcher`, `Composite`, `Build`, the eight
   `*Source` functions, `Defaults`/`StdDefaults` and `Skip`. The seven mutable lists of built-in

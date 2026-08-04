@@ -136,17 +136,25 @@ func (dp *DependencyParser) ParseFile(filePath string) (*parsers.LocalDependency
 	return result, nil
 }
 
-// ParseFiles parses multiple dependency files and returns aggregated results
-func (dp *DependencyParser) ParseFiles(files []string) (*parsers.LocalDependencies, error) {
+// ParseFiles parses every file, best-effort: one that fails is skipped and its error
+// returned in failed, keyed by path.
+//
+// The count is what makes "every manifest failed" distinguishable from "the manifests
+// declared no dependencies" — printing the errors and returning nil made those two
+// identical, so a caller could not downgrade its confidence in the result.
+func (dp *DependencyParser) ParseFiles(files []string) (*parsers.LocalDependencies, map[string]error) {
 	result := &parsers.LocalDependencies{
 		Files: []parsers.LocalDependency{},
 	}
+	var failed map[string]error
 
 	for _, filePath := range files {
 		dep, err := dp.ParseFile(filePath)
 		if err != nil {
-			// Log error but continue with other files
-			fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+			if failed == nil {
+				failed = make(map[string]error)
+			}
+			failed[filePath] = err
 			continue
 		}
 
@@ -156,7 +164,7 @@ func (dp *DependencyParser) ParseFiles(files []string) (*parsers.LocalDependenci
 		}
 	}
 
-	return result, nil
+	return result, failed
 }
 
 // SupportedFiles returns a list of all supported dependency file patterns

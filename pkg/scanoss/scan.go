@@ -39,6 +39,8 @@ import (
 	"github.com/scanoss/scanoss.go/pkg/postprocess"
 	"github.com/scanoss/scanoss.go/pkg/settings"
 	"github.com/scanoss/scanoss.go/pkg/wfp"
+
+	"github.com/scanoss/scanoss.go/internal/logging"
 )
 
 // ScanAPI is the batch scan service surface. Folder, Files and WFP each run the
@@ -188,22 +190,22 @@ func (s scanService) WFP(ctx context.Context, wfp []byte, opts ...ScanOption) (s
 // scan uploads a ready WFP (parallel chunks) and waits for completion. The three entry
 // points (Folder/Files/WFP) each produce the WFP, then funnel through here.
 func (s scanService) scan(ctx context.Context, wfp []byte, o scanOptions) (scanossapi.ScanEnvelope, error) {
-	s.c.log.Debug("scan: uploading WFP", "bytes", len(wfp), "chunkBytes", o.chunkBytes)
+	logging.Debug("scan: uploading WFP", "bytes", len(wfp), "chunkBytes", o.chunkBytes)
 	scanID, err := s.upload(ctx, wfp, o)
 	if err != nil {
 		return scanossapi.ScanEnvelope{}, err
 	}
-	s.c.log.Info("scan uploaded", "scanID", scanID)
+	logging.Debug("scan uploaded", "scanID", scanID)
 
 	env, err := s.wait(ctx, scanID, o.pollInterval, o.reporter)
 	if err != nil {
 		return scanossapi.ScanEnvelope{}, err
 	}
 	if o.bom != nil && env.Result != nil {
-		s.c.log.Debug("applying BOM rules to scan result")
+		logging.Debug("applying BOM rules to scan result")
 		postprocess.Apply(env.Result, o.bom)
 	}
-	s.c.log.Info("scan complete", "scanID", scanID)
+	logging.Debug("scan complete", "scanID", scanID)
 	return env, nil
 }
 
@@ -218,12 +220,12 @@ func (s scanService) fingerprint(files []string, o scanOptions) ([]byte, error) 
 			o.reporter.Fingerprinting(done, total)
 		}
 	})
-	s.c.log.Debug("fingerprinted files", "files", len(files), "wfpBytes", len(res.WFP))
+	logging.Debug("fingerprinted files", "files", len(files), "wfpBytes", len(res.WFP))
 	// Fingerprinting is best-effort, so a skipped file does not fail the scan — but it is
 	// reported. Discarding these silently made a scan of a tree with unreadable files look
 	// like a scan of a smaller tree.
 	for _, fpErr := range res.Errors {
-		s.c.log.Warn("skipped a file that could not be fingerprinted", "err", fpErr)
+		logging.Warn("skipped a file that could not be fingerprinted", "err", fpErr)
 	}
 	if len(res.WFP) == 0 {
 		return nil, fmt.Errorf("no fingerprints generated")
@@ -247,7 +249,7 @@ func (s scanService) upload(ctx context.Context, wfp []byte, o scanOptions) (str
 	scanID := id.String()
 
 	ranges := chunkRanges(len(wfp), o.chunkBytes)
-	s.c.log.Debug("uploading WFP chunks", "scanID", scanID, "chunks", len(ranges))
+	logging.Debug("uploading WFP chunks", "scanID", scanID, "chunks", len(ranges))
 	prog := &chunkProgress{r: o.reporter, total: len(ranges)}
 	if err := s.uploadChunks(ctx, scanID, wfp, ranges, prog); err != nil {
 		return "", err
@@ -361,7 +363,7 @@ func (c *Client) uploadChunk(ctx context.Context, scanID string, off, end, total
 	if _, err := c.do(ctx, req); err != nil {
 		var statusErr *StatusError
 		if errors.As(err, &statusErr) && statusErr.StatusCode == http.StatusConflict {
-			c.log.Debug("chunk already accepted by the server",
+			logging.Debug("chunk already accepted by the server",
 				"scanID", scanID, "range", fmt.Sprintf("%d-%d/%d", off, end, total),
 				"body", statusErr.Body)
 			return nil
@@ -472,7 +474,7 @@ func (s scanService) wait(ctx context.Context, scanID string, interval time.Dura
 		default:
 			// A state this client predates. Wait too rather than error: the alternative breaks
 			// every existing client the moment the server names a new state.
-			s.c.log.Debug("scan reported an unrecognised state", "scanID", e.ScanId, "status", e.Status)
+			logging.Debug("scan reported an unrecognised state", "scanID", e.ScanId, "status", e.Status)
 		}
 
 		select {

@@ -40,6 +40,7 @@ import (
 
 	scanossapi "github.com/scanoss/scanoss.api-sdk"
 
+	"github.com/scanoss/scanoss.go/internal/logging"
 	"github.com/scanoss/scanoss.go/pkg/dependencies"
 	"github.com/scanoss/scanoss.go/pkg/dependencies/parsers"
 	"github.com/scanoss/scanoss.go/pkg/filter"
@@ -220,9 +221,14 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 			defer wg.Done()
 			total := len(manifestFiles)
 			emit(Progress{Layer: LayerManifests, Status: StatusRunning, Total: total}) // show it up front, alongside fingerprinting
-			parsed, err := dependencies.NewDependencyParser().ParseFiles(manifestFiles)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: dependency scan failed: %v\n", err)
+			parsed, failed := dependencies.NewDependencyParser().ParseFiles(manifestFiles)
+			for path, parseErr := range failed {
+				logging.Warn("manifest could not be parsed", "path", path, "err", parseErr)
+			}
+			// All of them failing is a failed layer; some of them is a partial answer that
+			// is still worth having. Reporting both the same way used to make an empty
+			// result indistinguishable from a project that declares nothing.
+			if len(failed) == total {
 				emit(Progress{Layer: LayerManifests, Status: StatusFailed, Total: total})
 				return
 			}
@@ -337,11 +343,11 @@ func Enrich(ctx context.Context, client *scanoss.Client, inv *sbom.Inventory, se
 
 	res, err := client.DecorationPipeline(services...).Run(ctx, comps, scanoss.WithDecorationReporter(reporter))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: decoration pipeline failed: %v\n", err)
+		logging.Warn("decoration pipeline failed", "err", err)
 		return
 	}
 	for name, svcErr := range res.Errors {
-		fmt.Fprintf(os.Stderr, "Warning: could not fetch %s: %v\n", name, svcErr)
+		logging.Warn("could not fetch a layer", "service", name, "err", svcErr)
 	}
 
 	// Per-component layers attach inline by PURL (+ version where the response echoes it).
@@ -388,15 +394,15 @@ func warnPartial(svc string, failed []scanoss.ChunkError) {
 	for _, f := range failed {
 		purls = append(purls, f.Purls...)
 	}
-	// A long list is truncated: the point is to name what is missing, not to fill the terminal
-	// when a whole scan's worth of components went unanswered.
-	shown := purls
-	suffix := ""
-	if len(shown) > 5 {
-		shown, suffix = shown[:5], fmt.Sprintf(" (and %d more)", len(purls)-5)
+	// Only the first few are named: the point is to say what is missing, not to fill a
+	// terminal line when a whole scan's worth of components went unanswered. components
+	// carries the total, so the count is never the part that gets truncated.
+	first := purls
+	if len(first) > 5 {
+		first = first[:5]
 	}
-	fmt.Fprintf(os.Stderr, "Warning: %s has no data for %d component(s): %s%s\n",
-		svc, len(purls), strings.Join(shown, ", "), suffix)
+	logging.Warn("layer returned no data for some components",
+		"service", svc, "components", len(purls), "first", first)
 }
 
 // sourceDeclared builds ScopeDeclared components directly from the manifests parsed from the
