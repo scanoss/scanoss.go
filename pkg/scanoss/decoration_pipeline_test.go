@@ -29,7 +29,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync/atomic"
+	"sync"
 	"testing"
 )
 
@@ -189,26 +189,41 @@ func equal(a, b []string) bool {
 	return true
 }
 
-// A pipeline can only hand back the services PipelineResult has a field for. Any other is
-// refused before the first request, rather than after paying for the chunked round trip and
-// discarding the answer.
-func TestPipelineRejectsNonLayerService(t *testing.T) {
-	var hits int32
+// A service that is not a decoration layer is skipped, and the layers alongside it still
+// run. Failing the whole call punished the layers the caller got right, and through
+// scanpipeline — which reports the error as a warning — it left a caller with no logger
+// holding an unenriched inventory and no error at all.
+func TestPipelineSkipsNonLayerServiceAndRunsTheRest(t *testing.T) {
+	var paths sync.Map
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&hits, 1)
-		_, _ = w.Write([]byte(`{"components":[]}`))
+		paths.Store(r.URL.Path, true)
+		_, _ = w.Write([]byte(`{"components":[{"purl":"pkg:a","licenses":[{"id":"MIT"}]}]}`))
 	}))
 	defer srv.Close()
 
 	client := mustNew(t, Config{APIURL: srv.URL})
-	p := client.DecorationPipeline(ServiceLicenses, ServiceLicenseEvidence)
+	p := client.DecorationPipeline(ServiceLicenses, serviceLicenseEvidence)
+
+	res, err := p.Run(context.Background(), Components("pkg:a"))
+	if err != nil {
+		t.Fatalf("Run: %v — one non-layer service must not discard the run", err)
+	}
+	if res.Licenses == nil {
+		t.Error("the licenses layer must still arrive")
+	}
+	// The skipped service is skipped before any request, not run and discarded.
+	if _, asked := paths.Load(serviceLicenseEvidence.endpoint); asked {
+		t.Errorf("%q was requested; a non-layer service must not reach the network", serviceLicenseEvidence.Name)
+	}
+}
+
+// With nothing but non-layer services there is no work to do, and that is an error: the
+// caller asked for layers and gets none.
+func TestPipelineFailsWhenNoServiceIsALayer(t *testing.T) {
+	client := mustNew(t, Config{APIURL: "http://127.0.0.1:1"})
+	p := client.DecorationPipeline(serviceLicenseEvidence)
 
 	if _, err := p.Run(context.Background(), Components("pkg:a")); err == nil {
-		t.Fatal("want an error naming the service that has no layer")
-	} else if !strings.Contains(err.Error(), ServiceLicenseEvidence.Name) {
-		t.Errorf("error should name %q, got: %v", ServiceLicenseEvidence.Name, err)
-	}
-	if got := atomic.LoadInt32(&hits); got != 0 {
-		t.Errorf("requests = %d, want 0: the check must happen before any of them", got)
+		t.Fatal("want an error when no configured service is a decoration layer")
 	}
 }

@@ -35,11 +35,11 @@ import (
 // Components service endpoints (v3): free-form search, version listing, and
 // lifecycle status (single GET / batch POST share the same status path).
 var (
-	ServiceComponentsSearch   = Service{Name: "components.search", endpoint: "/v3/components/search"}
-	ServiceComponentsVersions = Service{Name: "components.versions", endpoint: "/v3/components/versions"}
-	ServiceComponentsStatus   = Service{Name: "components.status", endpoint: "/v3/components/status"}
-	ServiceComponentStatus    = Service{Name: "component.status", endpoint: "/v3/components/status"}
-	ServiceComponentsReleases = Service{Name: "components.releases", endpoint: "/v3/components/releases"}
+	serviceComponentsSearch   = Service{Name: "components.search", endpoint: "/v3/components/search"}
+	serviceComponentsVersions = Service{Name: "components.versions", endpoint: "/v3/components/versions"}
+	serviceComponentsStatus   = Service{Name: "components.status", endpoint: "/v3/components/status"}
+	serviceComponentStatus    = Service{Name: "component.status", endpoint: "/v3/components/status"}
+	serviceComponentsReleases = Service{Name: "components.releases", endpoint: "/v3/components/releases"}
 )
 
 // ComponentSearch holds the filters for a component search. At least one of
@@ -91,7 +91,7 @@ func (s componentsService) Search(ctx context.Context, q ComponentSearch) (*scan
 	if q.Offset > 0 {
 		v.Set("offset", strconv.Itoa(q.Offset))
 	}
-	res, err := s.c.getResult(ctx, ServiceComponentsSearch.endpoint, v)
+	res, err := s.c.getResult(ctx, serviceComponentsSearch.endpoint, v)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +108,7 @@ func (s componentsService) Versions(ctx context.Context, purl string, limit int)
 	if limit > 0 {
 		v.Set("limit", strconv.Itoa(limit))
 	}
-	res, err := s.c.getResult(ctx, ServiceComponentsVersions.endpoint, v)
+	res, err := s.c.getResult(ctx, serviceComponentsVersions.endpoint, v)
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +134,7 @@ func (s componentsService) Releases(ctx context.Context, purl, requirement strin
 	if offset > 0 {
 		v.Set("offset", strconv.Itoa(offset))
 	}
-	res, err := s.c.getResult(ctx, ServiceComponentsReleases.endpoint, v)
+	res, err := s.c.getResult(ctx, serviceComponentsReleases.endpoint, v)
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +143,7 @@ func (s componentsService) Releases(ctx context.Context, purl, requirement strin
 
 // Status resolves the lifecycle status for the given components (batch).
 func (s componentsService) Status(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.ComponentsStatusResponse, error) {
-	res, err := s.c.decorate(ctx, ServiceComponentsStatus, comps, opts...)
+	res, err := s.c.decorate(ctx, serviceComponentsStatus, comps, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +152,7 @@ func (s componentsService) Status(ctx context.Context, comps []Component, opts .
 
 // StatusOne resolves the lifecycle status for a single component.
 func (s componentsService) StatusOne(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.ComponentsStatusResponse, error) {
-	res, err := s.c.decorateOne(ctx, ServiceComponentStatus, comp, opts...)
+	res, err := s.c.decorateOne(ctx, serviceComponentStatus, comp, opts...)
 	if err != nil {
 		return nil, err
 	}

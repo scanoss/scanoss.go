@@ -47,7 +47,7 @@ func TestSingleComponentGET(t *testing.T) {
 	defer srv.Close()
 
 	client := mustNew(t, Config{APIURL: srv.URL})
-	res, err := client.decorateOne(context.Background(), ServiceVulnerability, Component{Purl: "pkg:a", Requirement: "1.2.3"})
+	res, err := client.decorateOne(context.Background(), serviceVulnerability, Component{Purl: "pkg:a", Requirement: "1.2.3"})
 	if err != nil {
 		t.Fatalf("decorateOne returned error: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestSingleComponentGET(t *testing.T) {
 
 func TestSingleComponentRequiresPurl(t *testing.T) {
 	client := mustNew(t, Config{APIURL: "http://example.invalid"})
-	if _, err := client.decorateOne(context.Background(), ServiceVulnerability, Component{}); err == nil {
+	if _, err := client.decorateOne(context.Background(), serviceVulnerability, Component{}); err == nil {
 		t.Error("expected error for empty component")
 	}
 }

@@ -21,7 +21,7 @@
  * THE SOFTWARE.
  */
 
-package fingerprint
+package wfp
 
 import (
 	"encoding/binary"
@@ -35,13 +35,16 @@ import (
 	"strings"
 )
 
+// WFP1 algorithm parameters: the n-gram length hashed per window, and the number of
+// hashes a window spans. They define the fingerprint format, so changing either makes
+// the output incomparable with every WFP the server already holds.
 const (
-	GRAM_WFP1   = 30
-	WINDOW_WFP1 = 64
+	gramWFP1   = 30
+	windowWFP1 = 64
 )
 
 // CRC tables are built once at package init (they were previously rebuilt on
-// every GenerateFingerprint call).
+// every generateFingerprint call).
 var (
 	crc64ECMA       = crc64.MakeTable(crc64.ECMA)
 	crc32Castagnoli = crc32.MakeTable(0x82f63b78)
@@ -90,10 +93,10 @@ func minHash(hashes []uint32) uint32 {
 	return hashes[indexMin]
 }
 
-// GenerateFingerprint generates the WFP fingerprint of a file. The file is read from
+// generateFingerprint generates the WFP fingerprint of a file. The file is read from
 // filePath; root, when non-empty, makes the WFP "file=" label relative to it (so the
 // scan result reports paths relative to the scanned folder, not absolute local paths).
-func GenerateFingerprint(filePath string, root string) (*FileFingerprint, error) {
+func generateFingerprint(filePath string, root string) (*FileFingerprint, error) {
 	// No filtering here: which files are worth fingerprinting is decided once,
 	// during collection (pkg/filter), which is the only stage that reports what
 	// it skipped. Deciding again at this depth would drop files the caller has
@@ -138,18 +141,18 @@ func GenerateFingerprint(filePath string, root string) (*FileFingerprint, error)
 		}
 
 		window = append(window, newByte)
-		if len(window) >= GRAM_WFP1 {
+		if len(window) >= gramWFP1 {
 			hashes = append(hashes, crc32.Checksum(window, crc32Castagnoli))
-			if len(hashes) >= WINDOW_WFP1 {
+			if len(hashes) >= windowWFP1 {
 				a := minHash(hashes)
 				if a != last {
 					last = a
 					binary.LittleEndian.PutUint32(minBuf[:], a)
 					wfp[lines] = append(wfp[lines], crc32.Checksum(minBuf[:], crc32Castagnoli))
 				}
-				hashes = hashes[1:WINDOW_WFP1]
+				hashes = hashes[1:windowWFP1]
 			}
-			window = window[1:GRAM_WFP1]
+			window = window[1:gramWFP1]
 		}
 	}
 

@@ -29,10 +29,10 @@ import (
 	"path/filepath"
 
 	"github.com/scanoss/scanoss.go/internal/config"
+	"github.com/scanoss/scanoss.go/internal/output"
 	"github.com/scanoss/scanoss.go/pkg/filter"
-	"github.com/scanoss/scanoss.go/pkg/output"
-	"github.com/scanoss/scanoss.go/pkg/scanner"
 	"github.com/scanoss/scanoss.go/pkg/settings"
+	"github.com/scanoss/scanoss.go/pkg/wfp"
 	"github.com/spf13/cobra"
 )
 
@@ -151,17 +151,17 @@ func runWFP(cmd *cobra.Command, args []string) error {
 
 	// Generate the WFP through the shared path (same as `scan`), with paths
 	// relative to the scan root.
-	wfp, errs := scanner.GenerateWFP(files, threads, scanRoot, func(done, total int) {
+	fp := wfp.Generate(files, threads, scanRoot, func(done, total int) {
 		bar.SetCurrent(int64(done))
 	})
 	bar.SetCurrent(int64(len(files)))
 	p.Wait()
 
-	if err := writer.Write(string(wfp)); err != nil {
+	if err := writer.Write(string(fp.WFP)); err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing: %v\n", err)
 	}
-	if len(errs) > 0 {
-		warnf("Completed with %d errors", len(errs))
+	if len(fp.Errors) > 0 {
+		warnf("Completed with %d errors", len(fp.Errors))
 	}
 
 	return nil

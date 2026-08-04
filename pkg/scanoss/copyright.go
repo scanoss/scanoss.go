@@ -32,8 +32,8 @@ import (
 // Copyright service endpoints (v3): per-file copyright evidence and the distinct
 // set of copyright holders. Both accept one or many components in a single POST.
 var (
-	ServiceCopyrightEvidence = Service{Name: "copyright.evidence", endpoint: "/v3/copyright/evidence"}
-	ServiceCopyrightHolders  = Service{Name: "copyright.holders", endpoint: "/v3/copyright/holders"}
+	serviceCopyrightEvidence = Service{Name: "copyright.evidence", endpoint: "/v3/copyright/evidence"}
+	serviceCopyrightHolders  = Service{Name: "copyright.holders", endpoint: "/v3/copyright/holders"}
 )
 
 // CopyrightAPI is the copyright service surface. Responses are typed from the
@@ -49,7 +49,7 @@ var _ CopyrightAPI = copyrightService{}
 
 // Evidence returns per-file copyright evidence for the given components.
 func (s copyrightService) Evidence(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.CopyrightEvidenceResponse, error) {
-	res, err := s.c.decorate(ctx, ServiceCopyrightEvidence, comps, opts...)
+	res, err := s.c.decorate(ctx, serviceCopyrightEvidence, comps, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ func (s copyrightService) Evidence(ctx context.Context, comps []Component, opts 
 
 // Holders returns the distinct copyright holders for the given components.
 func (s copyrightService) Holders(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.CopyrightHoldersResponse, error) {
-	res, err := s.c.decorate(ctx, ServiceCopyrightHolders, comps, opts...)
+	res, err := s.c.decorate(ctx, serviceCopyrightHolders, comps, opts...)
 	if err != nil {
 		return nil, err
 	}

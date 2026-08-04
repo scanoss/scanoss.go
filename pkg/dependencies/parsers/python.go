@@ -68,12 +68,12 @@ func ParseRequirementsTxt(fileContent []byte, filePath string) (*LocalDependency
 		}
 
 		// Skip URLs
-		if IsValidURL(line) {
+		if isValidURL(line) {
 			continue
 		}
 
 		// Skip local file paths
-		if IsValidPath(line) {
+		if isValidPath(line) {
 			continue
 		}
 

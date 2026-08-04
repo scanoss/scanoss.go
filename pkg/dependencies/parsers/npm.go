@@ -48,24 +48,24 @@ type PackageJSON struct {
 	DevDependencies map[string]string `json:"devDependencies"`
 }
 
-// PackageLockV1 represents the structure of package-lock.json v1
-type PackageLockV1 struct {
-	Dependencies map[string]PackageLockDependency `json:"dependencies"`
+// packageLockV1 represents the structure of package-lock.json v1
+type packageLockV1 struct {
+	Dependencies map[string]packageLockDependency `json:"dependencies"`
 }
 
-// PackageLockV2 represents the structure of package-lock.json v2+
-type PackageLockV2 struct {
-	Packages map[string]PackageLockPackage `json:"packages"`
+// packageLockV2 represents the structure of package-lock.json v2+
+type packageLockV2 struct {
+	Packages map[string]packageLockPackage `json:"packages"`
 }
 
-// PackageLockDependency represents a dependency in package-lock.json v1
-type PackageLockDependency struct {
+// packageLockDependency represents a dependency in package-lock.json v1
+type packageLockDependency struct {
 	Version      string                           `json:"version"`
-	Dependencies map[string]PackageLockDependency `json:"dependencies"`
+	Dependencies map[string]packageLockDependency `json:"dependencies"`
 }
 
-// PackageLockPackage represents a package in package-lock.json v2+
-type PackageLockPackage struct {
+// packageLockPackage represents a package in package-lock.json v2+
+type packageLockPackage struct {
 	Version string `json:"version"`
 	Dev     bool   `json:"dev"`
 }
@@ -248,7 +248,7 @@ func ParsePackageLock(fileContent []byte, filePath string) (*LocalDependency, er
 		HasPackages bool `json:"-"`
 		PackagesLen int  `json:"-"`
 	}
-	var v2check PackageLockV2
+	var v2check packageLockV2
 	if err := json.Unmarshal(fileContent, &v2check); err == nil && len(v2check.Packages) > 0 {
 		probe.HasPackages = true
 	}
@@ -263,7 +263,7 @@ func ParsePackageLock(fileContent []byte, filePath string) (*LocalDependency, er
 // to capture the source line of each "packages" entry key.
 func parsePackageLockV2TokenWalk(fileContent []byte, result *LocalDependency) (*LocalDependency, error) {
 	// We still need the version and dev fields from v2 — use Unmarshal for those.
-	var lock PackageLockV2
+	var lock packageLockV2
 	if err := json.Unmarshal(fileContent, &lock); err != nil {
 		return nil, err
 	}
@@ -362,7 +362,7 @@ func parsePackageLockV2TokenWalk(fileContent []byte, result *LocalDependency) (*
 // parsePackageLockV1TokenWalk walks a v1 package-lock.json using json.Decoder
 // to capture the source line of each "dependencies" entry key (recursive).
 func parsePackageLockV1TokenWalk(fileContent []byte, result *LocalDependency) (*LocalDependency, error) {
-	var lock PackageLockV1
+	var lock packageLockV1
 	if err := json.Unmarshal(fileContent, &lock); err != nil {
 		return nil, err
 	}
@@ -409,7 +409,7 @@ func parsePackageLockV1TokenWalk(fileContent []byte, result *LocalDependency) (*
 func collectV1DepsWithOffsets(
 	dec *json.Decoder,
 	fileContent []byte,
-	deps map[string]PackageLockDependency,
+	deps map[string]packageLockDependency,
 	result *LocalDependency,
 ) error {
 	for dec.More() {

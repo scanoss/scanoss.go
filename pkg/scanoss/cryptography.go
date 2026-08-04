@@ -34,15 +34,15 @@ import (
 // has a batch (POST, many components) and a single (GET, one component) endpoint.
 var (
 	ServiceCryptographyAlgorithms        = Service{Name: "cryptography.algorithms", endpoint: "/v3/cryptography/algorithms"}
-	ServiceCryptographyAlgorithm         = Service{Name: "cryptography.algorithm", endpoint: "/v3/cryptography/algorithms"}
-	ServiceCryptographyAlgorithmsInRange = Service{Name: "cryptography.algorithms.range", endpoint: "/v3/cryptography/algorithms/range"}
-	ServiceCryptographyAlgorithmInRange  = Service{Name: "cryptography.algorithm.range", endpoint: "/v3/cryptography/algorithms/range"}
-	ServiceCryptographyVersionsInRange   = Service{Name: "cryptography.versions.range", endpoint: "/v3/cryptography/algorithms/versions/range"}
-	ServiceCryptographyVersionInRange    = Service{Name: "cryptography.version.range", endpoint: "/v3/cryptography/algorithms/versions/range"}
-	ServiceCryptographyHints             = Service{Name: "cryptography.hints", endpoint: "/v3/cryptography/hints"}
-	ServiceCryptographyHint              = Service{Name: "cryptography.hint", endpoint: "/v3/cryptography/hints"}
-	ServiceCryptographyHintsInRange      = Service{Name: "cryptography.hints.range", endpoint: "/v3/cryptography/hints/range"}
-	ServiceCryptographyHintInRange       = Service{Name: "cryptography.hint.range", endpoint: "/v3/cryptography/hints/range"}
+	serviceCryptographyAlgorithm         = Service{Name: "cryptography.algorithm", endpoint: "/v3/cryptography/algorithms"}
+	serviceCryptographyAlgorithmsInRange = Service{Name: "cryptography.algorithms.range", endpoint: "/v3/cryptography/algorithms/range"}
+	serviceCryptographyAlgorithmInRange  = Service{Name: "cryptography.algorithm.range", endpoint: "/v3/cryptography/algorithms/range"}
+	serviceCryptographyVersionsInRange   = Service{Name: "cryptography.versions.range", endpoint: "/v3/cryptography/algorithms/versions/range"}
+	serviceCryptographyVersionInRange    = Service{Name: "cryptography.version.range", endpoint: "/v3/cryptography/algorithms/versions/range"}
+	serviceCryptographyHints             = Service{Name: "cryptography.hints", endpoint: "/v3/cryptography/hints"}
+	serviceCryptographyHint              = Service{Name: "cryptography.hint", endpoint: "/v3/cryptography/hints"}
+	serviceCryptographyHintsInRange      = Service{Name: "cryptography.hints.range", endpoint: "/v3/cryptography/hints/range"}
+	serviceCryptographyHintInRange       = Service{Name: "cryptography.hint.range", endpoint: "/v3/cryptography/hints/range"}
 )
 
 // CryptographyAPI is the cryptography service surface: algorithms and library
@@ -76,7 +76,7 @@ func (s cryptographyService) Algorithms(ctx context.Context, comps []Component, 
 
 // Algorithm returns cryptographic algorithms for a single component.
 func (s cryptographyService) Algorithm(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.CryptoAlgorithmsResponse, error) {
-	res, err := s.c.decorateOne(ctx, ServiceCryptographyAlgorithm, comp, opts...)
+	res, err := s.c.decorateOne(ctx, serviceCryptographyAlgorithm, comp, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +85,7 @@ func (s cryptographyService) Algorithm(ctx context.Context, comp Component, opts
 
 // AlgorithmsInRange returns algorithms across a version range (batch).
 func (s cryptographyService) AlgorithmsInRange(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.CryptoAlgorithmsInRangeResponse, error) {
-	res, err := s.c.decorate(ctx, ServiceCryptographyAlgorithmsInRange, comps, opts...)
+	res, err := s.c.decorate(ctx, serviceCryptographyAlgorithmsInRange, comps, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +94,7 @@ func (s cryptographyService) AlgorithmsInRange(ctx context.Context, comps []Comp
 
 // AlgorithmInRange returns algorithms across a version range for a single component.
 func (s cryptographyService) AlgorithmInRange(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.CryptoAlgorithmsInRangeResponse, error) {
-	res, err := s.c.decorateOne(ctx, ServiceCryptographyAlgorithmInRange, comp, opts...)
+	res, err := s.c.decorateOne(ctx, serviceCryptographyAlgorithmInRange, comp, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +103,7 @@ func (s cryptographyService) AlgorithmInRange(ctx context.Context, comp Componen
 
 // VersionsInRange returns algorithm versions across a range (batch).
 func (s cryptographyService) VersionsInRange(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.CryptoVersionsInRangeResponse, error) {
-	res, err := s.c.decorate(ctx, ServiceCryptographyVersionsInRange, comps, opts...)
+	res, err := s.c.decorate(ctx, serviceCryptographyVersionsInRange, comps, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +112,7 @@ func (s cryptographyService) VersionsInRange(ctx context.Context, comps []Compon
 
 // VersionInRange returns algorithm versions across a range for a single component.
 func (s cryptographyService) VersionInRange(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.CryptoVersionsInRangeResponse, error) {
-	res, err := s.c.decorateOne(ctx, ServiceCryptographyVersionInRange, comp, opts...)
+	res, err := s.c.decorateOne(ctx, serviceCryptographyVersionInRange, comp, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +121,7 @@ func (s cryptographyService) VersionInRange(ctx context.Context, comp Component,
 
 // Hints returns cryptographic library hints for the given components (batch).
 func (s cryptographyService) Hints(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.CryptoHintsResponse, error) {
-	res, err := s.c.decorate(ctx, ServiceCryptographyHints, comps, opts...)
+	res, err := s.c.decorate(ctx, serviceCryptographyHints, comps, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +130,7 @@ func (s cryptographyService) Hints(ctx context.Context, comps []Component, opts 
 
 // Hint returns cryptographic library hints for a single component.
 func (s cryptographyService) Hint(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.CryptoHintsResponse, error) {
-	res, err := s.c.decorateOne(ctx, ServiceCryptographyHint, comp, opts...)
+	res, err := s.c.decorateOne(ctx, serviceCryptographyHint, comp, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +139,7 @@ func (s cryptographyService) Hint(ctx context.Context, comp Component, opts ...D
 
 // HintsInRange returns library hints across a version range (batch).
 func (s cryptographyService) HintsInRange(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.CryptoHintsInRangeResponse, error) {
-	res, err := s.c.decorate(ctx, ServiceCryptographyHintsInRange, comps, opts...)
+	res, err := s.c.decorate(ctx, serviceCryptographyHintsInRange, comps, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +148,7 @@ func (s cryptographyService) HintsInRange(ctx context.Context, comps []Component
 
 // HintInRange returns library hints across a version range for a single component.
 func (s cryptographyService) HintInRange(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.CryptoHintsInRangeResponse, error) {
-	res, err := s.c.decorateOne(ctx, ServiceCryptographyHintInRange, comp, opts...)
+	res, err := s.c.decorateOne(ctx, serviceCryptographyHintInRange, comp, opts...)
 	if err != nil {
 		return nil, err
 	}

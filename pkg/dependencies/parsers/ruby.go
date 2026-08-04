@@ -41,11 +41,11 @@ var (
 	gemfileLockSpecRegex = regexp.MustCompile(`^\s+(\w[\w\-]*)\s+\(([^\)]+)\)`)
 )
 
-// ParserState represents the state machine for Gemfile.lock parsing
-type ParserState int
+// parserState represents the state machine for Gemfile.lock parsing
+type parserState int
 
 const (
-	StateNone ParserState = iota
+	StateNone parserState = iota
 	StateGEM
 	StatePATH
 	StateGIT

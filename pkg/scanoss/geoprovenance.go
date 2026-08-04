@@ -33,9 +33,9 @@ import (
 // each as a batch (POST, many components) and a single (GET, one component) endpoint.
 var (
 	ServiceGeoprovenanceOrigin       = Service{Name: "geoprovenance.origin", endpoint: "/v3/geoprovenance/origin"}
-	ServiceGeoprovenanceOriginOne    = Service{Name: "geoprovenance.origin.one", endpoint: "/v3/geoprovenance/origin"}
-	ServiceGeoprovenanceCountries    = Service{Name: "geoprovenance.countries", endpoint: "/v3/geoprovenance/countries"}
-	ServiceGeoprovenanceCountriesOne = Service{Name: "geoprovenance.countries.one", endpoint: "/v3/geoprovenance/countries"}
+	serviceGeoprovenanceOriginOne    = Service{Name: "geoprovenance.origin.one", endpoint: "/v3/geoprovenance/origin"}
+	serviceGeoprovenanceCountries    = Service{Name: "geoprovenance.countries", endpoint: "/v3/geoprovenance/countries"}
+	serviceGeoprovenanceCountriesOne = Service{Name: "geoprovenance.countries.one", endpoint: "/v3/geoprovenance/countries"}
 )
 
 // GeoprovenanceAPI is the geoprovenance service surface: country of origin and
@@ -63,7 +63,7 @@ func (s geoprovenanceService) Origins(ctx context.Context, comps []Component, op
 
 // Origin returns the country of origin for a single component.
 func (s geoprovenanceService) Origin(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.GeoOriginResponse, error) {
-	res, err := s.c.decorateOne(ctx, ServiceGeoprovenanceOriginOne, comp, opts...)
+	res, err := s.c.decorateOne(ctx, serviceGeoprovenanceOriginOne, comp, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +72,7 @@ func (s geoprovenanceService) Origin(ctx context.Context, comp Component, opts .
 
 // Countries returns contributor countries for the given components (batch).
 func (s geoprovenanceService) Countries(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.GeoContributorsResponse, error) {
-	res, err := s.c.decorate(ctx, ServiceGeoprovenanceCountries, comps, opts...)
+	res, err := s.c.decorate(ctx, serviceGeoprovenanceCountries, comps, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +81,7 @@ func (s geoprovenanceService) Countries(ctx context.Context, comps []Component, 
 
 // Country returns contributor countries for a single component.
 func (s geoprovenanceService) Country(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.GeoContributorsResponse, error) {
-	res, err := s.c.decorateOne(ctx, ServiceGeoprovenanceCountriesOne, comp, opts...)
+	res, err := s.c.decorateOne(ctx, serviceGeoprovenanceCountriesOne, comp, opts...)
 	if err != nil {
 		return nil, err
 	}

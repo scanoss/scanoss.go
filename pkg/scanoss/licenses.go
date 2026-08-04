@@ -37,12 +37,12 @@ import (
 //     component (single GET / batch POST), plus SPDX-registry details and OSADL
 //     obligations keyed by license id.
 var (
-	ServiceLicenseAttribution  = Service{Name: "license.attribution", endpoint: "/v3/license/attribution"}
-	ServiceLicenseEvidence     = Service{Name: "license.evidence", endpoint: "/v3/license/evidence"}
+	serviceLicenseAttribution  = Service{Name: "license.attribution", endpoint: "/v3/license/attribution"}
+	serviceLicenseEvidence     = Service{Name: "license.evidence", endpoint: "/v3/license/evidence"}
 	ServiceLicenses            = Service{Name: "licenses", endpoint: "/v3/licenses"}
-	ServiceLicense             = Service{Name: "license", endpoint: "/v3/licenses"}
-	ServiceLicensesDetails     = Service{Name: "licenses.details", endpoint: "/v3/licenses/details"}
-	ServiceLicensesObligations = Service{Name: "licenses.obligations", endpoint: "/v3/licenses/obligations"}
+	serviceLicense             = Service{Name: "license", endpoint: "/v3/licenses"}
+	serviceLicensesDetails     = Service{Name: "licenses.details", endpoint: "/v3/licenses/details"}
+	serviceLicensesObligations = Service{Name: "licenses.obligations", endpoint: "/v3/licenses/obligations"}
 )
 
 // LicenseAPI is the licenses service surface. Responses are typed from the
@@ -63,7 +63,7 @@ var _ LicenseAPI = licenseService{}
 // Attribution returns the attribution files (LICENSE/NOTICE/…) for the given
 // components.
 func (s licenseService) Attribution(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.AttributionResponse, error) {
-	res, err := s.c.decorate(ctx, ServiceLicenseAttribution, comps, opts...)
+	res, err := s.c.decorate(ctx, serviceLicenseAttribution, comps, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +72,7 @@ func (s licenseService) Attribution(ctx context.Context, comps []Component, opts
 
 // Evidence returns per-file license evidence for the given components.
 func (s licenseService) Evidence(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.LicenseEvidenceResponse, error) {
-	res, err := s.c.decorate(ctx, ServiceLicenseEvidence, comps, opts...)
+	res, err := s.c.decorate(ctx, serviceLicenseEvidence, comps, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +90,7 @@ func (s licenseService) Components(ctx context.Context, comps []Component, opts 
 
 // Component returns the declared licenses for a single component.
 func (s licenseService) Component(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.ComponentLicenseResponse, error) {
-	res, err := s.c.decorateOne(ctx, ServiceLicense, comp, opts...)
+	res, err := s.c.decorateOne(ctx, serviceLicense, comp, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +102,7 @@ func (s licenseService) Details(ctx context.Context, license string) (*scanossap
 	if license == "" {
 		return nil, fmt.Errorf("no license id to query")
 	}
-	res, err := s.c.getResult(ctx, ServiceLicensesDetails.endpoint, url.Values{"id": {license}})
+	res, err := s.c.getResult(ctx, serviceLicensesDetails.endpoint, url.Values{"id": {license}})
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +114,7 @@ func (s licenseService) Obligations(ctx context.Context, license string) (*scano
 	if license == "" {
 		return nil, fmt.Errorf("no license id to query")
 	}
-	res, err := s.c.getResult(ctx, ServiceLicensesObligations.endpoint, url.Values{"id": {license}})
+	res, err := s.c.getResult(ctx, serviceLicensesObligations.endpoint, url.Values{"id": {license}})
 	if err != nil {
 		return nil, err
 	}

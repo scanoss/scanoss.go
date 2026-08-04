@@ -56,7 +56,7 @@ func ParseGoMod(fileContent []byte, filePath string) (*LocalDependency, error) {
 	for scanner.Scan() {
 		lineNo++
 		raw := scanner.Text()
-		line := PreprocessLine(raw)
+		line := preprocessLine(raw)
 
 		if line == "" {
 			continue
@@ -93,7 +93,7 @@ func ParseGoMod(fileContent []byte, filePath string) (*LocalDependency, error) {
 				// Skip indirect dependencies if desired (they have // indirect comment)
 				// For now, we include all dependencies
 
-				namespace, name := SplitNamespace(pkgPath)
+				namespace, name := splitNamespace(pkgPath)
 				purl := BuildPURL("golang", namespace, name, version, nil)
 
 				result.Purls = append(result.Purls, LocalPurl{
@@ -152,7 +152,7 @@ func ParseGoSum(fileContent []byte, filePath string) (*LocalDependency, error) {
 			}
 			seen[key] = true
 
-			namespace, name := SplitNamespace(pkgPath)
+			namespace, name := splitNamespace(pkgPath)
 			purl := BuildPURL("golang", namespace, name, version, nil)
 
 			result.Purls = append(result.Purls, LocalPurl{

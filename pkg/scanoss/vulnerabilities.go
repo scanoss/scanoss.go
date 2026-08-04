@@ -33,9 +33,9 @@ import (
 // batch (POST, many components) and a single (GET, one component) endpoint.
 var (
 	ServiceVulnerabilities   = Service{Name: "vulnerabilities", endpoint: "/v3/vulnerabilities/vulnerabilities"}
-	ServiceVulnerability     = Service{Name: "vulnerability", endpoint: "/v3/vulnerabilities/vulnerabilities"}
-	ServiceVulnerabilityCpes = Service{Name: "vulnerabilities.cpes", endpoint: "/v3/vulnerabilities/cpes"}
-	ServiceVulnerabilityCpe  = Service{Name: "vulnerability.cpes", endpoint: "/v3/vulnerabilities/cpes"}
+	serviceVulnerability     = Service{Name: "vulnerability", endpoint: "/v3/vulnerabilities/vulnerabilities"}
+	serviceVulnerabilityCpes = Service{Name: "vulnerabilities.cpes", endpoint: "/v3/vulnerabilities/cpes"}
+	serviceVulnerabilityCpe  = Service{Name: "vulnerability.cpes", endpoint: "/v3/vulnerabilities/cpes"}
 )
 
 // VulnerabilityAPI is the vulnerabilities service surface. Responses are typed
@@ -63,7 +63,7 @@ func (s vulnerabilityService) Components(ctx context.Context, comps []Component,
 
 // Component returns known vulnerabilities for a single component.
 func (s vulnerabilityService) Component(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.VulnerabilitiesResponse, error) {
-	res, err := s.c.decorateOne(ctx, ServiceVulnerability, comp, opts...)
+	res, err := s.c.decorateOne(ctx, serviceVulnerability, comp, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +72,7 @@ func (s vulnerabilityService) Component(ctx context.Context, comp Component, opt
 
 // Cpes returns CPEs for the given components (batch).
 func (s vulnerabilityService) Cpes(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.CpesResponse, error) {
-	res, err := s.c.decorate(ctx, ServiceVulnerabilityCpes, comps, opts...)
+	res, err := s.c.decorate(ctx, serviceVulnerabilityCpes, comps, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +81,7 @@ func (s vulnerabilityService) Cpes(ctx context.Context, comps []Component, opts 
 
 // Cpe returns CPEs for a single component.
 func (s vulnerabilityService) Cpe(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.CpesResponse, error) {
-	res, err := s.c.decorateOne(ctx, ServiceVulnerabilityCpe, comp, opts...)
+	res, err := s.c.decorateOne(ctx, serviceVulnerabilityCpe, comp, opts...)
 	if err != nil {
 		return nil, err
 	}
