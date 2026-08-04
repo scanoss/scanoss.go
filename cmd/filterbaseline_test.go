@@ -40,7 +40,6 @@ import (
 	"github.com/scanoss/scanoss.go/pkg/dependencies"
 	"github.com/scanoss/scanoss.go/pkg/filter"
 	"github.com/scanoss/scanoss.go/pkg/manifests"
-	"github.com/scanoss/scanoss.go/pkg/scanner"
 	"github.com/scanoss/scanoss.go/pkg/settings"
 )
 
@@ -114,7 +113,7 @@ func TestBaselineScanCollection(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res, err := scanner.CollectFilesWithOptions(root, filter.Options{
+	res, err := filter.Collect(root, filter.Options{
 		FolderDefaults: true, FileDefaults: true,
 		GitIgnore: true,
 		Settings:  st.ScanFilter(),
@@ -137,7 +136,7 @@ func TestBaselineScanCollection(t *testing.T) {
 // so turning the lists off does not reach it.
 func TestBaselineScanCollectionNoDefaults(t *testing.T) {
 	root := baselineTree(t)
-	res, err := scanner.CollectFilesWithOptions(root, filter.Options{
+	res, err := filter.Collect(root, filter.Options{
 		FolderDefaults: false, FileDefaults: false,
 		GitIgnore: true,
 	})

@@ -159,7 +159,7 @@ func (s scanService) Folder(ctx context.Context, path string, opts ...ScanOption
 	if o.root == "" {
 		o.root = path // report result paths relative to the scanned folder
 	}
-	res, err := scanner.CollectFilesWithOptions(path, o.filters)
+	res, err := filter.Collect(path, o.filters)
 	if err != nil {
 		return scanossapi.ScanEnvelope{}, fmt.Errorf("error collecting files: %w", err)
 	}

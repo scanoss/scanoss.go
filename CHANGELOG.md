@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING — `parsers.RemoveDuplicates`** — every parser dedupes inline against its own `seen`
   map, so nothing called it.
 - **BREAKING — `output.Writer.WriteFormat`** — never called; `Write` is the whole surface in use.
+- **BREAKING — `scanner.CollectFiles` and `scanner.CollectFilesWithOptions`** — both delegated
+  their whole body to `filter.Collect`. Call it directly, with one of the profiles
+  (`filter.ScanOptions()`, `filter.DependencyOptions()`, …); the return type is unchanged, so
+  `res.Files` still reads the same. They were the transitional wrappers that kept the
+  pre-`pkg/filter` signature alive when collection moved out of `pkg/scanner`, and every caller
+  already imported `pkg/filter` to build the `Options` — so the pair added a name, not an
+  abstraction. `pkg/scanner` no longer claims to collect files: it fingerprints them.
 - **`config.DefaultPostSize`** and the unused `config.Config` type with its `NewConfig` and
   `Validate` — scaffolding from the first commit that no code ever referenced. The POST-size
   batching it configured went away with `pkg/batch`; the v3 upload uses

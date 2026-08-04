@@ -21,8 +21,8 @@
  * THE SOFTWARE.
  */
 
-// Package scanner turns a source tree into WFP fingerprints. It collects the
-// files to scan (delegating filtering to pkg/filter via CollectFiles /
-// CollectFilesWithOptions) and fingerprints them in parallel through a bounded
-// worker pool (WorkerPool / GenerateWFP) using the WFP algorithm.
+// Package scanner fingerprints files in parallel through a bounded worker pool
+// (WorkerPool / GenerateWFP) using the WFP algorithm. It does no file
+// collection: callers pick the files themselves, with filter.Collect and one of
+// its profiles.
 package scanner

@@ -122,7 +122,7 @@ func runWFP(cmd *cobra.Command, args []string) error {
 	collectOpts.GitIgnore = applyGitignore
 	collectOpts.IncludeHidden = allHidden
 	collectOpts.Settings = wfpSettings.FingerprintFilter()
-	res, err := scanner.CollectFilesWithOptions(targetPath, collectOpts)
+	res, err := filter.Collect(targetPath, collectOpts)
 	if err != nil {
 		return fmt.Errorf("error collecting files: %w", err)
 	}

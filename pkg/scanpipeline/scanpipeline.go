@@ -122,7 +122,7 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 	var manifestFiles []string
 	scanRoot := opts.SourcePath
 	if info.IsDir() {
-		cr, collectErr := scanner.CollectFilesWithOptions(opts.SourcePath, opts.Filter)
+		cr, collectErr := filter.Collect(opts.SourcePath, opts.Filter)
 		if collectErr != nil {
 			return Result{}, fmt.Errorf("collecting files: %w", collectErr)
 		}
@@ -139,7 +139,7 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 			depFilter.FolderDefaults = opts.Filter.FolderDefaults
 			depFilter.FileDefaults = opts.Filter.FileDefaults
 			depFilter.Settings = opts.DependencySettings
-			dcr, depErr := scanner.CollectFilesWithOptions(opts.SourcePath, depFilter)
+			dcr, depErr := filter.Collect(opts.SourcePath, depFilter)
 			if depErr != nil {
 				return Result{}, fmt.Errorf("collecting dependency manifests: %w", depErr)
 			}

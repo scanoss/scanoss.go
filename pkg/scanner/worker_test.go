@@ -28,6 +28,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/scanoss/scanoss.go/pkg/filter"
 )
 
 // writeSized creates a file of exactly size bytes of printable content.
@@ -87,7 +89,7 @@ func TestGenerateWFPDoesNotDecideOnHiddenFiles(t *testing.T) {
 //
 // This is the contract change of the unification: the layer stops second-
 // guessing its input. Callers that want the rules apply them first, via
-// scanner.CollectFilesWithOptions, or compose one from filter's exported sources.
+// filter.Collect, or compose one from filter's exported sources.
 func TestGenerateWFPDoesNotFilter(t *testing.T) {
 	root := t.TempDir()
 	png := filepath.Join(root, "logo.png")
@@ -109,11 +111,11 @@ func TestCollectionStillExcludesWhatTheLayerNoLongerDoes(t *testing.T) {
 	writeSized(t, filepath.Join(root, "logo.png"), 400)
 	writeSized(t, filepath.Join(root, "main.go"), 400)
 
-	files, err := CollectFiles(root)
+	res, err := filter.Collect(root, filter.DefaultOptions())
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range files {
+	for _, f := range res.Files {
 		if filepath.Base(f) == "logo.png" {
 			t.Error("collection must still exclude logo.png")
 		}
