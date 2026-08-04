@@ -23,57 +23,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **BREAKING — `pkg/scanner` and `pkg/fingerprint/wfp` are now one package, `pkg/wfp`.** The two
-  were one thing split in half: `scanner.GenerateWFP` was a parallel loop over
-  `wfp.GenerateFingerprint` followed by `wfp.CombineFingerprints`, and `scanner` did not scan —
-  scanning is `pkg/scanoss`. Splitting them also forced `CombineFingerprints` to be exported for a
-  single caller in the other package.
-- **BREAKING — `wfp.Generate` is the package's only entry point**, and returns a `Result` carrying
-  the combined stream, the per-file detail (path, hash, size) and the files it could not
-  fingerprint. Fingerprinting one file is `Generate` with a one-file slice.
-  `GenerateFingerprint`, `CombineFingerprints`, `WorkerPool` and its methods are gone from the
-  API: driving the pool takes three concurrent participants and deadlocks if misused, so it was a
-  protocol nobody should have to reimplement.
-- **BREAKING — the 29 `Service` values `DecorationPipeline` rejects are no longer exported.**
-  `Service` is only consumed by that pipeline, which accepts four layers; the rest were exported
-  values of the type it takes that failed at runtime with `"service %q is not a decoration
-  layer"`. `ServiceLicenses`, `ServiceVulnerabilities`, `ServiceCryptographyAlgorithms`,
-  `ServiceGeoprovenanceOrigin` and `ServiceDependencies` stay.
-- **BREAKING — `pkg/output` is now `internal/output`.** A file-or-stdout writer used only by the
-  CLI, and duplicated twice inside it.
-- **A file that cannot be fingerprinted is now reported.** `Scan.Folder` and `Scan.Files` dropped
-  the per-file errors on the floor, so a scan of a tree with unreadable files looked like a scan
-  of a smaller tree.
+- **BREAKING — `pkg/scanner` and `pkg/fingerprint/wfp` merge into `pkg/wfp`.**
+- **BREAKING — `wfp.Generate` is the only entry point**, returning a `Result` with the combined
+  stream, the per-file detail and the files it skipped. One file is a one-file slice.
+- **BREAKING — the 29 `Service` values `DecorationPipeline` rejects are unexported.** The four it
+  accepts, plus `ServiceDependencies`, stay.
+- **BREAKING — `pkg/output` is now `internal/output`.**
+- **A file that cannot be fingerprinted is now reported** instead of silently skipped.
 
 ### Removed
 
-- **BREAKING — the manifest-format types and string helpers in `dependencies/parsers`** —
-  `PomProject`, `CsprojItemGroup`, `PackageLockV1/V2`, `ParserState`, `IsValidURL`, `TrimComments`,
-  `SplitNamespace` and the rest. They are how a manifest is unmarshalled, not something a caller
-  constructs; `ParseFile` and `LocalDependency` are the surface. Four of them turned out to be
-  dead even internally — the parsers moved to token-walk decoding and the container structs stayed
-  behind, invisible because the `unused` linter does not analyse exported identifiers.
-- **`GRAM_WFP1` / `WINDOW_WFP1`** are now unexported (and documented): they define the fingerprint
-  format, so they are not a knob.
-
-- **BREAKING — `settings.GetSBOMData`, `settings.SBOMData` and `settings.FormatSBOMParam`** — the
-  v2 way of shipping BOM rules to the engine as an `sbom`/`scan_type` parameter pair. The v3 flow
-  applies them post-scan through `pkg/postprocess`, so nothing reached them; `FormatSBOMParam` was
-  already deprecated in favour of `GetSBOMData`, which was itself unreachable.
-- **BREAKING — `parsers.RemoveDuplicates`** — every parser dedupes inline against its own `seen`
-  map, so nothing called it.
-- **BREAKING — `output.Writer.WriteFormat`** — never called; `Write` is the whole surface in use.
-- **BREAKING — `scanner.CollectFiles` and `scanner.CollectFilesWithOptions`** — both delegated
-  their whole body to `filter.Collect`. Call it directly, with one of the profiles
-  (`filter.ScanOptions()`, `filter.DependencyOptions()`, …); the return type is unchanged, so
-  `res.Files` still reads the same. They were the transitional wrappers that kept the
-  pre-`pkg/filter` signature alive when collection moved out of `pkg/scanner`, and every caller
-  already imported `pkg/filter` to build the `Options` — so the pair added a name, not an
-  abstraction. `pkg/scanner` no longer claims to collect files: it fingerprints them.
-- **`config.DefaultPostSize`** and the unused `config.Config` type with its `NewConfig` and
-  `Validate` — scaffolding from the first commit that no code ever referenced. The POST-size
-  batching it configured went away with `pkg/batch`; the v3 upload uses
-  `scanoss.DefaultScanChunkBytes`.
+- **BREAKING — `scanner.GenerateWFP`, `wfp.GenerateFingerprint`, `wfp.CombineFingerprints`,
+  `WorkerPool`** and its methods. Use `wfp.Generate`.
+- **BREAKING — `scanner.CollectFiles` and `scanner.CollectFilesWithOptions`** — both delegated to
+  `filter.Collect`. Call it directly with one of the profiles; `CollectFiles` callers get a
+  `*CollectResult` instead of a `[]string`.
+- **BREAKING — the manifest-format types, `ParserState` and the string helpers in
+  `dependencies/parsers`** (`PomProject`, `PackageLockV1/V2`, `IsValidURL`, `TrimComments`, …).
+  Use `ParseFile`.
+- **BREAKING — `settings.GetSBOMData`, `SBOMData`, `FormatSBOMParam`** — the v2 BOM parameter
+  pair. v3 applies BOM rules post-scan through `pkg/postprocess`.
+- **BREAKING — `parsers.RemoveDuplicates`, `output.Writer.WriteFormat`** — never called.
+- **`DefaultPostSize`; `GRAM_WFP1`, `WINDOW_WFP1`** — two constants that define the fingerprint
+  format rather than configure it.
 
 ## [0.7.0] - 2026-08-03
 ### Fixed
