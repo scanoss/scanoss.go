@@ -27,13 +27,14 @@ import "C"
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 
 	"github.com/scanoss/scanoss.go/internal/version"
 	"github.com/scanoss/scanoss.go/pkg/filter"
-	wfpPkg "github.com/scanoss/scanoss.go/pkg/fingerprint/wfp"
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
+	"github.com/scanoss/scanoss.go/pkg/wfp"
 )
 
 // errorJSON renders err in the shape every export uses to report a failure.
@@ -66,12 +67,12 @@ func GenerateWFP(filePath *C.char) *C.char {
 		return C.CString("")
 	}
 
-	fp, err := wfpPkg.GenerateFingerprint(goFilePath, "")
-	if err != nil {
+	res := wfp.Generate([]string{goFilePath}, 1, "", nil)
+	if len(res.Files) == 0 {
 		return C.CString("")
 	}
 
-	return C.CString(fp.Fingerprint)
+	return C.CString(res.Files[0].Fingerprint)
 }
 
 // GenerateWFPJSON generates a WFP fingerprint and returns full JSON metadata
@@ -84,12 +85,15 @@ func GenerateWFPJSON(filePath *C.char) *C.char {
 		return C.CString(string(errJSON))
 	}
 
-	fp, err := wfpPkg.GenerateFingerprint(goFilePath, "")
-	if err != nil {
-		return errorJSON(err)
+	res := wfp.Generate([]string{goFilePath}, 1, "", nil)
+	if len(res.Files) == 0 {
+		if len(res.Errors) > 0 {
+			return errorJSON(res.Errors[0])
+		}
+		return errorJSON(errors.New("could not fingerprint the file"))
 	}
 
-	jsonData, err := json.Marshal(fp)
+	jsonData, err := json.Marshal(res.Files[0])
 	if err != nil {
 		return errorJSON(err)
 	}

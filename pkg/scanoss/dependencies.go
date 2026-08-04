@@ -36,8 +36,8 @@ import (
 // transitive walk bounded by depth and limit (POST).
 var (
 	ServiceDependencies = Service{Name: "dependencies", endpoint: "/v3/dependencies/dependencies"}
-	ServiceDependency   = Service{Name: "dependency", endpoint: "/v3/dependencies/dependencies"}
-	ServiceTransitive   = Service{Name: "dependencies.transitive", endpoint: "/v3/dependencies/transitive"}
+	serviceDependency   = Service{Name: "dependency", endpoint: "/v3/dependencies/dependencies"}
+	serviceTransitive   = Service{Name: "dependencies.transitive", endpoint: "/v3/dependencies/transitive"}
 )
 
 // DependencyAPI is the dependencies service surface. Responses are typed from the
@@ -69,7 +69,7 @@ func (s dependencyService) Dependencies(ctx context.Context, comps []Component, 
 
 // Dependency resolves declared dependencies for a single component.
 func (s dependencyService) Dependency(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.DependenciesResolveResponse, error) {
-	res, err := s.c.decorateOne(ctx, ServiceDependency, comp, opts...)
+	res, err := s.c.decorateOne(ctx, serviceDependency, comp, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +96,7 @@ func (s dependencyService) Transitive(ctx context.Context, comps []Component, de
 	if limit > 0 {
 		reqBody.Limit = &limit
 	}
-	raw, err := s.c.postJSON(ctx, ServiceTransitive.endpoint, reqBody)
+	raw, err := s.c.postJSON(ctx, serviceTransitive.endpoint, reqBody)
 	if err != nil {
 		return nil, err
 	}

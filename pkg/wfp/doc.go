@@ -21,8 +21,11 @@
  * THE SOFTWARE.
  */
 
-// Package fingerprint generates the WFP (Winnowing FingerPrint) of a file using
-// the original WFP1 algorithm (30-byte grams, 64-hash window). GenerateFingerprint
-// reads a file, computes a whole-file CRC64 hash, and derives
-// per-line winnowing minutiae, emitting the "file=..." WFP text the scan uploads.
-package fingerprint
+// Package wfp turns files into WFP (Winnowing Fingerprint) fingerprints — the payload a
+// SCANOSS scan uploads. Generate is the whole surface: it fingerprints a set of files
+// through a bounded worker pool and returns both the combined stream and the per-file
+// detail behind it.
+//
+// It does no file selection: which files are worth fingerprinting is decided during
+// collection, with filter.Collect and one of its profiles.
+package wfp

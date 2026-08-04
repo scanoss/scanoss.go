@@ -30,31 +30,16 @@ import (
 	"strings"
 )
 
-// CsprojProject represents the root element of .csproj files
-type CsprojProject struct {
-	XMLName    xml.Name          `xml:"Project"`
-	ItemGroups []CsprojItemGroup `xml:"ItemGroup"`
-}
-
-// CsprojItemGroup represents an ItemGroup in .csproj
-type CsprojItemGroup struct {
-	PackageReferences []CsprojPackageReference `xml:"PackageReference"`
-}
-
-// CsprojPackageReference represents a PackageReference element
-type CsprojPackageReference struct {
+// csprojPackageReference represents a PackageReference element
+type csprojPackageReference struct {
 	Include string `xml:"Include,attr"`
 	Version string `xml:"Version,attr"`
 }
 
-// PackagesConfig represents the root element of packages.config
-type PackagesConfig struct {
-	XMLName  xml.Name                `xml:"packages"`
-	Packages []PackagesConfigPackage `xml:"package"`
-}
-
-// PackagesConfigPackage represents a package element in packages.config
-type PackagesConfigPackage struct {
+// packagesConfigPackage represents a package element in packages.config. There is no
+// root type: the parser walks tokens to record each element's line rather than
+// unmarshalling the whole document.
+type packagesConfigPackage struct {
 	ID      string `xml:"id,attr"`
 	Version string `xml:"version,attr"`
 }
@@ -88,7 +73,7 @@ func ParseCsproj(fileContent []byte, filePath string) (*LocalDependency, error) 
 			continue
 		}
 
-		var elem CsprojPackageReference
+		var elem csprojPackageReference
 		if err := d.DecodeElement(&elem, &start); err != nil {
 			return nil, err
 		}
@@ -137,7 +122,7 @@ func ParsePackagesConfig(fileContent []byte, filePath string) (*LocalDependency,
 			continue
 		}
 
-		var elem PackagesConfigPackage
+		var elem packagesConfigPackage
 		if err := d.DecodeElement(&elem, &start); err != nil {
 			return nil, err
 		}

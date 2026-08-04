@@ -21,7 +21,7 @@
  * THE SOFTWARE.
  */
 
-package fingerprint
+package wfp
 
 import (
 	"flag"
@@ -38,9 +38,9 @@ var update = flag.Bool("update", false, "update the WFP golden file")
 // It guards refactors of the fingerprint assembly against any byte-level change.
 // Regenerate the golden with: go test ./pkg/fingerprint/wfp -run Golden -update
 func TestGenerateFingerprintGolden(t *testing.T) {
-	fp, err := GenerateFingerprint(filepath.Join("testdata", "sample.c"), "testdata")
+	fp, err := generateFingerprint(filepath.Join("testdata", "sample.c"), "testdata")
 	if err != nil {
-		t.Fatalf("GenerateFingerprint: %v", err)
+		t.Fatalf("generateFingerprint: %v", err)
 	}
 
 	golden := filepath.Join("testdata", "sample.wfp.golden")
@@ -68,9 +68,9 @@ func TestGenerateFingerprintFields(t *testing.T) {
 		t.Fatalf("write fixture: %v", err)
 	}
 
-	fp, err := GenerateFingerprint(path, dir)
+	fp, err := generateFingerprint(path, dir)
 	if err != nil {
-		t.Fatalf("GenerateFingerprint: %v", err)
+		t.Fatalf("generateFingerprint: %v", err)
 	}
 	if fp.Size != len(content) {
 		t.Errorf("Size = %d, want %d", fp.Size, len(content))
@@ -101,9 +101,9 @@ func TestGenerateFingerprintRootLabel(t *testing.T) {
 		"root below the file still resolves": {filepath.Join(dir, "src"), "lib/a.c"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			fp, err := GenerateFingerprint(path, tc.root)
+			fp, err := generateFingerprint(path, tc.root)
 			if err != nil {
-				t.Fatalf("GenerateFingerprint: %v", err)
+				t.Fatalf("generateFingerprint: %v", err)
 			}
 			if fp.Path != tc.want {
 				t.Errorf("Path = %q, want %q", fp.Path, tc.want)
@@ -124,9 +124,9 @@ func TestGenerateFingerprintEmptyFile(t *testing.T) {
 		t.Fatalf("write fixture: %v", err)
 	}
 
-	fp, err := GenerateFingerprint(path, dir)
+	fp, err := generateFingerprint(path, dir)
 	if err != nil {
-		t.Fatalf("GenerateFingerprint: %v", err)
+		t.Fatalf("generateFingerprint: %v", err)
 	}
 	if fp.Size != 0 {
 		t.Errorf("Size = %d, want 0", fp.Size)
@@ -137,9 +137,9 @@ func TestGenerateFingerprintEmptyFile(t *testing.T) {
 }
 
 func TestGenerateFingerprintUnreadableFile(t *testing.T) {
-	_, err := GenerateFingerprint(filepath.Join(t.TempDir(), "missing.c"), "")
+	_, err := generateFingerprint(filepath.Join(t.TempDir(), "missing.c"), "")
 	if err == nil {
-		t.Fatal("GenerateFingerprint succeeded on a missing file, want an error")
+		t.Fatal("generateFingerprint succeeded on a missing file, want an error")
 	}
 	if !strings.Contains(err.Error(), "error reading file") {
 		t.Errorf("error = %q, want it to name the read failure", err)
@@ -172,8 +172,8 @@ func BenchmarkGenerateFingerprint(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, err := GenerateFingerprint(path, ""); err != nil {
-			b.Fatalf("GenerateFingerprint: %v", err)
+		if _, err := generateFingerprint(path, ""); err != nil {
+			b.Fatalf("generateFingerprint: %v", err)
 		}
 	}
 }

@@ -76,7 +76,7 @@ func ParseBuildGradle(fileContent []byte, filePath string) (*LocalDependency, er
 		originalLine := raw
 
 		// Remove inline comments
-		line := TrimComments(raw, "//")
+		line := trimComments(raw, "//")
 		line = strings.TrimSpace(line)
 
 		if line == "" {

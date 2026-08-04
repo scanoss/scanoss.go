@@ -68,7 +68,7 @@ func (c *Client) DecorationPipeline(services ...Service) *DecorationPipeline {
 }
 
 // Add appends services that are not already present (dedupe by name). Chainable, so it does not
-// validate: a service with no field on PipelineResult is rejected by Run, before any request.
+// validate: a service with no field on PipelineResult is skipped by Run, with a warning.
 func (p *DecorationPipeline) Add(services ...Service) *DecorationPipeline {
 	for _, s := range services {
 		if p.indexOf(s.Name) < 0 {
@@ -114,25 +114,39 @@ func (p *DecorationPipeline) Run(ctx context.Context, components []Component, op
 	if len(p.services) == 0 {
 		return nil, fmt.Errorf("pipeline has no services")
 	}
-	// Checked before the first request: PipelineResult has a field per decoration layer and
-	// nowhere to put anything else, so running another service would spend the chunked requests
-	// only to discard the answer when it comes back.
+	// Sorted out before the first request: PipelineResult has a field per decoration layer
+	// and nowhere to put anything else, so running another service would spend the chunked
+	// requests only to discard the answer when it comes back.
+	//
+	// A service that is not a layer is skipped rather than fatal. Failing the call punished
+	// the layers the caller got right — one stray value discarded the whole run — and
+	// through scanpipeline the error surfaced only as a warning, so a caller with no logger
+	// got an unenriched inventory and no error at all.
+	//
+	// TODO(#76): the type is the real fix. Run takes []Service, of which only four values
+	// are valid layers, so this can only be reported and never prevented.
+	layers := make([]Service, 0, len(p.services))
 	for _, svc := range p.services {
 		if !isDecorationLayer(svc.Name) {
-			return nil, fmt.Errorf("service %q is not a decoration layer", svc.Name)
+			p.client.log.Warn("skipping a service that is not a decoration layer", "service", svc.Name)
+			continue
 		}
+		layers = append(layers, svc)
 	}
-	p.client.log.Debug("decoration pipeline run", "services", len(p.services), "components", len(components))
+	if len(layers) == 0 {
+		return nil, fmt.Errorf("none of the %d configured service(s) is a decoration layer", len(p.services))
+	}
+	p.client.log.Debug("decoration pipeline run", "services", len(layers), "components", len(components))
 
 	type outcome struct {
 		name string
 		res  *result
 		err  error
 	}
-	ch := make(chan outcome, len(p.services))
+	ch := make(chan outcome, len(layers))
 
 	var wg sync.WaitGroup
-	for _, svc := range p.services {
+	for _, svc := range layers {
 		wg.Add(1)
 		go func(svc Service) {
 			defer wg.Done()
@@ -160,14 +174,14 @@ func (p *DecorationPipeline) Run(ctx context.Context, components []Component, op
 	}
 
 	if decoded == 0 {
-		return nil, fmt.Errorf("all %d pipeline service(s) failed", len(p.services))
+		return nil, fmt.Errorf("all %d pipeline service(s) failed", len(layers))
 	}
 	return pr, nil
 }
 
 // isDecorationLayer reports whether a service has a field on PipelineResult, and so whether a
 // pipeline can hand its answer back. It lists the same services as setLayer; adding one to either
-// alone surfaces as an error from Run rather than as silence.
+// alone surfaces as a skipped layer from Run rather than as silence.
 func isDecorationLayer(name string) bool {
 	switch name {
 	case ServiceLicenses.Name, ServiceCryptographyAlgorithms.Name,

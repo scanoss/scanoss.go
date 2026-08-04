@@ -21,7 +21,7 @@
  * THE SOFTWARE.
  */
 
-package fingerprint
+package wfp
 
 import "strings"
 
@@ -39,13 +39,13 @@ type FileFingerprint struct {
 	Fingerprint string // the WFP text itself, "file=..." and its minutiae
 }
 
-// CombineFingerprints joins fingerprints into the single WFP stream a scan uploads,
+// combineFingerprints joins fingerprints into the single WFP stream a scan uploads,
 // with a blank line between files as the format requires.
 //
 // The builder is pre-sized because a naive `result += ...` is O(n²) — each += copies
 // the whole accumulated string — and that dominated wall-clock time on large scans:
 // ~38s to assemble a 16 MB WFP from ~8900 files.
-func CombineFingerprints(fps []*FileFingerprint) string {
+func combineFingerprints(fps []*FileFingerprint) string {
 	var total int
 	for _, fp := range fps {
 		// fingerprint + up to one missing trailing newline + one blank line

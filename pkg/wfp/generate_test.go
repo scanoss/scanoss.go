@@ -21,7 +21,7 @@
  * THE SOFTWARE.
  */
 
-package scanner
+package wfp
 
 import (
 	"os"
@@ -50,13 +50,13 @@ func TestGenerateWFPKeepsSmallFiles(t *testing.T) {
 	writeSized(t, tiny, 40)
 	writeSized(t, big, 200)
 
-	wfp, errs := GenerateWFP([]string{tiny, big}, 2, root, nil)
-	if len(errs) > 0 {
-		t.Fatalf("GenerateWFP errors = %v", errs)
+	fp := Generate([]string{tiny, big}, 2, root, nil)
+	if len(fp.Errors) > 0 {
+		t.Fatalf("Generate errors = %v", fp.Errors)
 	}
 	for _, want := range []string{"tiny.go", "big.go"} {
-		if !strings.Contains(string(wfp), want) {
-			t.Errorf("WFP missing %q; got:\n%s", want, wfp)
+		if !strings.Contains(string(fp.WFP), want) {
+			t.Errorf("WFP missing %q; got:\n%s", want, fp.WFP)
 		}
 	}
 }
@@ -71,15 +71,15 @@ func TestGenerateWFPDoesNotDecideOnHiddenFiles(t *testing.T) {
 	writeSized(t, hidden, 200)
 	writeSized(t, visible, 200)
 
-	wfp, errs := GenerateWFP([]string{hidden, visible}, 1, root, nil)
-	if len(errs) > 0 {
-		t.Fatalf("GenerateWFP errors = %v", errs)
+	fp := Generate([]string{hidden, visible}, 1, root, nil)
+	if len(fp.Errors) > 0 {
+		t.Fatalf("Generate errors = %v", fp.Errors)
 	}
-	if !strings.Contains(string(wfp), ".secret.go") {
-		t.Errorf("WFP should contain the hidden file when handed in directly; got:\n%s", wfp)
+	if !strings.Contains(string(fp.WFP), ".secret.go") {
+		t.Errorf("WFP should contain the hidden file when handed in directly; got:\n%s", fp.WFP)
 	}
-	if !strings.Contains(string(wfp), "main.go") {
-		t.Errorf("WFP missing main.go; got:\n%s", wfp)
+	if !strings.Contains(string(fp.WFP), "main.go") {
+		t.Errorf("WFP missing main.go; got:\n%s", fp.WFP)
 	}
 }
 
@@ -95,12 +95,12 @@ func TestGenerateWFPDoesNotFilter(t *testing.T) {
 	png := filepath.Join(root, "logo.png")
 	writeSized(t, png, 400)
 
-	wfp, errs := GenerateWFP([]string{png}, 1, root, nil)
-	if len(errs) > 0 {
-		t.Fatalf("GenerateWFP errors = %v", errs)
+	fp := Generate([]string{png}, 1, root, nil)
+	if len(fp.Errors) > 0 {
+		t.Fatalf("Generate errors = %v", fp.Errors)
 	}
-	if !strings.Contains(string(wfp), "logo.png") {
-		t.Errorf("logo.png should be fingerprinted when handed in directly; got:\n%s", wfp)
+	if !strings.Contains(string(fp.WFP), "logo.png") {
+		t.Errorf("logo.png should be fingerprinted when handed in directly; got:\n%s", fp.WFP)
 	}
 }
 

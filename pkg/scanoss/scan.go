@@ -37,8 +37,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/scanoss/scanoss.go/pkg/filter"
 	"github.com/scanoss/scanoss.go/pkg/postprocess"
-	"github.com/scanoss/scanoss.go/pkg/scanner"
 	"github.com/scanoss/scanoss.go/pkg/settings"
+	"github.com/scanoss/scanoss.go/pkg/wfp"
 )
 
 // ScanAPI is the batch scan service surface. Folder, Files and WFP each run the
@@ -66,10 +66,10 @@ type ScanAPI interface {
 	Wait(ctx context.Context, scanID string, opts ...ScanOption) (scanossapi.ScanEnvelope, error)
 }
 
-// ServiceScan is the v3 batch scan endpoint. WFP fingerprints are uploaded as
+// serviceScan is the v3 batch scan endpoint. WFP fingerprints are uploaded as
 // octet-stream byte ranges (Content-Range); the server assigns a scan id and
 // queues the scan once all bytes are received.
-var ServiceScan = Service{Name: "scan", endpoint: "/v3/wfp/scan"}
+var serviceScan = Service{Name: "scan", endpoint: "/v3/wfp/scan"}
 
 // Scan defaults applied when the corresponding option is not given.
 // DefaultScanChunkBytes is the WFP upload block size (1 MiB).
@@ -213,16 +213,22 @@ func (s scanService) fingerprint(files []string, o scanOptions) ([]byte, error) 
 	if len(files) == 0 {
 		return nil, fmt.Errorf("no files to scan")
 	}
-	wfp, _ := scanner.GenerateWFP(files, s.c.workers, o.root, func(done, total int) {
+	res := wfp.Generate(files, s.c.workers, o.root, func(done, total int) {
 		if o.reporter != nil {
 			o.reporter.Fingerprinting(done, total)
 		}
 	})
-	s.c.log.Debug("fingerprinted files", "files", len(files), "wfpBytes", len(wfp))
-	if len(wfp) == 0 {
+	s.c.log.Debug("fingerprinted files", "files", len(files), "wfpBytes", len(res.WFP))
+	// Fingerprinting is best-effort, so a skipped file does not fail the scan — but it is
+	// reported. Discarding these silently made a scan of a tree with unreadable files look
+	// like a scan of a smaller tree.
+	for _, fpErr := range res.Errors {
+		s.c.log.Warn("skipped a file that could not be fingerprinted", "err", fpErr)
+	}
+	if len(res.WFP) == 0 {
 		return nil, fmt.Errorf("no fingerprints generated")
 	}
-	return wfp, nil
+	return res.WFP, nil
 }
 
 // upload generates the scan id (UUIDv7) client-side, uploads every WFP chunk
@@ -344,7 +350,7 @@ func blockOf(wfp []byte, r [2]int) []byte { return wfp[r[0] : r[1]+1] }
 // a conflict cannot mean anything else. Treating it as a failure would report a scan as
 // broken when its upload in fact completed — and the session it names is still resumable.
 func (c *Client) uploadChunk(ctx context.Context, scanID string, off, end, total int, block []byte) error {
-	req, err := c.newRequest(http.MethodPost, ServiceScan.endpoint, bytes.NewReader(block))
+	req, err := c.newRequest(http.MethodPost, serviceScan.endpoint, bytes.NewReader(block))
 	if err != nil {
 		return err
 	}
@@ -393,7 +399,7 @@ func (s scanService) Status(ctx context.Context, scanID string) (scanossapi.Scan
 	if scanID == "" {
 		return scanossapi.ScanEnvelope{}, fmt.Errorf("no scan id")
 	}
-	body, err := s.c.get(ctx, ServiceScan.endpoint+"/"+scanID, nil)
+	body, err := s.c.get(ctx, serviceScan.endpoint+"/"+scanID, nil)
 	if err != nil {
 		return scanossapi.ScanEnvelope{}, err
 	}

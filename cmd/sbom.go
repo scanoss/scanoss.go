@@ -30,7 +30,7 @@ import (
 	"os"
 
 	"github.com/scanoss/scanoss.go/internal/config"
-	"github.com/scanoss/scanoss.go/pkg/output"
+	"github.com/scanoss/scanoss.go/internal/output"
 	"github.com/scanoss/scanoss.go/pkg/sbom"
 	"github.com/spf13/cobra"
 )

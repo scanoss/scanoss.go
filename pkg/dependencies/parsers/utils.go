@@ -30,21 +30,21 @@ import (
 	"strings"
 )
 
-// IsValidURL checks if a string is a valid URL
-func IsValidURL(str string) bool {
+// isValidURL checks if a string is a valid URL
+func isValidURL(str string) bool {
 	_, err := url.ParseRequestURI(str)
 	return err == nil
 }
 
-// IsValidPath checks if a string matches a file system path structure
-func IsValidPath(str string) bool {
+// isValidPath checks if a string matches a file system path structure
+func isValidPath(str string) bool {
 	// Matches relative paths (./,  ../), Windows paths (C:\), and Unix paths (/)
 	pathRegex := regexp.MustCompile(`^(\.{1,2}\/|[a-zA-Z]:\\|\\|\/)`)
 	return pathRegex.MatchString(str)
 }
 
-// TrimComments removes inline comments from a line
-func TrimComments(line string, commentChars ...string) string {
+// trimComments removes inline comments from a line
+func trimComments(line string, commentChars ...string) string {
 	if len(commentChars) == 0 {
 		commentChars = []string{"//", "#"}
 	}
@@ -58,14 +58,14 @@ func TrimComments(line string, commentChars ...string) string {
 	return strings.TrimSpace(line)
 }
 
-// PreprocessLine removes comments and trims whitespace
-func PreprocessLine(line string) string {
-	return strings.TrimSpace(TrimComments(line))
+// preprocessLine removes comments and trims whitespace
+func preprocessLine(line string) string {
+	return strings.TrimSpace(trimComments(line))
 }
 
-// SplitNamespace splits a package identifier into namespace and name
+// splitNamespace splits a package identifier into namespace and name
 // For example: "github.com/spf13/cobra" -> ("github.com/spf13", "cobra")
-func SplitNamespace(fullPath string) (namespace, name string) {
+func splitNamespace(fullPath string) (namespace, name string) {
 	lastSlash := strings.LastIndex(fullPath, "/")
 	if lastSlash == -1 {
 		return "", fullPath

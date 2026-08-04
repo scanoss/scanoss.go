@@ -45,8 +45,8 @@ import (
 	"github.com/scanoss/scanoss.go/pkg/filter"
 	"github.com/scanoss/scanoss.go/pkg/sbom"
 	"github.com/scanoss/scanoss.go/pkg/sbom/scansource"
-	"github.com/scanoss/scanoss.go/pkg/scanner"
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
+	"github.com/scanoss/scanoss.go/pkg/wfp"
 )
 
 // Options configures Run, the full scan pipeline over a source path. Every layer reports through
@@ -175,7 +175,7 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 	// both, since it decorates detected and declared components together.
 	var (
 		scanResult    *scanossapi.ScanResult
-		wfp           []byte
+		fingerprints  []byte
 		procErrors    int
 		scanErr       error
 		declaredComps []sbom.Component
@@ -190,10 +190,10 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 		// this package already has the file list, the root and the worker count as plain values,
 		// and handing them to the SDK instead would mean three scan options existing for no reason
 		// but to carry them back. It reports the stage itself and hands over a finished WFP.
-		w, errs := scanner.GenerateWFP(files, threads, scanRoot, r.Fingerprinting)
-		wfp, procErrors = w, len(errs)
+		fp := wfp.Generate(files, threads, scanRoot, r.Fingerprinting)
+		fingerprints, procErrors = fp.WFP, len(fp.Errors)
 		emit(Progress{Layer: LayerFingerprint, Status: StatusCompleted, Done: len(files), Total: len(files)})
-		if len(w) == 0 {
+		if len(fp.WFP) == 0 {
 			return
 		}
 
@@ -206,7 +206,7 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 		scanOpts = append(scanOpts, opts.ScanOptions...)
 		scanOpts = append(scanOpts, scanoss.WithScanReporter(r))
 
-		res, err := opts.Client.Scan.WFP(ctx, w, scanOpts...)
+		res, err := opts.Client.Scan.WFP(ctx, fp.WFP, scanOpts...)
 		if err != nil {
 			scanErr = err
 			return
@@ -246,7 +246,7 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 
 	// assemble runs the enrichment layers, which report to r as well.
 	inv := assemble(ctx, opts.Client, scanResult, declaredComps, opts.Services, r)
-	return Result{Inventory: inv, WFP: wfp, ProcessErrors: procErrors}, nil
+	return Result{Inventory: inv, WFP: fingerprints, ProcessErrors: procErrors}, nil
 }
 
 // Build sources an Inventory from a scan result and enriches it with the requested layers. It is

@@ -36,23 +36,8 @@ var (
 	propertyRegex = regexp.MustCompile(`\$\{([^}]+)\}`)
 )
 
-// PomProject represents the root element of pom.xml
-type PomProject struct {
-	XMLName      xml.Name        `xml:"project"`
-	GroupID      string          `xml:"groupId"`
-	ArtifactID   string          `xml:"artifactId"`
-	Version      string          `xml:"version"`
-	Dependencies PomDependencies `xml:"dependencies"`
-	Properties   PomProperties   `xml:"properties"`
-}
-
-// PomDependencies represents the dependencies section
-type PomDependencies struct {
-	Dependency []PomDependency `xml:"dependency"`
-}
-
-// PomDependency represents a single dependency
-type PomDependency struct {
+// pomDependency represents a single dependency
+type pomDependency struct {
 	GroupID    string `xml:"groupId"`
 	ArtifactID string `xml:"artifactId"`
 	Version    string `xml:"version"`
@@ -61,13 +46,13 @@ type PomDependency struct {
 	Type       string `xml:"type"`
 }
 
-// PomProperties represents the properties section
-type PomProperties struct {
+// pomProperties represents the properties section
+type pomProperties struct {
 	Properties map[string]string
 }
 
 // UnmarshalXML custom unmarshaler for properties
-func (p *PomProperties) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+func (p *pomProperties) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	p.Properties = make(map[string]string)
 
 	for {
@@ -93,9 +78,9 @@ func (p *PomProperties) UnmarshalXML(d *xml.Decoder, start xml.StartElement) err
 	return nil
 }
 
-// pomCollectedDep holds a decoded PomDependency together with its source location.
+// pomCollectedDep holds a decoded pomDependency together with its source location.
 type pomCollectedDep struct {
-	dep      PomDependency
+	dep      pomDependency
 	startOff int
 	endOff   int
 }
@@ -147,7 +132,7 @@ func ParsePomXML(fileContent []byte, filePath string) (*LocalDependency, error) 
 	currentCtx := ctxRoot
 
 	var collectedDeps []pomCollectedDep
-	var properties PomProperties
+	var properties pomProperties
 	var projectGroupID, projectArtifactID, projectVersion string
 	var propertiesCollected bool
 
@@ -219,7 +204,7 @@ func ParsePomXML(fileContent []byte, filePath string) (*LocalDependency, error) 
 			case ctxProjectDeps:
 				if name == "dependency" {
 					// Collect this project-level dependency with its location
-					var dep PomDependency
+					var dep pomDependency
 					if err := d.DecodeElement(&dep, &t); err != nil {
 						return nil, err
 					}
