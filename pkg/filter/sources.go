@@ -32,10 +32,10 @@ import (
 	"strings"
 )
 
-// Defaults holds the skip lists and size bounds a DefaultSource turns into
-// matchers. Callers normally start from StdDefaults and override fields as
+// defaults holds the skip lists and size bounds a defaultSource turns into
+// matchers. Callers normally start from stdDefaults and override fields as
 // needed.
-type Defaults struct {
+type defaults struct {
 	Dirs    []string // directory names skipped wholesale
 	DirExts []string // directory-name suffixes skipped (e.g. ".egg-info")
 	Files   []string // exact file names skipped
@@ -43,29 +43,29 @@ type Defaults struct {
 	Endings []string // non-extension file-name suffixes skipped
 }
 
-// StdDefaults returns the built-in default skip lists. Size bounds are not part
-// of it: they are caller input, not a built-in, and have their own SizeSource.
-func StdDefaults() Defaults {
-	return Defaults{
-		Dirs:    skippedDirs(ScanOnlySkippedDirs),
-		DirExts: DefaultSkippedDirExts,
-		Files:   DefaultSkippedFiles,
-		Exts:    DefaultSkippedExts,
-		Endings: DefaultSkippedFileEndings,
+// stdDefaults returns the built-in default skip lists. Size bounds are not part
+// of it: they are caller input, not a built-in, and have their own sizeSource.
+func stdDefaults() defaults {
+	return defaults{
+		Dirs:    skippedDirs(scanOnlySkippedDirs),
+		DirExts: defaultSkippedDirExts,
+		Files:   defaultSkippedFiles,
+		Exts:    defaultSkippedExts,
+		Endings: defaultSkippedFileEndings,
 	}
 }
 
-// DefaultSource turns every default skip list into matchers: the directory rules and the file
-// rules together. Callers that want one half without the other use FolderDefaultSource and
-// FileDefaultSource, which is what the two --all-folders / --all-extensions switches select.
-func DefaultSource(d Defaults) []Matcher {
-	return append(FolderDefaultSource(d), FileDefaultSource(d)...)
+// defaultSource turns every default skip list into matchers: the directory rules and the file
+// rules together. Callers that want one half without the other use folderDefaultSource and
+// fileDefaultSource, which is what the two --all-folders / --all-extensions switches select.
+func defaultSource(d defaults) []matcher {
+	return append(folderDefaultSource(d), fileDefaultSource(d)...)
 }
 
-// FolderDefaultSource turns the default directory skip lists into matchers: whole directory names
+// folderDefaultSource turns the default directory skip lists into matchers: whole directory names
 // and directory-name suffixes. Skipping a directory prunes everything under it.
-func FolderDefaultSource(d Defaults) []Matcher {
-	var ms []Matcher
+func folderDefaultSource(d defaults) []matcher {
+	var ms []matcher
 	for _, name := range d.Dirs {
 		ms = append(ms, newDirNameMatcher(name))
 	}
@@ -75,10 +75,10 @@ func FolderDefaultSource(d Defaults) []Matcher {
 	return ms
 }
 
-// FileDefaultSource turns the default file skip lists into matchers: extensions, non-extension
+// fileDefaultSource turns the default file skip lists into matchers: extensions, non-extension
 // name endings, and exact names.
-func FileDefaultSource(d Defaults) []Matcher {
-	var ms []Matcher
+func fileDefaultSource(d defaults) []matcher {
+	var ms []matcher
 	for _, name := range d.Files {
 		ms = append(ms, newNameMatcher(name))
 	}
@@ -108,32 +108,32 @@ func FileDefaultSource(d Defaults) []Matcher {
 	return ms
 }
 
-// UnscannableSource skips entries there is no point fingerprinting
-func UnscannableSource() []Matcher {
-	return []Matcher{emptyFileMatcher{}, symlinkMatcher{}}
+// unscannableSource skips entries there is no point fingerprinting
+func unscannableSource() []matcher {
+	return []matcher{emptyFileMatcher{}, symlinkMatcher{}}
 }
 
-// HiddenSource skips entries whose name begins with a dot.
+// hiddenSource skips entries whose name begins with a dot.
 //
-// Not part of UnscannableSource: a dotfile has perfectly good content, so this
+// Not part of unscannableSource: a dotfile has perfectly good content, so this
 // is a policy choice about what belongs to a project, not a statement about the
 // entry. That is why it can be switched off (Options.IncludeHidden) and why it
 // is a source like any other rather than a check buried in the walk — a caller
 // that cannot walk a tree needs to apply it too.
-func HiddenSource() []Matcher {
-	return []Matcher{hiddenMatcher{}}
+func hiddenSource() []matcher {
+	return []matcher{hiddenMatcher{}}
 }
 
-// SizeSource turns a [min, max] byte range into a matcher. It is a source of its
-// own — not part of DefaultSource — because the bounds come from the caller
-// (--min-size/--max-size), not from the built-in lists: switching the defaults
+// sizeSource turns a [min, max] byte range into a matcher. It is a source of its
+// own — not part of defaultSource — because the bounds come from the caller
+// (Options.MinSize/MaxSize), not from the built-in lists: switching the defaults
 // off must not discard a bound the caller asked for. A min of 0 imposes no
 // minimum and a max of 0 no maximum, so 0/0 yields no matcher at all.
-func SizeSource(min, max int64) []Matcher {
+func sizeSource(min, max int64) []matcher {
 	if min <= 0 && max <= 0 {
 		return nil
 	}
-	return []Matcher{newSizeMatcher(min, max)}
+	return []matcher{newSizeMatcher(min, max)}
 }
 
 // SizeRule is one scanoss.json skip.sizes entry: files matching any of Patterns
@@ -144,30 +144,15 @@ type SizeRule struct {
 	Max      int64
 }
 
-// Skip mirrors the scanoss.json settings.skip subset filter consumes, already
-// resolved to a single operation (scanning, fingerprinting, or dependencies).
-type Skip struct {
-	Patterns []string   // gitignore-style globs
-	Sizes    []SizeRule // per-pattern size limits
-}
-
-// Settings is the local, dependency-free mirror of the scanoss.json bits filter
-// needs. Callers map settings.Settings into this.
-type Settings struct {
-	Skip Skip
-}
-
-// SettingsSource turns scanoss.json skip rules into matchers. Returns nil when s
-// is nil.
-func SettingsSource(s *Settings) []Matcher {
-	if s == nil {
-		return nil
+// patternSource turns the glob rules into matchers. The profiles have already read the
+// project's scanoss.json into these fields, so there is one path here whether a rule
+// came from the file or from the caller.
+func patternSource(o Options) []matcher {
+	var ms []matcher
+	if len(o.SkipPatterns) > 0 {
+		ms = append(ms, newGlobMatcher(o.SkipPatterns, "skip-patterns"))
 	}
-	var ms []Matcher
-	if len(s.Skip.Patterns) > 0 {
-		ms = append(ms, newGlobMatcher(s.Skip.Patterns, "scanoss-skip"))
-	}
-	for _, rule := range s.Skip.Sizes {
+	for _, rule := range o.SizeRules {
 		if len(rule.Patterns) == 0 {
 			continue
 		}
@@ -176,10 +161,10 @@ func SettingsSource(s *Settings) []Matcher {
 	return ms
 }
 
-// GitIgnoreSource reads the .gitignore at the root of the tree (if present) and
+// gitIgnoreSource reads the .gitignore at the root of the tree (if present) and
 // returns a matcher for its patterns. If root is a file rather than a directory,
 // its parent directory is used. Missing file is not an error.
-func GitIgnoreSource(root string) ([]Matcher, error) {
+func gitIgnoreSource(root string) ([]matcher, error) {
 	dir := root
 	if info, err := os.Stat(root); err == nil && !info.IsDir() {
 		dir = filepath.Dir(root)
@@ -192,5 +177,5 @@ func GitIgnoreSource(root string) ([]Matcher, error) {
 		return nil, err
 	}
 	lines := strings.Split(string(data), "\n")
-	return []Matcher{newGlobMatcher(lines, "gitignore")}, nil
+	return []matcher{newGlobMatcher(lines, "gitignore")}, nil
 }

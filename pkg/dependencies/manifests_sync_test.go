@@ -33,7 +33,7 @@ import (
 // TestManifestsMatchParsers guards the single-source-of-truth contract: every
 // dependency file the parser handles MUST be listed in pkg/manifests.Patterns,
 // and vice versa. pkg/filter relies on manifests.Is to decide which files to
-// preserve (PreserveDependencyManifests) while pruning everything else — if the
+// preserve (KeepManifests) while pruning everything else — if the
 // two lists drift, the filter would either drop a manifest the parser needs or
 // keep a file the parser can't use.
 func TestManifestsMatchParsers(t *testing.T) {

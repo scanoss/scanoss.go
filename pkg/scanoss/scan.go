@@ -94,7 +94,7 @@ func resolveScanOptions(opts []ScanOption) scanOptions {
 		// The profile, not a hand-built equivalent: the two agree today only because the default
 		// size bounds happen to be an int's zero value, so a change to either would silently leave
 		// a scan filtering differently from everything else that uses the scanning profile.
-		filters:      filter.ScanOptions(),
+		filters:      filter.Scanning(nil),
 		pollInterval: DefaultScanPollInterval,
 	}
 	for _, opt := range opts {
@@ -121,7 +121,7 @@ func WithChunkBytes(n int) ScanOption {
 }
 
 // WithFilters sets the file-collection filters used by Folder: default skip lists,
-// .gitignore and size bounds. The default is filter.ScanOptions(), which leaves
+// .gitignore and size bounds. The default is filter.Scanning(nil), which leaves
 // Settings nil — pass scanoss.json rules here to have them applied.
 func WithFilters(f filter.Options) ScanOption {
 	return func(o *scanOptions) { o.filters = f }

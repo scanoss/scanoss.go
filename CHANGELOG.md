@@ -18,11 +18,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`Options.SkipDirs` and friends were silently ignored** when the matching built-in flag was
+  off, and otherwise replaced the built-in list instead of adding to it.
+- **`scan --include deps` no longer applies the scanning folder rules to the manifest stage**,
+  which pruned `examples/` and `venv/` — where manifests legitimately live.
 - **A stray service no longer discards a whole pipeline run.** `DecorationPipeline.Run` skips one
   that is not a decoration layer, with a warning, instead of failing.
 
 ### Changed
 
+- **BREAKING — the filter profiles take the project's settings and read their own section:**
+  `ScanOptions` → `filter.Scanning(s)`, `FingerprintOptions` → `Fingerprinting(s)`,
+  `DependencyOptions` → `Dependencies(s)`; `DefaultOptions` is gone, use `Scanning(nil)`.
+  `settings.ScanFilter`, `FingerprintFilter` and `DependencyFilter` are gone, and `pkg/settings`
+  no longer imports `pkg/filter`.
+- **BREAKING — `Options.FolderDefaults` / `FileDefaults` are now `BuiltinFolderRules` /
+  `BuiltinFileRules`**, and the `Skip*` fields are additive rather than replacing. New:
+  `SkipDirExts`, `SkipPatterns`, `SizeRules`. `Settings` → dropped, `PreserveDependencyManifests`
+  → `KeepManifests`, `SkipExtensions` → `SkipExts`.
+- **BREAKING — `scanpipeline.Options.Filter` and `DependencySettings` are now `ScanFilters` and
+  `DependencyFilters`.** The caller builds both; the pipeline no longer derives one from the other.
 - **BREAKING — `pkg/scanner` and `pkg/fingerprint/wfp` merge into `pkg/wfp`.**
 - **BREAKING — `wfp.Generate` is the only entry point**, returning a `Result` with the combined
   stream, the per-file detail and the files it skipped. One file is a one-file slice.
@@ -44,6 +59,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING — `settings.GetSBOMData`, `SBOMData`, `FormatSBOMParam`** — the v2 BOM parameter
   pair. v3 applies BOM rules post-scan through `pkg/postprocess`.
 - **BREAKING — `parsers.RemoveDuplicates`, `output.Writer.WriteFormat`** — never called.
+- **BREAKING — the filter matcher machinery**: `Matcher`, `Composite`, `Build`, the eight
+  `*Source` functions, `Defaults`/`StdDefaults` and `Skip`. The seven mutable lists of built-in
+  rules are unexported too: the skip policy is `pkg/filter`'s, applied through `Collect` and its
+  profiles. A caller that filters its own entries writes its own rule.
 - **`DefaultPostSize`; `GRAM_WFP1`, `WINDOW_WFP1`** — two constants that define the fingerprint
   format rather than configure it.
 

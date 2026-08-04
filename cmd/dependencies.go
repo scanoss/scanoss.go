@@ -347,14 +347,13 @@ func runScanMode(cfg scanoss.Config, targetPath, outputFile, settingsFlag string
 // It replaces a hand-written walk that carried its own directory list and read
 // neither scanoss.json nor the shared defaults. The manifests survive the
 // default extension list (.json, .mod, .xml, …) through
-// PreserveDependencyManifests, so what the parser receives is unchanged.
+// KeepManifests, so what the parser receives is unchanged.
 func collectDependencyFiles(root, settingsFlag string) ([]string, int, error) {
 	depSettings, err := settings.Resolve(settingsFlag, root)
 	if err != nil {
 		return nil, 0, fmt.Errorf("error loading settings: %w", err)
 	}
-	opts := filter.DependencyOptions()
-	opts.Settings = depSettings.DependencyFilter()
+	opts := filter.Dependencies(depSettings)
 
 	res, err := filter.Collect(root, opts)
 	if err != nil {

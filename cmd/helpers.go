@@ -31,6 +31,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/scanoss/scanoss.go/pkg/filter"
 	"github.com/spf13/cobra"
 )
 
@@ -112,4 +113,37 @@ func validateSizeBounds(min, max int64) error {
 		return fmt.Errorf("--min-size (%d) must not exceed --max-size (%d): no file could match", min, max)
 	}
 	return nil
+}
+
+// applyCollectFlags layers the collection flags onto o, whichever profile it came from.
+// Every stage that collects files honours the same flags, so they are applied in one
+// place rather than restated per stage — and a stage's own profile decisions survive,
+// because nothing here is copied from another stage's options.
+func applyCollectFlags(o *filter.Options, minSize, maxSize int64, allExtensions, allFolders, gitignore, allHidden bool) {
+	o.MinSize, o.MaxSize = minSize, maxSize
+
+	// These four only ever remove rules, so they are applied as opt-outs rather than
+	// assigned. Assigning them lets a flag left at its default overwrite a profile that
+	// switched something off deliberately — which is how the manifest stage came to
+	// inherit the scanning folder lists and prune the examples/ directory a manifest
+	// legitimately lives in.
+	if allExtensions {
+		o.BuiltinFileRules = false
+	}
+	if allFolders {
+		o.BuiltinFolderRules = false
+		// The built-in lists and a profile's own are separate sources, so switching the
+		// built-ins off does not reach the Dependencies profile, which carries its
+		// directory rules in SkipDirs. Leaving them would keep pruning dist/, build/ and
+		// target/ for a caller who asked for every folder. Clearing is safe here because
+		// nothing in the CLI puts a user's own rules in these two fields — scanoss.json
+		// skip patterns land in SkipPatterns.
+		o.SkipDirs, o.SkipDirExts = nil, nil
+	}
+	if !gitignore {
+		o.GitIgnore = false
+	}
+	if allHidden {
+		o.IncludeHidden = true
+	}
 }

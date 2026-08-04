@@ -28,8 +28,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
-	"path/filepath"
 
 	"github.com/scanoss/scanoss.go/internal/version"
 	"github.com/scanoss/scanoss.go/pkg/filter"
@@ -43,20 +41,16 @@ func errorJSON(err error) *C.char {
 	return C.CString(string(payload))
 }
 
-// skipFile applies the scanning rules to a single path. These entry points
-// fingerprint one file at a time without collecting a tree, so they are the one
-// caller that has to ask for the rules explicitly — pkg/fingerprint no longer
-// applies any of its own.
-var skipFile = func() func(string) bool {
-	m := filter.Build(filter.DefaultSource(filter.StdDefaults()))
-	return func(path string) bool {
-		info, err := os.Stat(path)
-		if err != nil {
-			return false // let the fingerprinter report the real error
-		}
-		return m.Match(filepath.Base(path), info)
+// skipFile reports whether the built-in rules exclude path. Collect takes a single file
+// as its root, so these entry points ask it directly instead of restating the rules —
+// one answer, from the same code a scan uses.
+func skipFile(path string) bool {
+	res, err := filter.Collect(path, filter.Scanning(nil))
+	if err != nil {
+		return false // let the fingerprinter report the real error
 	}
-}()
+	return len(res.Files) == 0
+}
 
 // GenerateWFP generates a WFP fingerprint for a single file
 //
@@ -107,7 +101,7 @@ func GenerateWFPJSON(filePath *C.char) *C.char {
 func CollectFiles(path *C.char) *C.char {
 	goPath := C.GoString(path)
 
-	res, err := filter.Collect(goPath, filter.DefaultOptions())
+	res, err := filter.Collect(goPath, filter.Scanning(nil))
 	if err != nil {
 		return errorJSON(err)
 	}

@@ -23,14 +23,14 @@
 
 package filter
 
-// Build concatenates matchers from every source and removes duplicates by Key(),
-// then wraps the result in a single Composite. Sources are processed in the order
+// build concatenates matchers from every source and removes duplicates by Key(),
+// then wraps the result in a single composite. Sources are processed in the order
 // given, and the first matcher seen for a given Key() wins (later duplicates are
 // dropped) — so a rule shared across sources (e.g. ".png" in both the defaults
 // and a scanoss.json pattern) is applied once, not repeatedly.
-func Build(sources ...[]Matcher) *Composite {
+func build(sources ...[]matcher) *composite {
 	seen := make(map[string]bool)
-	var matchers []Matcher
+	var matchers []matcher
 	for _, src := range sources {
 		for _, m := range src {
 			key := m.Key()
@@ -41,5 +41,5 @@ func Build(sources ...[]Matcher) *Composite {
 			matchers = append(matchers, m)
 		}
 	}
-	return &Composite{matchers: matchers}
+	return &composite{matchers: matchers}
 }

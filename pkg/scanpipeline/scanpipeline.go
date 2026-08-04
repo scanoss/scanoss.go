@@ -65,15 +65,18 @@ type Options struct {
 	// not a decoration service: nothing is fetched, the manifests already carry resolved PURLs.
 	SourceDeclared bool
 
-	SourcePath string         // file or directory to scan (required)
-	Threads    int            // fingerprint workers (<1 => 1)
-	Filter     filter.Options // file-collection filters (directory scans)
-	// DependencySettings is the scanoss.json skip rules for the dependencies
-	// operation. The manifest collection is a stage of its own, with its own
-	// profile, so it cannot reuse Filter.Settings (which holds the scanning
-	// section). Nil when there is no scanoss.json.
-	DependencySettings *filter.Settings
-	ScanOptions        []scanoss.ScanOption // per-scan tuning (chunk size, poll interval, BOM, ...)
+	SourcePath string // file or directory to scan (required)
+	Threads    int    // fingerprint workers (<1 => 1)
+	// ScanFilters collects the files to fingerprint; DependencyFilters collects the
+	// manifests, when SourceDeclared asks for them.
+	//
+	// Both are the caller's to build, because only the caller knows which of the values
+	// in them came from a user flag and which from a profile. This package used to
+	// derive the second from the first by copying selected fields, which meant a field
+	// the dependency profile had deliberately set was overwritten by the scan's.
+	ScanFilters       filter.Options
+	DependencyFilters filter.Options
+	ScanOptions       []scanoss.ScanOption // per-scan tuning (chunk size, poll interval, BOM, ...)
 
 	// OnProgress receives every layer's progress. Optional; nil reports nothing. The pipeline runs
 	// layers concurrently, so it must be safe for concurrent use.
@@ -122,24 +125,16 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 	var manifestFiles []string
 	scanRoot := opts.SourcePath
 	if info.IsDir() {
-		cr, collectErr := filter.Collect(opts.SourcePath, opts.Filter)
+		cr, collectErr := filter.Collect(opts.SourcePath, opts.ScanFilters)
 		if collectErr != nil {
 			return Result{}, fmt.Errorf("collecting files: %w", collectErr)
 		}
 		files, skipped = cr.Files, cr.SkippedCount
 
 		if opts.SourceDeclared {
-			// Collecting manifests is its own stage, so it uses the dependency
-			// profile rather than inheriting the scan's. Only what the user asked
-			// for carries over; the profile decides the rest, which is what keeps
-			// this in step with the standalone `dependencies` command.
-			depFilter := filter.DependencyOptions()
-			depFilter.MinSize = opts.Filter.MinSize
-			depFilter.MaxSize = opts.Filter.MaxSize
-			depFilter.FolderDefaults = opts.Filter.FolderDefaults
-			depFilter.FileDefaults = opts.Filter.FileDefaults
-			depFilter.Settings = opts.DependencySettings
-			dcr, depErr := filter.Collect(opts.SourcePath, depFilter)
+			// Collecting manifests is its own stage with its own rules, handed over
+			// ready: nothing here reaches into the scan's to build them.
+			dcr, depErr := filter.Collect(opts.SourcePath, opts.DependencyFilters)
 			if depErr != nil {
 				return Result{}, fmt.Errorf("collecting dependency manifests: %w", depErr)
 			}

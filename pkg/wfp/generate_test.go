@@ -111,7 +111,7 @@ func TestCollectionStillExcludesWhatTheLayerNoLongerDoes(t *testing.T) {
 	writeSized(t, filepath.Join(root, "logo.png"), 400)
 	writeSized(t, filepath.Join(root, "main.go"), 400)
 
-	res, err := filter.Collect(root, filter.DefaultOptions())
+	res, err := filter.Collect(root, filter.Scanning(nil))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -39,7 +39,6 @@ import (
 
 	"github.com/scanoss/scanoss.go/pkg/dependencies"
 	"github.com/scanoss/scanoss.go/pkg/filter"
-	"github.com/scanoss/scanoss.go/pkg/manifests"
 	"github.com/scanoss/scanoss.go/pkg/settings"
 )
 
@@ -113,11 +112,7 @@ func TestBaselineScanCollection(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res, err := filter.Collect(root, filter.Options{
-		FolderDefaults: true, FileDefaults: true,
-		GitIgnore: true,
-		Settings:  st.ScanFilter(),
-	})
+	res, err := filter.Collect(root, filter.Scanning(st))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +132,7 @@ func TestBaselineScanCollection(t *testing.T) {
 func TestBaselineScanCollectionNoDefaults(t *testing.T) {
 	root := baselineTree(t)
 	res, err := filter.Collect(root, filter.Options{
-		FolderDefaults: false, FileDefaults: false,
+		BuiltinFolderRules: false, BuiltinFileRules: false,
 		GitIgnore: true,
 	})
 	if err != nil {
@@ -226,52 +221,4 @@ func TestDependencySkipPatternsHonoured(t *testing.T) {
 			t.Errorf("skip.patterns.dependencies should have excluded %s", f)
 		}
 	}
-}
-
-// What the extraction pre-filter keeps today — the shape an external SDK
-// consumer relies on when it filters archive entries before writing them out.
-func TestBaselineExtractionMatcher(t *testing.T) {
-	root := baselineTree(t)
-	// Composed the way an external consumer composes it, from the exported
-	// pieces: the default sources, plus manifests.Is for the exemption that
-	// Options.PreserveDependencyManifests applies inside Collect. scanoss.go no
-	// longer ships a ready-made matcher for callers that do not walk a tree.
-	base := filter.Build(filter.DefaultSource(filter.StdDefaults()))
-	skip := func(rel string, info os.FileInfo) bool {
-		return base.Match(rel, info) && !manifests.Is(rel)
-	}
-
-	var kept []string
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() || strings.HasPrefix(info.Name(), ".") {
-			return nil
-		}
-		rel, _ := filepath.Rel(root, path)
-		if !skip(filepath.ToSlash(rel), info) {
-			kept = append(kept, path)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Manifests survive the extension list thanks to the exemption. Note that
-	// node_modules/, venv/ and examples/ entries are kept: this matcher decides
-	// about the entry, not the path, so pruning directories is the caller's job
-	// (a consumer does it with its own traversal), using the exported lists.
-	assertSet(t, "extraction matcher", relNames(t, root, kept), []string{
-		"Gemfile",
-		"dist/package.json",
-		"examples/go.mod",
-		"examples/main.go",
-		"go.mod",
-		"ignored/gen.go",
-		"main.go",
-		"node_modules/y.js",
-		"pom.xml",
-		"venv/x.go",
-	})
 }

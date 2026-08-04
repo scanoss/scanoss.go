@@ -58,7 +58,7 @@ func aDir(name string) fakeInfo              { return fakeInfo{name: name, isDir
 func TestLeafMatchers(t *testing.T) {
 	tests := []struct {
 		name    string
-		matcher Matcher
+		matcher matcher
 		rel     string
 		info    fakeInfo
 		want    bool
@@ -88,11 +88,11 @@ func TestLeafMatchers(t *testing.T) {
 }
 
 func TestBuildDedupe(t *testing.T) {
-	c := Build(
-		[]Matcher{newExtMatcher(".png")},
-		[]Matcher{newExtMatcher(".png"), newExtMatcher(".gif")},
+	c := build(
+		[]matcher{newExtMatcher(".png")},
+		[]matcher{newExtMatcher(".png"), newExtMatcher(".gif")},
 	)
-	if got := len(c.Matchers()); got != 2 {
+	if got := len(c.matchers); got != 2 {
 		t.Fatalf("deduped matcher count = %d, want 2", got)
 	}
 }
@@ -141,7 +141,7 @@ func TestCollectDefaults(t *testing.T) {
 	writeFile(t, filepath.Join(root, "__pycache__", "y.go"), 200)  // skip: dir
 	writeFile(t, filepath.Join(root, "vendor", "v.go"), 200)       // skip: dir
 
-	res, err := Collect(root, Options{FolderDefaults: true, FileDefaults: true})
+	res, err := Collect(root, Options{BuiltinFolderRules: true, BuiltinFileRules: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,10 +167,10 @@ func TestCollectSkipsUnscannable(t *testing.T) {
 	writeFile(t, filepath.Join(root, "main.go"), 200)
 
 	for _, o := range map[string]Options{
-		"defaults on":            {FolderDefaults: true, FileDefaults: true},
-		"defaults off":           {FolderDefaults: false, FileDefaults: false},
+		"defaults on":            {BuiltinFolderRules: true, BuiltinFileRules: true},
+		"defaults off":           {BuiltinFolderRules: false, BuiltinFileRules: false},
 		"zero-valued options":    {},
-		"with an explicit floor": {FolderDefaults: true, FileDefaults: true, MinSize: 100},
+		"with an explicit floor": {BuiltinFolderRules: true, BuiltinFileRules: true, MinSize: 100},
 	} {
 		res, err := Collect(root, o)
 		if err != nil {
@@ -197,7 +197,7 @@ func TestCollectSkipsSymlinks(t *testing.T) {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 
-	res, err := Collect(root, DefaultOptions())
+	res, err := Collect(root, Scanning(nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,11 +209,11 @@ func TestCollectSkipsSymlinks(t *testing.T) {
 	}
 }
 
-// A matcher composed the way an external caller composes one (Build over the
-// exported sources) agrees with Collect on unscannable entries.
+// The unscannable rule is unconditional: it holds however the built-in lists are
+// configured, since a zero-byte file or a symlink is never worth fingerprinting.
 func TestComposedMatcherSkipsUnscannable(t *testing.T) {
-	for _, o := range []Options{{FolderDefaults: true, FileDefaults: true}, {FolderDefaults: false, FileDefaults: false}, {}} {
-		m := Build(UnscannableSource(), DefaultSource(o.defaults()))
+	for _, o := range []Options{{BuiltinFolderRules: true, BuiltinFileRules: true}, {BuiltinFolderRules: false, BuiltinFileRules: false}, {}} {
+		m := build(unscannableSource(), defaultSource(stdDefaults()))
 		if !m.Match("empty.go", aFile("empty.go", 0)) {
 			t.Errorf("%+v: a zero-byte file should be skipped", o)
 		}
@@ -234,15 +234,15 @@ func TestCollectSizeBoundsIndependentOfDefaults(t *testing.T) {
 	writeFile(t, filepath.Join(root, "big.go"), 200)
 
 	for _, useDefaults := range []bool{true, false} {
-		res, err := Collect(root, Options{FolderDefaults: useDefaults, FileDefaults: useDefaults, MinSize: 100})
+		res, err := Collect(root, Options{BuiltinFolderRules: useDefaults, BuiltinFileRules: useDefaults, MinSize: 100})
 		if err != nil {
 			t.Fatal(err)
 		}
 		if got := baseNames(res.Files); !equalStrings(got, []string{"big.go"}) {
-			t.Errorf("Defaults=%v: kept %v, want [big.go]", useDefaults, got)
+			t.Errorf("defaults=%v: kept %v, want [big.go]", useDefaults, got)
 		}
 		if res.SkippedCount != 1 {
-			t.Errorf("Defaults=%v: SkippedCount = %d, want 1", useDefaults, res.SkippedCount)
+			t.Errorf("defaults=%v: SkippedCount = %d, want 1", useDefaults, res.SkippedCount)
 		}
 	}
 }
@@ -251,18 +251,18 @@ func TestCollectSizeBoundsIndependentOfDefaults(t *testing.T) {
 // whether or not it also asked for the built-in lists.
 func TestComposedSizeBoundsIndependentOfDefaults(t *testing.T) {
 	for _, useDefaults := range []bool{true, false} {
-		o := Options{FolderDefaults: useDefaults, FileDefaults: useDefaults, MinSize: 100}
-		var srcs [][]Matcher
+		o := Options{BuiltinFolderRules: useDefaults, BuiltinFileRules: useDefaults, MinSize: 100}
+		var srcs [][]matcher
 		if useDefaults {
-			srcs = append(srcs, DefaultSource(o.defaults()))
+			srcs = append(srcs, defaultSource(stdDefaults()))
 		}
-		srcs = append(srcs, SizeSource(o.MinSize, o.MaxSize))
-		m := Build(srcs...)
+		srcs = append(srcs, sizeSource(o.MinSize, o.MaxSize))
+		m := build(srcs...)
 		if !m.Match("tiny.go", aFile("tiny.go", 40)) {
-			t.Errorf("Defaults=%v: a 40-byte file should be skipped by MinSize=100", useDefaults)
+			t.Errorf("defaults=%v: a 40-byte file should be skipped by MinSize=100", useDefaults)
 		}
 		if m.Match("big.go", aFile("big.go", 200)) {
-			t.Errorf("Defaults=%v: a 200-byte file should not be skipped", useDefaults)
+			t.Errorf("defaults=%v: a 200-byte file should not be skipped", useDefaults)
 		}
 	}
 }
@@ -273,7 +273,7 @@ func TestComposedSizeBoundsIndependentOfDefaults(t *testing.T) {
 //
 // If this fails, someone gave the package a non-zero default bound, and the two
 // construction paths have silently diverged — a literal Options{} would impose no
-// bound while ScanOptions() imposes one. Fix it by making the fields *int64 (so
+// bound while Scanning(nil) imposes one. Fix it by making the fields *int64 (so
 // "unset" and "zero" are distinct) rather than by relaxing this test.
 func TestZeroOptionsMatchDefaultBounds(t *testing.T) {
 	if DefaultMinFileSize != 0 {
@@ -288,16 +288,16 @@ func TestZeroOptionsMatchDefaultBounds(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "tiny.go"), 40)
 
-	viaLiteral, err := Collect(root, Options{FolderDefaults: true, FileDefaults: true, GitIgnore: true})
+	viaLiteral, err := Collect(root, Options{BuiltinFolderRules: true, BuiltinFileRules: true, GitIgnore: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	viaConstructor, err := Collect(root, ScanOptions())
+	viaConstructor, err := Collect(root, Scanning(nil))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !equalStrings(baseNames(viaLiteral.Files), baseNames(viaConstructor.Files)) {
-		t.Fatalf("literal Options kept %v, ScanOptions kept %v: the two paths must agree",
+		t.Fatalf("literal Options kept %v, SourceFiles kept %v: the two paths must agree",
 			baseNames(viaLiteral.Files), baseNames(viaConstructor.Files))
 	}
 }
@@ -306,9 +306,8 @@ func TestZeroOptionsMatchDefaultBounds(t *testing.T) {
 // one gets the documented default rather than an implicit zero.
 func TestOptionConstructorsCarryDefaultBounds(t *testing.T) {
 	for name, o := range map[string]Options{
-		"DefaultOptions":    DefaultOptions(),
-		"ScanOptions":       ScanOptions(),
-		"DependencyOptions": DependencyOptions(),
+		"SourceFiles": Scanning(nil),
+		"Manifests":   Dependencies(nil),
 	} {
 		if o.MinSize != DefaultMinFileSize {
 			t.Errorf("%s().MinSize = %d, want DefaultMinFileSize (%d)", name, o.MinSize, DefaultMinFileSize)
@@ -325,7 +324,7 @@ func TestCollectMinSize(t *testing.T) {
 	writeFile(t, filepath.Join(root, "tiny.go"), 40)
 	writeFile(t, filepath.Join(root, "big.go"), 200)
 
-	res, err := Collect(root, DefaultOptions())
+	res, err := Collect(root, Scanning(nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,7 +335,7 @@ func TestCollectMinSize(t *testing.T) {
 		t.Fatalf("default SkippedCount = %d, want 0", res.SkippedCount)
 	}
 
-	res, err = Collect(root, Options{FolderDefaults: true, FileDefaults: true, MinSize: 100})
+	res, err = Collect(root, Options{BuiltinFolderRules: true, BuiltinFileRules: true, MinSize: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,12 +357,8 @@ func TestCollectScanossSettings(t *testing.T) {
 	writeFile(t, filepath.Join(root, "small.bin"), 50)       // keep: within size
 
 	opts := Options{
-		Settings: &Settings{
-			Skip: Skip{
-				Patterns: []string{"*.log", "build/**"},
-				Sizes:    []SizeRule{{Patterns: []string{"*.bin"}, Max: 100}},
-			},
-		},
+		SkipPatterns: []string{"*.log", "build/**"},
+		SizeRules:    []SizeRule{{Patterns: []string{"*.bin"}, Max: 100}},
 	}
 	res, err := Collect(root, opts)
 	if err != nil {
@@ -386,7 +381,7 @@ func TestCollectSingleFile(t *testing.T) {
 	fpath := filepath.Join(root, "main.go")
 	writeFile(t, fpath, 200)
 
-	res, err := Collect(fpath, DefaultOptions())
+	res, err := Collect(fpath, Scanning(nil))
 	if err != nil {
 		t.Fatalf("Collect(single file) error: %v", err)
 	}
@@ -423,7 +418,7 @@ func TestCollectPrunesExcludedDirectories(t *testing.T) {
 	writeFile(t, filepath.Join(root, "node_modules", "left-pad", "index.js"), 400)
 	writeFile(t, filepath.Join(root, "src", "main.go"), 400)
 
-	res, err := Collect(root, ScanOptions())
+	res, err := Collect(root, Scanning(nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -462,8 +457,8 @@ func TestVCSMetadataFollowsTheHiddenRule(t *testing.T) {
 
 	// Hidden entries excluded — the default — keeps it all out, however the other rules are set.
 	for name, o := range map[string]Options{
-		"defaults on":         {FolderDefaults: true, FileDefaults: true, GitIgnore: true},
-		"defaults off":        {FolderDefaults: false, FileDefaults: false},
+		"defaults on":         {BuiltinFolderRules: true, BuiltinFileRules: true, GitIgnore: true},
+		"defaults off":        {BuiltinFolderRules: false, BuiltinFileRules: false},
 		"zero-valued options": {},
 	} {
 		if n := countVCS(o); n != 0 {
@@ -472,7 +467,7 @@ func TestVCSMetadataFollowsTheHiddenRule(t *testing.T) {
 	}
 
 	// Hidden entries included reaches it, like any other dotfile.
-	if n := countVCS(Options{FolderDefaults: true, FileDefaults: true, IncludeHidden: true}); n == 0 {
+	if n := countVCS(Options{BuiltinFolderRules: true, BuiltinFileRules: true, IncludeHidden: true}); n == 0 {
 		t.Error("IncludeHidden collected no version-control entries: it should reach them like any other dotted entry")
 	}
 }

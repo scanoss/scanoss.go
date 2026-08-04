@@ -24,6 +24,7 @@
 package cmd
 
 import (
+	"github.com/scanoss/scanoss.go/pkg/filter"
 	"strings"
 	"testing"
 )
@@ -68,5 +69,51 @@ func TestValidateSizeBounds(t *testing.T) {
 func TestValidateSizeBoundsUnlimitedMax(t *testing.T) {
 	if err := validateSizeBounds(1<<40, 0); err != nil {
 		t.Fatalf("validateSizeBounds(large, 0) = %v, want nil", err)
+	}
+}
+
+// The collection flags only ever remove rules. A flag sitting at its default must not
+// switch something back on that a profile turned off on purpose — the manifest stage
+// starts from filter.Dependencies, whose BuiltinFolderRules is false so that a manifest
+// under examples/ or venv/ is still found.
+func TestApplyCollectFlagsOnlyRemovesRules(t *testing.T) {
+	o := filter.Dependencies(nil)
+	if o.BuiltinFolderRules || o.GitIgnore {
+		t.Fatalf("precondition: Dependencies() should start with both off, got %+v", o)
+	}
+
+	// Every flag at its default: nothing the profile decided may change.
+	applyCollectFlags(&o, 0, 0, false, false, true, false)
+	if o.BuiltinFolderRules {
+		t.Error("BuiltinFolderRules was switched on by a flag left at its default")
+	}
+	if o.GitIgnore {
+		t.Error("GitIgnore was switched on by a flag left at its default")
+	}
+	if len(o.SkipDirs) == 0 {
+		t.Error("the profile's own directory list was cleared by a flag left at its default")
+	}
+
+	// And the flags still do their job where the profile left the rule on.
+	s := filter.Scanning(nil)
+	applyCollectFlags(&s, 0, 0, true, true, false, true)
+	if s.BuiltinFileRules || s.BuiltinFolderRules || s.GitIgnore {
+		t.Errorf("--all-extensions/--all-folders/--gitignore=false must switch their rules off, got %+v", s)
+	}
+	if !s.IncludeHidden {
+		t.Error("--all-hidden must switch IncludeHidden on")
+	}
+
+	// --all-folders has to reach a profile's own directory list too, not only the built-in
+	// switch. Dependencies keeps its rules in SkipDirs, so a caller asking for every folder
+	// would otherwise still lose a manifest under dist/.
+	d := filter.Dependencies(nil)
+	if len(d.SkipDirs) == 0 || len(d.SkipDirExts) == 0 {
+		t.Fatal("precondition: Dependencies() should carry its own directory lists")
+	}
+	applyCollectFlags(&d, 0, 0, false, true, true, false)
+	if len(d.SkipDirs) != 0 || len(d.SkipDirExts) != 0 {
+		t.Errorf("--all-folders must clear the profile's directory rules, got SkipDirs=%v SkipDirExts=%v",
+			d.SkipDirs, d.SkipDirExts)
 	}
 }

@@ -32,11 +32,11 @@ import (
 	gitignore "github.com/go-git/go-git/v5/plumbing/format/gitignore"
 )
 
-// Matcher decides whether a single path should be skipped. It is the leaf of the
-// composite pattern; Composite implements it too, so a set of matchers is itself
-// a Matcher. Match returns true when the path should be skipped. Skipped files
+// matcher decides whether a single path should be skipped. It is the leaf of the
+// composite pattern; composite implements it too, so a set of matchers is itself
+// a matcher. Match returns true when the path should be skipped. Skipped files
 // are not tracked, so a boolean (no reason) is all that is needed.
-type Matcher interface {
+type matcher interface {
 	// Match reports whether the path (rel, relative to the scan root) should be
 	// skipped. info describes the entry.
 	Match(rel string, info os.FileInfo) bool
@@ -45,14 +45,14 @@ type Matcher interface {
 	Key() string
 }
 
-// Composite holds many matchers and skips a path if any of them does. It is
-// itself a Matcher, so composites can nest.
-type Composite struct {
-	matchers []Matcher
+// composite holds many matchers and skips a path if any of them does. It is
+// itself a matcher, so composites can nest.
+type composite struct {
+	matchers []matcher
 }
 
 // Match reports whether any contained matcher skips the path.
-func (c *Composite) Match(rel string, info os.FileInfo) bool {
+func (c *composite) Match(rel string, info os.FileInfo) bool {
 	for _, m := range c.matchers {
 		if m.Match(rel, info) {
 			return true
@@ -62,10 +62,7 @@ func (c *Composite) Match(rel string, info os.FileInfo) bool {
 }
 
 // Key identifies the composite.
-func (c *Composite) Key() string { return "composite" }
-
-// Matchers returns the contained matchers (useful for tests/inspection).
-func (c *Composite) Matchers() []Matcher { return c.matchers }
+func (c *composite) Key() string { return "composite" }
 
 // suffixMatcher skips files whose name ends with a given suffix (matched
 // case-insensitively). It backs both extension matching (suffix includes the
@@ -111,7 +108,7 @@ type extSetMatcher struct {
 }
 
 // newExtSetMatcher builds a set matcher from simple extensions (each including
-// the leading dot, e.g. ".png"). key must be stable so Build can deduplicate.
+// the leading dot, e.g. ".png"). key must be stable so build can deduplicate.
 func newExtSetMatcher(exts map[string]bool, key string) extSetMatcher {
 	return extSetMatcher{exts: exts, key: key}
 }
@@ -237,7 +234,7 @@ func (m sizeMatcher) Match(rel string, info os.FileInfo) bool {
 func (m sizeMatcher) Key() string { return fmt.Sprintf("size:%d:%d", m.min, m.max) }
 
 // globMatcher skips paths matching a set of gitignore-style patterns. The
-// patterns are compiled together into one go-git Matcher (not one matcher per
+// patterns are compiled together into one go-git matcher (not one matcher per
 // pattern) so gitignore semantics that span patterns — negation ("!") and
 // anchoring — are preserved. Used for both .gitignore files and scanoss.json
 // skip.patterns. Paths are matched relative to the scan root.
