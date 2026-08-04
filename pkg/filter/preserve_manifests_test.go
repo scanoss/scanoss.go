@@ -28,12 +28,11 @@ import (
 	"testing"
 )
 
-// TestCollectPreserveDependencyManifests verifies the split: ScanOptions prunes
-// dependency manifests (they are useless for fingerprint matching), while
-// DependencyOptions applies the same prune but keeps manifests for the dependency
-// parser. Non-manifest files sharing a manifest extension (data.json) and
+// TestCollectKeepManifests verifies the split: Scanning prunes dependency
+// manifests (they are useless for fingerprint matching), while Dependencies
+// applies the same prune but keeps manifests for the dependency parser. Non-manifest files sharing a manifest extension (data.json) and
 // manifests nested inside skipped dirs (node_modules) are NOT kept.
-func TestCollectPreserveDependencyManifests(t *testing.T) {
+func TestCollectKeepManifests(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "main.go"), 200)                             // source — kept by both
 	writeFile(t, filepath.Join(root, "package.json"), 200)                        // manifest
@@ -43,22 +42,22 @@ func TestCollectPreserveDependencyManifests(t *testing.T) {
 	writeFile(t, filepath.Join(root, "logo.png"), 200)                            // ext skip
 	writeFile(t, filepath.Join(root, "node_modules", "dep", "package.json"), 200) // dir skip → not descended
 
-	scan, err := Collect(root, ScanOptions())
+	scan, err := Collect(root, Scanning(nil))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got, want := baseNames(scan.Files), []string{"main.go"}; !equalStrings(got, want) {
-		t.Fatalf("ScanOptions kept = %v, want %v (manifests must be skipped)", got, want)
+		t.Fatalf("SourceFiles kept = %v, want %v (manifests must be skipped)", got, want)
 	}
 
-	ing, err := Collect(root, DependencyOptions())
+	ing, err := Collect(root, Dependencies(nil))
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := baseNames(ing.Files) // sorted base names
 	want := []string{"go.mod", "main.go", "package.json", "pom.xml"}
 	if !equalStrings(got, want) {
-		t.Fatalf("DependencyOptions kept = %v, want %v "+
+		t.Fatalf("Dependencies kept = %v, want %v "+
 			"(root manifests kept; data.json/logo.png/node_modules pruned)", got, want)
 	}
 }
@@ -75,8 +74,8 @@ func TestUserRulesOverrideTheManifestExemption(t *testing.T) {
 	writeFile(t, filepath.Join(root, "go.mod"), 200)
 	writeFile(t, filepath.Join(root, "examples", "go.mod"), 200)
 
-	opts := DependencyOptions()
-	opts.Settings = &Settings{Skip: Skip{Patterns: []string{"examples/go.mod"}}}
+	opts := Dependencies(nil)
+	opts.SkipPatterns = []string{"examples/go.mod"}
 
 	res, err := Collect(root, opts)
 	if err != nil {

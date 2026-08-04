@@ -29,9 +29,11 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/scanoss/scanoss.go/pkg/settings"
 )
 
-func keySet(ms []Matcher) map[string]bool {
+func keySet(ms []matcher) map[string]bool {
 	s := make(map[string]bool, len(ms))
 	for _, m := range ms {
 		s[m.Key()] = true
@@ -40,8 +42,8 @@ func keySet(ms []Matcher) map[string]bool {
 }
 
 func TestDefaultSource(t *testing.T) {
-	d := StdDefaults()
-	ms := DefaultSource(d)
+	d := stdDefaults()
+	ms := defaultSource(d)
 
 	// Simple (single-dot) extensions fold into one map-backed matcher; compound
 	// endings (e.g. ".min.js") stay as individual suffix matchers. Everything
@@ -56,7 +58,7 @@ func TestDefaultSource(t *testing.T) {
 	}
 	want := len(d.Dirs) + len(d.DirExts) + len(d.Files) + len(d.Endings) + compound + 1 /*extset*/
 	if len(ms) != want {
-		t.Fatalf("DefaultSource count = %d, want %d", len(ms), want)
+		t.Fatalf("defaultSource count = %d, want %d", len(ms), want)
 	}
 
 	keys := keySet(ms)
@@ -65,13 +67,13 @@ func TestDefaultSource(t *testing.T) {
 		"name:makefile", "ending:readme",
 	} {
 		if !keys[k] {
-			t.Errorf("DefaultSource missing matcher %q", k)
+			t.Errorf("defaultSource missing matcher %q", k)
 		}
 	}
 
 	// Simple extensions are matched via the set; the compound ".min.js" via its
 	// own suffix matcher. Both must still be skipped.
-	c := Build(ms)
+	c := build(ms)
 	if !c.Match("a.png", aFile("a.png", 200)) {
 		t.Error("a.png should be skipped (extset)")
 	}
@@ -81,17 +83,17 @@ func TestDefaultSource(t *testing.T) {
 }
 
 // The built-in defaults carry no size bound at all: size is caller input, built
-// by SizeSource, so no default run stat-compares a file for size.
+// by sizeSource, so no default run stat-compares a file for size.
 func TestDefaultSourceHasNoSizeMatcher(t *testing.T) {
-	for _, m := range DefaultSource(StdDefaults()) {
+	for _, m := range defaultSource(stdDefaults()) {
 		if strings.HasPrefix(m.Key(), "size:") {
-			t.Errorf("DefaultSource built a size matcher %q, want none", m.Key())
+			t.Errorf("defaultSource built a size matcher %q, want none", m.Key())
 		}
 	}
 }
 
 func TestDefaultSourceNoSizeWhenUnset(t *testing.T) {
-	ms := DefaultSource(Defaults{Dirs: []string{"build"}})
+	ms := defaultSource(defaults{Dirs: []string{"build"}})
 	if len(ms) != 1 {
 		t.Fatalf("count = %d, want 1", len(ms))
 	}
@@ -101,11 +103,11 @@ func TestDefaultSourceNoSizeWhenUnset(t *testing.T) {
 }
 
 func TestSizeSource(t *testing.T) {
-	if ms := SizeSource(0, 0); ms != nil {
-		t.Fatalf("SizeSource(0, 0) = %v, want nil", keySet(ms))
+	if ms := sizeSource(0, 0); ms != nil {
+		t.Fatalf("sizeSource(0, 0) = %v, want nil", keySet(ms))
 	}
 
-	ms := SizeSource(0, 1000)
+	ms := sizeSource(0, 1000)
 	if len(ms) != 1 || ms[0].Key() != "size:0:1000" {
 		t.Fatalf("matchers = %v, want one size:0:1000", keySet(ms))
 	}
@@ -116,7 +118,7 @@ func TestSizeSource(t *testing.T) {
 		t.Error("file within max should not be skipped")
 	}
 
-	ms = SizeSource(100, 0)
+	ms = sizeSource(100, 0)
 	if len(ms) != 1 || ms[0].Key() != "size:100:0" {
 		t.Fatalf("matchers = %v, want one size:100:0", keySet(ms))
 	}
@@ -125,14 +127,89 @@ func TestSizeSource(t *testing.T) {
 	}
 }
 
-func TestSettingsSourceNil(t *testing.T) {
-	if ms := SettingsSource(nil); ms != nil {
-		t.Fatalf("SettingsSource(nil) = %v, want nil", ms)
+// scanossSettings builds a parsed scanoss.json carrying rules for one operation only,
+// so a test can prove Collect read that section and not another.
+func scanossSettings(op string, patterns []string, sizes []settings.SizeRule) *settings.Settings {
+	var byOp settings.SkipPatternsByOp
+	var sizesByOp settings.SkipSizesByOp
+	switch op {
+	case settings.OperationScanning:
+		byOp.Scanning, sizesByOp.Scanning = patterns, sizes
+	case settings.OperationFingerprinting:
+		byOp.Fingerprinting, sizesByOp.Fingerprinting = patterns, sizes
+	case settings.OperationDependencies:
+		byOp.Dependencies, sizesByOp.Dependencies = patterns, sizes
+	}
+	return &settings.Settings{Settings: settings.Tuning{
+		Skip: settings.Skip{Patterns: byOp, Sizes: sizesByOp},
+	}}
+}
+
+func TestPatternSourceEmpty(t *testing.T) {
+	if ms := patternSource(Options{}); ms != nil {
+		t.Fatalf("patternSource with no rules = %v, want nil", ms)
+	}
+}
+
+// Each profile reads its own scanoss.json section. Reading the wrong one is the mistake
+// the three per-operation accessors used to invite; now the profile is the section.
+func TestProfilesReadTheirOwnSection(t *testing.T) {
+	s := scanossSettings(settings.OperationDependencies, []string{"only-deps/**"}, nil)
+
+	if got := Dependencies(s).SkipPatterns; len(got) != 1 || got[0] != "only-deps/**" {
+		t.Errorf("Dependencies patterns = %v, want [only-deps/**]", got)
+	}
+	if got := Scanning(s).SkipPatterns; len(got) != 0 {
+		t.Errorf("Scanning must not see the dependencies rules, got %v", got)
+	}
+	if got := Fingerprinting(s).SkipPatterns; len(got) != 0 {
+		t.Errorf("Fingerprinting must not see the dependencies rules, got %v", got)
+	}
+}
+
+// Scanning and Fingerprinting apply the same rules and differ only in the section they
+// read — which is why they are two profiles and not one.
+func TestScanningAndFingerprintingReadDistinctSections(t *testing.T) {
+	s := &settings.Settings{Settings: settings.Tuning{Skip: settings.Skip{
+		Patterns: settings.SkipPatternsByOp{
+			Scanning:       []string{"only-scanning/**"},
+			Fingerprinting: []string{"only-fingerprinting/**"},
+		},
+	}}}
+	if got := Scanning(s).SkipPatterns; len(got) != 1 || got[0] != "only-scanning/**" {
+		t.Errorf("Scanning patterns = %v", got)
+	}
+	if got := Fingerprinting(s).SkipPatterns; len(got) != 1 || got[0] != "only-fingerprinting/**" {
+		t.Errorf("Fingerprinting patterns = %v", got)
+	}
+}
+
+// A project without a scanoss.json gets the profile and nothing else.
+func TestProfilesWithoutSettings(t *testing.T) {
+	for name, o := range map[string]Options{
+		"Scanning": Scanning(nil), "Fingerprinting": Fingerprinting(nil), "Dependencies": Dependencies(nil),
+	} {
+		if len(o.SkipPatterns) != 0 || len(o.SizeRules) != 0 {
+			t.Errorf("%s(nil) carried project rules: %+v", name, o)
+		}
+	}
+}
+
+// A caller may add its own patterns on top of the project's.
+func TestCallerPatternsLayerOnTheProjects(t *testing.T) {
+	o := Scanning(scanossSettings(settings.OperationScanning, []string{"from-file/**"}, nil))
+	o.SkipPatterns = append(o.SkipPatterns, "from-caller/**")
+	m := build(patternSource(o))
+	if !m.Match("from-caller/x.go", aFile("x.go", 10)) {
+		t.Error("the caller's own pattern must apply")
+	}
+	if !m.Match("from-file/x.go", aFile("x.go", 10)) {
+		t.Error("the project's pattern must apply")
 	}
 }
 
 func TestSettingsSourcePatterns(t *testing.T) {
-	ms := SettingsSource(&Settings{Skip: Skip{Patterns: []string{"*.log", "build/**"}}})
+	ms := patternSource(Options{SkipPatterns: []string{"*.log", "build/**"}})
 	if len(ms) != 1 {
 		t.Fatalf("count = %d, want 1 (one glob group)", len(ms))
 	}
@@ -149,9 +226,9 @@ func TestSettingsSourcePatterns(t *testing.T) {
 }
 
 func TestSettingsSourceSizes(t *testing.T) {
-	ms := SettingsSource(&Settings{Skip: Skip{
-		Sizes: []SizeRule{{Patterns: []string{"*.bin"}, Max: 100}},
-	}})
+	ms := patternSource(Options{
+		SizeRules: []SizeRule{{Patterns: []string{"*.bin"}, Max: 100}},
+	})
 	if len(ms) != 1 {
 		t.Fatalf("count = %d, want 1 (one scoped-size matcher)", len(ms))
 	}
@@ -168,26 +245,26 @@ func TestSettingsSourceSizes(t *testing.T) {
 }
 
 func TestSettingsSourceSizeRuleWithoutPatternsIgnored(t *testing.T) {
-	ms := SettingsSource(&Settings{Skip: Skip{
-		Sizes: []SizeRule{{Patterns: nil, Max: 100}},
-	}})
+	ms := patternSource(Options{
+		SizeRules: []SizeRule{{Patterns: nil, Max: 100}},
+	})
 	if len(ms) != 0 {
 		t.Fatalf("count = %d, want 0 (size rule without patterns is ignored)", len(ms))
 	}
 }
 
 func TestSettingsSourcePatternsAndSizes(t *testing.T) {
-	ms := SettingsSource(&Settings{Skip: Skip{
-		Patterns: []string{"*.log"},
-		Sizes:    []SizeRule{{Patterns: []string{"*.bin"}, Max: 100}},
-	}})
+	ms := patternSource(Options{
+		SkipPatterns: []string{"*.log"},
+		SizeRules:    []SizeRule{{Patterns: []string{"*.bin"}, Max: 100}},
+	})
 	if len(ms) != 2 {
 		t.Fatalf("count = %d, want 2", len(ms))
 	}
 }
 
 func TestGitIgnoreSourceMissing(t *testing.T) {
-	ms, err := GitIgnoreSource(t.TempDir())
+	ms, err := gitIgnoreSource(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +278,7 @@ func TestGitIgnoreSourcePresent(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("*.tmp\nbuild/\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	ms, err := GitIgnoreSource(root)
+	ms, err := gitIgnoreSource(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +301,7 @@ func TestGitIgnoreSourcePresent(t *testing.T) {
 // asserted against literals rather than recomposed from the same lists the code
 // uses, so a mistake in the split shows up here instead of agreeing with itself.
 func TestScanningDirSetUnchanged(t *testing.T) {
-	got := append([]string(nil), StdDefaults().Dirs...)
+	got := append([]string(nil), stdDefaults().Dirs...)
 	sort.Strings(got)
 
 	// .git is deliberately absent: it is excluded by the hidden rule, like any other
@@ -248,7 +325,7 @@ func TestScanningDirSetUnchanged(t *testing.T) {
 
 // Dependency collection keeps the common list and adds only its own.
 func TestDependencyDirSet(t *testing.T) {
-	got := append([]string(nil), DependencyOptions().SkipDirs...)
+	got := append([]string(nil), Dependencies(nil).SkipDirs...)
 	sort.Strings(got)
 
 	want := []string{"__pycache__", "build", "dist", "node_modules", "target", "vendor"}
@@ -263,11 +340,11 @@ func TestDependencyDirSet(t *testing.T) {
 
 	// Everything except the directory list is shared with scanning: the one
 	// difference that would matter (manifests behind skipped extensions) is
-	// handled by PreserveDependencyManifests, not by a separate list.
+	// handled by KeepManifests, not by a separate list.
 	// Only the directory list may differ: the dependency profile overrides
 	// SkipDirs and nothing else, so every other list stays shared.
-	dep := DependencyOptions()
-	if dep.SkipFiles != nil || dep.SkipExtensions != nil {
+	dep := Dependencies(nil)
+	if dep.SkipFiles != nil || dep.SkipExts != nil {
 		t.Error("only the directory list may differ between the two profiles")
 	}
 }
@@ -277,9 +354,9 @@ func TestDependencyDirSet(t *testing.T) {
 func TestDirListsAreDisjoint(t *testing.T) {
 	seen := map[string]string{}
 	for name, list := range map[string][]string{
-		"CommonSkippedDirs":         CommonSkippedDirs,
-		"ScanOnlySkippedDirs":       ScanOnlySkippedDirs,
-		"DependencyOnlySkippedDirs": DependencyOnlySkippedDirs,
+		"commonSkippedDirs":         commonSkippedDirs,
+		"scanOnlySkippedDirs":       scanOnlySkippedDirs,
+		"dependencyOnlySkippedDirs": dependencyOnlySkippedDirs,
 	} {
 		for _, d := range list {
 			if prev, dup := seen[d]; dup {
@@ -292,12 +369,12 @@ func TestDirListsAreDisjoint(t *testing.T) {
 
 // skippedDirs must not alias or append to the package-level lists.
 func TestSkippedDirsDoesNotAliasPackageLists(t *testing.T) {
-	before := append([]string(nil), CommonSkippedDirs...)
-	got := skippedDirs(ScanOnlySkippedDirs)
+	before := append([]string(nil), commonSkippedDirs...)
+	got := skippedDirs(scanOnlySkippedDirs)
 	got[0] = "mutated"
 	for i := range before {
-		if CommonSkippedDirs[i] != before[i] {
-			t.Fatalf("CommonSkippedDirs was mutated through the returned slice")
+		if commonSkippedDirs[i] != before[i] {
+			t.Fatalf("commonSkippedDirs was mutated through the returned slice")
 		}
 	}
 }
@@ -305,7 +382,7 @@ func TestSkippedDirsDoesNotAliasPackageLists(t *testing.T) {
 // .whl moves in from the fingerprint layer's own list, so removing that list
 // does not start fingerprinting files it used to skip.
 func TestWhlIsSkipped(t *testing.T) {
-	c := Build(DefaultSource(StdDefaults()))
+	c := build(defaultSource(stdDefaults()))
 	if !c.Match("pkg-1.0.whl", aFile("pkg-1.0.whl", 2000)) {
 		t.Error(".whl should be skipped")
 	}
@@ -316,34 +393,35 @@ func TestWhlIsSkipped(t *testing.T) {
 // dependency profile are pinned: its own directory list, manifests preserved,
 // and .gitignore off.
 func TestLayerProfiles(t *testing.T) {
-	scan := ScanOptions()
-	if !scan.FolderDefaults || !scan.FileDefaults || !scan.GitIgnore || scan.PreserveDependencyManifests {
-		t.Errorf("ScanOptions = %+v", scan)
+	scan := Scanning(nil)
+	if !scan.BuiltinFolderRules || !scan.BuiltinFileRules || !scan.GitIgnore || scan.KeepManifests {
+		t.Errorf("SourceFiles = %+v", scan)
 	}
 	if scan.SkipDirs != nil {
-		t.Error("ScanOptions must not override the directory list; it uses StdDefaults")
+		t.Error("SourceFiles must not override the directory list; it uses stdDefaults")
 	}
 
-	fp := FingerprintOptions()
-	if fp.FolderDefaults != scan.FolderDefaults || fp.FileDefaults != scan.FileDefaults || fp.GitIgnore != scan.GitIgnore ||
-		fp.MinSize != scan.MinSize || fp.MaxSize != scan.MaxSize ||
-		fp.PreserveDependencyManifests != scan.PreserveDependencyManifests ||
-		fp.SkipDirs != nil {
-		t.Errorf("FingerprintOptions = %+v, want the same as ScanOptions %+v", fp, scan)
+	dep := Dependencies(nil)
+	// The built-in file lists apply, the folder ones do not: the scanning directory
+	// lists prune venv/ and examples/, where manifests legitimately live, so
+	// Dependencies states its own directory rules instead.
+	if !dep.BuiltinFileRules {
+		t.Error("Dependencies must apply the built-in file lists")
 	}
-
-	dep := DependencyOptions()
-	if !dep.FolderDefaults || !dep.FileDefaults {
-		t.Error("DependencyOptions must apply the built-in lists")
+	if dep.BuiltinFolderRules {
+		t.Error("Dependencies must not apply the built-in folder lists; it carries its own")
+	}
+	if dep.SkipDirExts == nil {
+		t.Error("Dependencies must still prune directory suffixes (foo.egg-info)")
 	}
 	if dep.GitIgnore {
-		t.Error("DependencyOptions must not apply .gitignore: it does not decide what is a dependency")
+		t.Error("Dependencies must not apply .gitignore: it does not decide what is a dependency")
 	}
-	if !dep.PreserveDependencyManifests {
-		t.Error("DependencyOptions must preserve manifests; they live behind skipped extensions")
+	if !dep.KeepManifests {
+		t.Error("Dependencies must preserve manifests; they live behind skipped extensions")
 	}
 	if dep.SkipDirs == nil {
-		t.Fatal("DependencyOptions must carry its own directory list")
+		t.Fatal("Dependencies must carry its own directory list")
 	}
 	for _, d := range dep.SkipDirs {
 		if d == "example" || d == "examples" {
@@ -354,7 +432,7 @@ func TestLayerProfiles(t *testing.T) {
 
 // The dependency profile finds a manifest that scanning discards by extension,
 // and still prunes what both operations agree on.
-func TestDependencyOptionsKeepManifests(t *testing.T) {
+func TestDependenciesKeepManifests(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "package.json"), 200)           // manifest behind .json
 	writeFile(t, filepath.Join(root, "examples", "go.mod"), 200)     // manifest scanning would prune
@@ -362,7 +440,7 @@ func TestDependencyOptionsKeepManifests(t *testing.T) {
 	writeFile(t, filepath.Join(root, "dist", "package.json"), 200)   // pruned by the dependency list
 	writeFile(t, filepath.Join(root, "notes.txt"), 200)              // not a manifest
 
-	res, err := Collect(root, DependencyOptions())
+	res, err := Collect(root, Dependencies(nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -382,7 +460,7 @@ func TestDependencyProfileFindsManifestsAnywhere(t *testing.T) {
 	writeFile(t, filepath.Join(root, "examples", "go.mod"), 200)
 	writeFile(t, filepath.Join(root, "examples", "main.go"), 200)
 
-	res, err := Collect(root, DependencyOptions())
+	res, err := Collect(root, Dependencies(nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +475,7 @@ func TestDependencyProfileFindsManifestsAnywhere(t *testing.T) {
 	}
 
 	// Scanning, by contrast, still prunes examples/: its code is not the product.
-	scanRes, err := Collect(root, ScanOptions())
+	scanRes, err := Collect(root, Scanning(nil))
 	if err != nil {
 		t.Fatal(err)
 	}

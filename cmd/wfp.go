@@ -116,12 +116,8 @@ func runWFP(cmd *cobra.Command, args []string) error {
 
 	// Collect files with the same inputs `scan` uses, so a WFP generated here
 	// covers exactly the files a scan of the same tree would upload.
-	collectOpts := filter.FingerprintOptions()
-	collectOpts.MinSize, collectOpts.MaxSize = minSize, maxSize
-	collectOpts.FileDefaults, collectOpts.FolderDefaults = !allExtensions, !allFolders
-	collectOpts.GitIgnore = applyGitignore
-	collectOpts.IncludeHidden = allHidden
-	collectOpts.Settings = wfpSettings.FingerprintFilter()
+	collectOpts := filter.Fingerprinting(wfpSettings)
+	applyCollectFlags(&collectOpts, minSize, maxSize, allExtensions, allFolders, applyGitignore, allHidden)
 	res, err := filter.Collect(targetPath, collectOpts)
 	if err != nil {
 		return fmt.Errorf("error collecting files: %w", err)

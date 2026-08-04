@@ -28,8 +28,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/scanoss/scanoss.go/pkg/filter"
 )
 
 // Settings file names supported (both conventions)
@@ -136,48 +134,6 @@ type Settings struct {
 	// Settings holds the input-filtering rules (the scanoss.json "settings"
 	// section). Optional.
 	Settings Tuning `json:"settings,omitempty"`
-}
-
-// filterFor maps the skip rules for the given operation (one of the Operation*
-// constants) into the filter package's dependency-free Settings. Returns nil
-// when s is nil.
-func (s *Settings) filterFor(operation string) *filter.Settings {
-	if s == nil {
-		return nil
-	}
-	sizes := s.Settings.SkipSizes(operation)
-	rules := make([]filter.SizeRule, 0, len(sizes))
-	for _, r := range sizes {
-		rules = append(rules, filter.SizeRule{Patterns: r.Patterns, Min: r.Min, Max: r.Max})
-	}
-	return &filter.Settings{
-		Skip: filter.Skip{
-			Patterns: s.Settings.SkipPatterns(operation),
-			Sizes:    rules,
-		},
-	}
-}
-
-// ScanFilter returns the file-collection filter for the scanning operation,
-// derived from the scanoss.json skip rules. Returns nil when s is nil.
-func (s *Settings) ScanFilter() *filter.Settings {
-	return s.filterFor(OperationScanning)
-}
-
-// FingerprintFilter returns the file-collection filter for the fingerprinting
-// operation. scanoss.json keeps the two operations apart, so a command that only
-// fingerprints (wfp) must read its own rules rather than the scanning ones.
-// Returns nil when s is nil.
-func (s *Settings) FingerprintFilter() *filter.Settings {
-	return s.filterFor(OperationFingerprinting)
-}
-
-// DependencyFilter returns the file-collection filter for the dependencies
-// operation. The section is part of the published scanoss.json schema, so a
-// project can already write skip.patterns.dependencies today — this is what
-// makes it take effect. Returns nil when s is nil.
-func (s *Settings) DependencyFilter() *filter.Settings {
-	return s.filterFor(OperationDependencies)
 }
 
 // HasBOM returns true if the settings contain any BOM entries

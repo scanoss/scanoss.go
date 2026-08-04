@@ -25,7 +25,7 @@ package filter
 
 import "testing"
 
-// benchInfo is a realistic mix of entries a scan walk feeds to Composite.Match:
+// benchInfo is a realistic mix of entries a scan walk feeds to composite.Match:
 // kept source files, skipped extensions (early and late in the default list),
 // skipped names/endings, and directories.
 var benchInfo = []fakeInfo{
@@ -50,7 +50,7 @@ var benchInfo = []fakeInfo{
 // BenchmarkCompositeMatch measures the per-entry filtering cost over the built-in
 // defaults — the hot path run once per file during a scan walk.
 func BenchmarkCompositeMatch(b *testing.B) {
-	c := Build(DefaultSource(StdDefaults()))
+	c := build(defaultSource(stdDefaults()))
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

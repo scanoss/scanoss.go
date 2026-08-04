@@ -37,7 +37,7 @@ package filter
 
 // DefaultMinFileSize is the minimum file size (bytes) to scan. 0 means no
 // minimum: a file is collected however small it is, unless another rule skips
-// it. Raise it per run with --min-size, or per pattern with a scanoss.json
+// it. Raise it with Options.MinSize, or per pattern with a scanoss.json
 // skip.sizes rule.
 const DefaultMinFileSize int64 = 0
 
@@ -50,29 +50,22 @@ const DefaultMaxFileSize int64 = 0
 // operations is stated once, here, instead of being whatever falls out of two
 // lists maintained apart.
 //
-// StdDefaults composes the scanning set; DependencyOptions composes the
-// dependency one. The three lists are exported for callers that apply the rules
-// themselves — see CommonSkippedDirs on which one such a caller usually wants.
+// stdDefaults composes the scanning set; Dependencies composes the dependency one.
 
-// CommonSkippedDirs are skipped by every operation.
-//
-// This is also the most a pre-filter can safely prune when it does not yet know
-// which operation will consume the result — an archive extractor feeding both a
-// scan and a dependency analysis. Pruning beyond this is irreversible: the files
-// never reach disk.
-var CommonSkippedDirs = []string{
+// commonSkippedDirs are skipped by every operation.
+var commonSkippedDirs = []string{
 	"__pycache__",
 	// SBOM-Workbench parity:
 	"node_modules",
 	"vendor",
 }
 
-// ScanOnlySkippedDirs are skipped when scanning or fingerprinting, on top of
-// CommonSkippedDirs. Example code is not the product, so its matches are noise;
+// scanOnlySkippedDirs are skipped when scanning or fingerprinting, on top of
+// commonSkippedDirs. Example code is not the product, so its matches are noise;
 // virtualenvs, eggs and wheels hold installed packages whose code is not the
 // project's. Dependency collection does NOT inherit these: a manifest declares
 // real dependencies wherever it lives, examples/ included.
-var ScanOnlySkippedDirs = []string{
+var scanOnlySkippedDirs = []string{
 	"nbproject",
 	"nbbuild",
 	"nbdist",
@@ -86,11 +79,11 @@ var ScanOnlySkippedDirs = []string{
 	"examples",
 }
 
-// DependencyOnlySkippedDirs are skipped when collecting dependencies, on top of
-// CommonSkippedDirs: generated trees, whose manifests are build output rather
+// dependencyOnlySkippedDirs are skipped when collecting dependencies, on top of
+// commonSkippedDirs: generated trees, whose manifests are build output rather
 // than declarations. Scanning does not inherit these — the sources under a
 // build tree are still code that can match.
-var DependencyOnlySkippedDirs = []string{
+var dependencyOnlySkippedDirs = []string{
 	"dist",
 	"build",
 	"target",
@@ -99,19 +92,19 @@ var DependencyOnlySkippedDirs = []string{
 // skippedDirs joins the shared list with an operation's own. It returns a fresh
 // slice so the package-level lists are never aliased or appended to.
 func skippedDirs(extra []string) []string {
-	out := make([]string, 0, len(CommonSkippedDirs)+len(extra))
-	out = append(out, CommonSkippedDirs...)
+	out := make([]string, 0, len(commonSkippedDirs)+len(extra))
+	out = append(out, commonSkippedDirs...)
 	return append(out, extra...)
 }
 
-// DefaultSkippedDirExts are directory-name suffixes that are skipped (e.g. a
+// defaultSkippedDirExts are directory-name suffixes that are skipped (e.g. a
 // directory named "foo.egg-info").
-var DefaultSkippedDirExts = []string{
+var defaultSkippedDirExts = []string{
 	".egg-info",
 }
 
-// DefaultSkippedFiles are exact file names that are skipped.
-var DefaultSkippedFiles = []string{
+// defaultSkippedFiles are exact file names that are skipped.
+var defaultSkippedFiles = []string{
 	"gradlew",
 	"gradlew.bat",
 	"mvnw",
@@ -126,10 +119,10 @@ var DefaultSkippedFiles = []string{
 	"makefile",
 }
 
-// DefaultSkippedExts are file-name extensions (suffixes including the leading
+// defaultSkippedExts are file-name extensions (suffixes including the leading
 // dot) that are skipped. Compound extensions such as ".min.js" are matched as a
 // full suffix.
-var DefaultSkippedExts = []string{
+var defaultSkippedExts = []string{
 	".1", ".2", ".3", ".4", ".5", ".6", ".7", ".8", ".9",
 	".ac", ".adoc", ".am", ".asciidoc", ".bmp", ".build", ".cfg", ".chm",
 	".class", ".cmake", ".cnf", ".conf", ".config", ".contributors", ".copying",
@@ -155,10 +148,10 @@ var DefaultSkippedExts = []string{
 	".mod", ".sum",
 }
 
-// DefaultSkippedFileEndings are file-name suffixes that are not extensions (no
+// defaultSkippedFileEndings are file-name suffixes that are not extensions (no
 // leading dot), matched case-insensitively against the whole file name. These
 // correspond to scanoss.py's "file endings" entries.
-var DefaultSkippedFileEndings = []string{
+var defaultSkippedFileEndings = []string{
 	"-doc",
 	"changelog",
 	"config",

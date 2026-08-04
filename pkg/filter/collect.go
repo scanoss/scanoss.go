@@ -26,8 +26,10 @@ package filter
 import (
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/scanoss/scanoss.go/pkg/manifests"
+	"github.com/scanoss/scanoss.go/pkg/settings"
 )
 
 // absPath returns the absolute path for p, falling back to p on error.
@@ -38,28 +40,35 @@ func absPath(p string) string {
 	return p
 }
 
-// Options configures a Collect call. Set the Skip* fields to replace the
-// corresponding default list. Use DefaultOptions for the common case where the
-// built-in defaults and .gitignore are applied.
+// Options configures a Collect call. Start from Scanning, Fingerprinting or Dependencies
+// or build one literally — a zero Options filters nothing beyond what is never
+// scannable (empty files, symlinks) and hidden entries.
 type Options struct {
-	// Skip* replace the matching built-in default list when non-nil.
-	SkipDirs       []string
-	SkipFiles      []string
-	SkipExtensions []string
+	// BuiltinFolderRules applies the built-in directory lists (node_modules, vendor,
+	// build output, …). BuiltinFileRules applies the built-in file lists: exact names,
+	// extensions and name endings, which together answer one question — is this file
+	// worth fingerprinting.
+	//
+	// Turning either off does not touch the Skip* fields below: those are the caller's
+	// own rules, not part of the built-in policy. "No built-in folder lists" and "no
+	// folder rules at all" are different requests, and this flag only makes the first.
+	BuiltinFolderRules bool
+	BuiltinFileRules   bool
 
-	// Size bounds. The built-in values are DefaultMinFileSize/DefaultMaxFileSize,
-	// set by DefaultOptions/ScanOptions/DependencyOptions; assign these fields to
-	// override them. They are applied as their own source, so turning Defaults
-	// off keeps a bound the caller asked for. A zero-valued Options (built
-	// literally, without a constructor) means no bound on either side.
-	MinSize int64 // minimum file size in bytes; 0 imposes no minimum
-	MaxSize int64 // maximum file size in bytes; 0 imposes no maximum (unlimited)
+	// The caller's own skip rules, layered on top of whatever the flags above admit.
+	//
+	// These are names, not paths and not globs: "node_modules", never "/node_modules"
+	// or "src/**". A name matches at any depth. For paths and patterns use SkipPatterns.
+	SkipDirs    []string // directory names
+	SkipDirExts []string // directory-name suffixes, e.g. ".egg-info"
+	SkipFiles   []string // exact file names
+	SkipExts    []string // file extensions, leading dot: ".png"
 
-	// FolderDefaults applies the built-in directory skip lists (node_modules, vendor, build output,
-	// …). FileDefaults applies the built-in file rules — extensions, name endings and exact names —
-	// which answer one question together: is this file worth fingerprinting.
-	FolderDefaults bool
-	FileDefaults   bool
+	// Size bounds, applied as their own rule so they survive turning the built-in
+	// lists off. 0 means no bound on that side; the built-in values are
+	// DefaultMinFileSize / DefaultMaxFileSize.
+	MinSize int64
+	MaxSize int64
 
 	GitIgnore bool // honor .gitignore
 
@@ -69,82 +78,103 @@ type Options struct {
 	// implementation, where the equivalent flag has the same reach.
 	IncludeHidden bool
 
-	// Settings is the scanoss.json skip/folders rules, already resolved to a
-	// single operation. Nil when there is no scanoss.json.
-	Settings *Settings
+	// SkipPatterns are gitignore-style globs: "src/**", "*.min.js". SizeRules bound the
+	// size of files matching a glob. The profiles fill both from the project's
+	// scanoss.json; a caller may add its own.
+	//
+	// Unlike the name-based fields above, these are final — KeepManifests never
+	// overrides one, because a caller that named a path meant that path.
+	SkipPatterns []string
+	SizeRules    []SizeRule
 
-	// PreserveDependencyManifests keeps dependency manifest files
-	// (package.json, go.mod, pom.xml, … — see pkg/manifests) even when a skip
-	// rule would otherwise drop them. Use it for stages that consume manifests
-	// (extraction/upload feeding the dependency parser) while still pruning
-	// everything else. Fingerprint scanning leaves this false — manifests are
-	// not useful for matching. Default false → unchanged behavior.
-	PreserveDependencyManifests bool
+	// KeepManifests keeps dependency manifest files (package.json, go.mod, pom.xml, …
+	// — see pkg/manifests) even when a skip rule would otherwise drop them. Use it for
+	// stages that consume manifests while still pruning everything else. Fingerprint
+	// scanning leaves it false: a manifest is a declaration, not a file worth matching.
+	KeepManifests bool
 }
 
-// DefaultOptions returns the common-case Options: the built-in default skip
-// lists and .gitignore are applied, with no scanoss.json.
-func DefaultOptions() Options {
-	return Options{
-		FolderDefaults: true,
-		FileDefaults:   true,
-		GitIgnore:      true,
-		MinSize:        DefaultMinFileSize,
-		MaxSize:        DefaultMaxFileSize,
+// One profile per scanoss.json operation. Each takes the project's parsed file and
+// pulls its own section out of it, so the caller never picks a section — the profile it
+// asked for already is one. A nil scanossSettings means no project rules.
+
+// Scanning selects the files worth matching: the built-in skip lists apply and
+// .gitignore is honoured. Dependency manifests are dropped — a declaration is not a
+// file to match against the knowledge base.
+func Scanning(scanossSettings *settings.Settings) Options {
+	return sourceFiles(scanossSettings, settings.OperationScanning)
+}
+
+// Fingerprinting is Scanning's ruleset over the fingerprinting section. The two apply
+// the same rules and differ only in which rules the project wrote for them.
+func Fingerprinting(scanossSettings *settings.Settings) Options {
+	return sourceFiles(scanossSettings, settings.OperationFingerprinting)
+}
+
+func sourceFiles(s *settings.Settings, operation string) Options {
+	o := Options{
+		BuiltinFolderRules: true,
+		BuiltinFileRules:   true,
+		GitIgnore:          true,
+		MinSize:            DefaultMinFileSize,
+		MaxSize:            DefaultMaxFileSize,
 	}
+	o.SkipPatterns, o.SizeRules = projectRules(s, operation)
+	return o
 }
 
-// ScanOptions returns the options for fingerprint scanning: the built-in defaults
-// and .gitignore. PreserveDependencyManifests stays off, so a manifest the default
-// lists exclude stays excluded — it is a declaration, not a file worth matching.
-// Same values as DefaultOptions today, named separately so each layer states which
-// profile it uses.
-func ScanOptions() Options {
-	return Options{
-		FolderDefaults: true,
-		FileDefaults:   true,
-		GitIgnore:      true,
-		MinSize:        DefaultMinFileSize,
-		MaxSize:        DefaultMaxFileSize,
+// projectRules reads one operation's skip rules out of a parsed scanoss.json. Nil
+// settings yields nothing, which is what a project without the file should get.
+func projectRules(s *settings.Settings, operation string) ([]string, []SizeRule) {
+	if s == nil {
+		return nil, nil
 	}
+	sizes := s.Settings.SkipSizes(operation)
+	rules := make([]SizeRule, 0, len(sizes))
+	for _, r := range sizes {
+		rules = append(rules, SizeRule{Patterns: r.Patterns, Min: r.Min, Max: r.Max})
+	}
+	return s.Settings.SkipPatterns(operation), rules
 }
 
-// FingerprintOptions returns the options for the fingerprint-only path (the wfp
-// command). Identical to ScanOptions today — the two differ only in which
-// scanoss.json section the caller supplies — but named separately so each layer
-// states which profile it uses, and so the two can diverge without a caller
-// silently inheriting the wrong one.
-func FingerprintOptions() Options {
-	return ScanOptions()
-}
-
-// DependencyOptions returns the options for collecting dependency manifests.
-// Three things differ from ScanOptions, and all three are deliberate:
+// Dependencies collects the files a dependency stage should see. It keeps the manifests the
+// file rules would otherwise drop, but it does not select only manifests: a caller that wants
+// just those filters the result by what its parser handles.
 //
-//   - the directory list adds DependencyOnlySkippedDirs instead of the scanning ones;
+// Three things differ from Scanning, and all three are deliberate:
+//
+//   - the directory list prunes generated trees instead of the scanning ones;
 //   - manifests are preserved, since they live behind skipped extensions;
 //   - .gitignore is NOT applied. It answers "should this be versioned", not "is
 //     this a dependency": a lock file excluded from git still declares what the
 //     project uses, and losing a declaration is worse than analysing one extra.
-func DependencyOptions() Options {
-	return Options{
-		FolderDefaults:              true,
-		FileDefaults:                true,
-		GitIgnore:                   false,
-		MinSize:                     DefaultMinFileSize,
-		MaxSize:                     DefaultMaxFileSize,
-		SkipDirs:                    skippedDirs(DependencyOnlySkippedDirs),
-		PreserveDependencyManifests: true,
+//
+// The built-in folder lists are off and the directory rules are given explicitly: the scanning
+// lists prune venv/ and examples/, where manifests legitimately live. dist/, build/ and target/
+// are pruned here instead, since a manifest under one of them is build output.
+// The directory-suffix list is the built-in one, which those lists do not disagree on.
+func Dependencies(scanossSettings *settings.Settings) Options {
+	o := Options{
+		BuiltinFolderRules: false,
+		BuiltinFileRules:   true,
+		GitIgnore:          false,
+		MinSize:            DefaultMinFileSize,
+		MaxSize:            DefaultMaxFileSize,
+		SkipDirs:           skippedDirs(dependencyOnlySkippedDirs),
+		SkipDirExts:        slices.Clone(defaultSkippedDirExts),
+		KeepManifests:      true,
 	}
+	o.SkipPatterns, o.SizeRules = projectRules(scanossSettings, settings.OperationDependencies)
+	return o
 }
 
-// keepMatcher wraps a base skip matcher with the PreserveDependencyManifests
+// keepMatcher wraps a base skip matcher with the KeepManifests
 // exemption: a file that a base rule would skip is kept when it is a dependency
 // manifest. The exemption applies to files only — directories are matched by the
 // base matcher unchanged (so skipped dirs like node_modules are not descended).
 type keepMatcher struct {
-	base              Matcher // built-in rules: the exemption may override these
-	userRules         Matcher // scanoss.json: the exemption may not
+	base              matcher // built-in rules: the exemption may override these
+	userRules         matcher // scanoss.json: the exemption may not
 	preserveManifests bool
 }
 
@@ -172,44 +202,38 @@ type CollectResult struct {
 	SkippedCount int
 }
 
-// defaults builds the Defaults to use, applying any overrides from o.
-func (o Options) defaults() Defaults {
-	d := StdDefaults()
-	if o.SkipDirs != nil {
-		d.Dirs = o.SkipDirs
-	}
-	if o.SkipFiles != nil {
-		d.Files = o.SkipFiles
-	}
-	if o.SkipExtensions != nil {
-		d.Exts = o.SkipExtensions
-	}
-	return d
-}
-
 // Collect walks root once, returning the files to scan and a count of those
 // skipped. Rules are loaded from the enabled sources (defaults, scanoss.json,
 // .gitignore), deduplicated, and applied as a single composite — including the
 // hidden-entry rule, unless Options.IncludeHidden says otherwise. Zero-byte
-// files and symbolic links are always skipped (see UnscannableSource).
+// files and symbolic links are always skipped, unconditionally.
 // Symlinked directories are not followed. Returned paths are absolute.
 func Collect(root string, o Options) (*CollectResult, error) {
-	var sources [][]Matcher
-	sources = append(sources, UnscannableSource())
+	var sources [][]matcher
+	sources = append(sources, unscannableSource())
 	if !o.IncludeHidden {
-		sources = append(sources, HiddenSource())
+		sources = append(sources, hiddenSource())
 	}
-	if o.FolderDefaults {
-		sources = append(sources, FolderDefaultSource(o.defaults()))
+	// The built-in lists and the caller's own are separate sources, added independently:
+	// that is what lets a caller drop the built-ins and keep its own rules. build
+	// deduplicates by key, so a name in both collapses to one matcher.
+	if o.BuiltinFolderRules {
+		sources = append(sources, folderDefaultSource(stdDefaults()))
 	}
-	if o.FileDefaults {
-		sources = append(sources, FileDefaultSource(o.defaults()))
+	if len(o.SkipDirs) > 0 || len(o.SkipDirExts) > 0 {
+		sources = append(sources, folderDefaultSource(defaults{Dirs: o.SkipDirs, DirExts: o.SkipDirExts}))
 	}
-	if sz := SizeSource(o.MinSize, o.MaxSize); sz != nil {
+	if o.BuiltinFileRules {
+		sources = append(sources, fileDefaultSource(stdDefaults()))
+	}
+	if len(o.SkipFiles) > 0 || len(o.SkipExts) > 0 {
+		sources = append(sources, fileDefaultSource(defaults{Files: o.SkipFiles, Exts: o.SkipExts}))
+	}
+	if sz := sizeSource(o.MinSize, o.MaxSize); sz != nil {
 		sources = append(sources, sz)
 	}
 	if o.GitIgnore {
-		gi, err := GitIgnoreSource(root)
+		gi, err := gitIgnoreSource(root)
 		if err != nil {
 			return nil, err
 		}
@@ -217,16 +241,16 @@ func Collect(root string, o Options) (*CollectResult, error) {
 			sources = append(sources, gi)
 		}
 	}
-	var userRules Matcher
-	if o.Settings != nil {
-		if ms := SettingsSource(o.Settings); len(ms) > 0 {
-			userRules = Build(ms)
-		}
+	// The caller's patterns are kept apart from everything above: KeepManifests may
+	// override a built-in rule, never a path the caller named.
+	var userRules matcher
+	if ms := patternSource(o); len(ms) > 0 {
+		userRules = build(ms)
 	}
 	skip := &keepMatcher{
-		base:              Build(sources...),
+		base:              build(sources...),
 		userRules:         userRules,
-		preserveManifests: o.PreserveDependencyManifests,
+		preserveManifests: o.KeepManifests,
 	}
 
 	res := &CollectResult{}

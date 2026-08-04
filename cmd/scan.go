@@ -417,24 +417,26 @@ func runScan(cmd *cobra.Command, args []string) error {
 	ctx, cancel := createCancellableContext()
 	defer cancel()
 
-	// The profile says which rules apply; the flags say what the user asked for.
-	collectOpts := filter.ScanOptions()
-	collectOpts.MinSize, collectOpts.MaxSize = minSize, maxSize
-	collectOpts.FileDefaults, collectOpts.FolderDefaults = !allExtensions, !allFolders
-	collectOpts.GitIgnore = applyGitignore
-	collectOpts.IncludeHidden = allHidden
-	collectOpts.Settings = scanSettings.ScanFilter()
+	// The profile says which rules apply; the flags say what the user asked for. The
+	// two stages get their own, built from the same flags: the manifest stage is not the
+	// scan's filters with a few fields swapped, and deriving one from the other is how a
+	// profile's own decision used to get overwritten.
+	collectOpts := filter.Scanning(scanSettings)
+	applyCollectFlags(&collectOpts, minSize, maxSize, allExtensions, allFolders, applyGitignore, allHidden)
+
+	depOpts := filter.Dependencies(scanSettings)
+	applyCollectFlags(&depOpts, minSize, maxSize, allExtensions, allFolders, applyGitignore, allHidden)
 
 	result, err := scanpipeline.Run(ctx, scanpipeline.Options{
-		Client:             client,
-		Services:           servicesFor(layers),
-		SourceDeclared:     layers.Has(LayerDeps),
-		SourcePath:         targetPath,
-		Threads:            threads,
-		Filter:             collectOpts,
-		DependencySettings: scanSettings.DependencyFilter(),
-		ScanOptions:        scanTuning(cmd, scanSettings, prog),
-		OnProgress:         prog.layer,
+		Client:            client,
+		Services:          servicesFor(layers),
+		SourceDeclared:    layers.Has(LayerDeps),
+		SourcePath:        targetPath,
+		Threads:           threads,
+		ScanFilters:       collectOpts,
+		DependencyFilters: depOpts,
+		ScanOptions:       scanTuning(cmd, scanSettings, prog),
+		OnProgress:        prog.layer,
 	})
 	prog.finish()
 	if err != nil {
