@@ -28,7 +28,6 @@ import (
 	"os"
 	"sync"
 
-	"github.com/scanoss/scanoss.go/pkg/filter"
 	fingerprint "github.com/scanoss/scanoss.go/pkg/fingerprint/wfp"
 )
 
@@ -108,27 +107,6 @@ func (wp *WorkerPool) Results() <-chan *fingerprint.FileFingerprint {
 // Errors returns the errors channel
 func (wp *WorkerPool) Errors() <-chan error {
 	return wp.errors
-}
-
-// CollectFiles recursively collects the files to scan under rootPath, applying
-// the built-in default filters (skip lists, sizes) plus any .gitignore in the
-// tree. It is the collection entry point of the C API (libscanoss/core), which
-// exposes no way to pass options; Go callers use CollectFilesWithOptions to also
-// apply scanoss.json rules or to override the defaults.
-func CollectFiles(rootPath string) ([]string, error) {
-	res, err := filter.Collect(rootPath, filter.DefaultOptions())
-	if err != nil {
-		return nil, err
-	}
-	return res.Files, nil
-}
-
-// CollectFilesWithOptions recursively collects the files to scan under rootPath,
-// applying the given filter options (defaults, scanoss.json skip rules,
-// .gitignore, size bounds). It returns the files to scan and a count of skipped
-// files.
-func CollectFilesWithOptions(rootPath string, o filter.Options) (*filter.CollectResult, error) {
-	return filter.Collect(rootPath, o)
 }
 
 // GenerateWFP fingerprints the given files with a worker pool and returns the

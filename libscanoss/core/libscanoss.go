@@ -33,7 +33,6 @@ import (
 	"github.com/scanoss/scanoss.go/internal/version"
 	"github.com/scanoss/scanoss.go/pkg/filter"
 	wfpPkg "github.com/scanoss/scanoss.go/pkg/fingerprint/wfp"
-	"github.com/scanoss/scanoss.go/pkg/scanner"
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
 )
 
@@ -104,12 +103,12 @@ func GenerateWFPJSON(filePath *C.char) *C.char {
 func CollectFiles(path *C.char) *C.char {
 	goPath := C.GoString(path)
 
-	files, err := scanner.CollectFiles(goPath)
+	res, err := filter.Collect(goPath, filter.DefaultOptions())
 	if err != nil {
 		return errorJSON(err)
 	}
 
-	jsonData, err := json.Marshal(files)
+	jsonData, err := json.Marshal(res.Files)
 	if err != nil {
 		return errorJSON(err)
 	}
