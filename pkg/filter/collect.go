@@ -165,8 +165,6 @@ func (m *keepMatcher) Match(rel string, info os.FileInfo) bool {
 	return true
 }
 
-func (m *keepMatcher) Key() string { return "keep:" + m.base.Key() }
-
 // CollectResult is the outcome of a Collect: the absolute paths to scan and how
 // many files were skipped. The skipped files themselves are not retained.
 type CollectResult struct {

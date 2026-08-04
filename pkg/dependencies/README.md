@@ -302,19 +302,6 @@ purl := parsers.BuildPURL(
 // Returns: "pkg:maven/org.springframework/spring-core@5.3.0?type=jar"
 ```
 
-### Deduplication
-
-```go
-purls := []parsers.LocalPurl{
-    {Purl: "pkg:npm/react@18.0.0"},
-    {Purl: "pkg:npm/react@18.0.0"}, // duplicate
-    {Purl: "pkg:npm/vue@3.0.0"},
-}
-
-unique := parsers.RemoveDuplicates(purls)
-// Returns: 2 items
-```
-
 ## Error Handling
 
 The parser handles errors gracefully:

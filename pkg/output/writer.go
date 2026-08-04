@@ -60,12 +60,6 @@ func (w *Writer) Write(content string) error {
 	return err
 }
 
-// WriteFormat writes formatted content
-func (w *Writer) WriteFormat(format string, args ...interface{}) error {
-	_, err := fmt.Fprintf(w.writer, format, args...)
-	return err
-}
-
 // Close closes the writer if it's a file
 func (w *Writer) Close() error {
 	if w.file != nil {
