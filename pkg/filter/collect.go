@@ -177,7 +177,7 @@ func Dependencies(scanossSettings *settings.Settings) Options {
 // base matcher unchanged (so skipped dirs like node_modules are not descended).
 type keepMatcher struct {
 	base              *composite // built-in rules: the exemption may override these
-	userRules         *composite // the caller.s own patterns: the exemption may not
+	userRules         *composite // the caller's own patterns: the exemption may not
 	preserveManifests bool
 }
 
