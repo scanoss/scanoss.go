@@ -24,9 +24,12 @@
 package filter
 
 import (
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
+
+	"github.com/scanoss/scanoss.go/internal/logging"
 
 	"github.com/scanoss/scanoss.go/pkg/manifests"
 	"github.com/scanoss/scanoss.go/pkg/settings"
@@ -173,8 +176,8 @@ func Dependencies(scanossSettings *settings.Settings) Options {
 // manifest. The exemption applies to files only — directories are matched by the
 // base matcher unchanged (so skipped dirs like node_modules are not descended).
 type keepMatcher struct {
-	base              matcher // built-in rules: the exemption may override these
-	userRules         matcher // scanoss.json: the exemption may not
+	base              *composite // built-in rules: the exemption may override these
+	userRules         *composite // the caller.s own patterns: the exemption may not
 	preserveManifests bool
 }
 
@@ -243,7 +246,7 @@ func Collect(root string, o Options) (*CollectResult, error) {
 	}
 	// The caller's patterns are kept apart from everything above: KeepManifests may
 	// override a built-in rule, never a path the caller named.
-	var userRules matcher
+	var userRules *composite
 	if ms := patternSource(o); len(ms) > 0 {
 		userRules = build(ms)
 	}
@@ -252,6 +255,17 @@ func Collect(root string, o Options) (*CollectResult, error) {
 		userRules:         userRules,
 		preserveManifests: o.KeepManifests,
 	}
+
+	logging.Debug("collect: rules", "root", root,
+		"builtinFolderRules", o.BuiltinFolderRules, "builtinFileRules", o.BuiltinFileRules,
+		"gitignore", o.GitIgnore, "includeHidden", o.IncludeHidden,
+		"minSize", o.MinSize, "maxSize", o.MaxSize,
+		"skipDirs", len(o.SkipDirs), "skipFiles", len(o.SkipFiles), "skipExts", len(o.SkipExts),
+		"skipPatterns", len(o.SkipPatterns), "sizeRules", len(o.SizeRules),
+		"keepManifests", o.KeepManifests, "matchers", len(skip.base.matchers))
+
+	// Resolved once: the reason is only built when someone is listening.
+	explain := logging.Enabled(slog.LevelDebug)
 
 	res := &CollectResult{}
 	walkErr := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
@@ -263,17 +277,26 @@ func Collect(root string, o Options) (*CollectResult, error) {
 			rel = path
 		}
 
+		// With Debug off this is Match; with it on, the same walk also reports which rule
+		// each exclusion came from — the question a filtered file always raises, and one
+		// SkippedCount alone cannot answer.
 		if info.IsDir() {
 			if path == root {
 				return nil
 			}
-			if skip.Match(rel, info) {
+			if reason := skip.matchKey(rel, info); reason != "" {
+				if explain {
+					logging.Debug("collect: pruned", "path", rel, "rule", reason)
+				}
 				return filepath.SkipDir
 			}
 			return nil
 		}
 
-		if skip.Match(rel, info) {
+		if reason := skip.matchKey(rel, info); reason != "" {
+			if explain {
+				logging.Debug("collect: skipped", "path", rel, "rule", reason)
+			}
 			res.SkippedCount++
 			return nil
 		}
@@ -285,4 +308,21 @@ func Collect(root string, o Options) (*CollectResult, error) {
 		return nil, walkErr
 	}
 	return res, nil
+}
+
+// matchKey is Match with the reason attached, following the same precedence.
+func (m *keepMatcher) matchKey(rel string, info os.FileInfo) string {
+	if m.userRules != nil {
+		if key := m.userRules.matchKey(rel, info); key != "" {
+			return key
+		}
+	}
+	key := m.base.matchKey(rel, info)
+	if key == "" {
+		return ""
+	}
+	if m.preserveManifests && !info.IsDir() && manifests.Is(rel) {
+		return "" // kept despite the built-in rule
+	}
+	return key
 }

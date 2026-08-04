@@ -29,6 +29,8 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+
+	"github.com/scanoss/scanoss.go/internal/logging"
 )
 
 // ChunkError records a batch of components the service never answered for. It names the
@@ -111,7 +113,7 @@ func (c *Client) decorate(ctx context.Context, svc Service, components []Compone
 		return nil, fmt.Errorf("no components to query")
 	}
 
-	c.log.Debug("decorating components", "service", svc.Name, "count", len(components), "purls", purlsOf(components))
+	logging.Debug("decorating components", "service", svc.Name, "count", len(components), "purls", purlsOf(components))
 
 	chunks := chunk(components, c.chunkSize)
 

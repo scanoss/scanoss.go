@@ -57,9 +57,6 @@ func TestConfigZeroValueDefaults(t *testing.T) {
 	if c.transport.maxServerRetryWait != DefaultMaxServerRetryWait {
 		t.Errorf("maxServerRetryWait = %v, want %v", c.transport.maxServerRetryWait, DefaultMaxServerRetryWait)
 	}
-	if c.log == nil {
-		t.Error("log is nil, want slog.Default()")
-	}
 }
 
 // A non-positive value is not a setting, it is an omission: it falls back to the default.

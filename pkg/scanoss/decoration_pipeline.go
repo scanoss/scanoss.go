@@ -30,6 +30,8 @@ import (
 	"sync"
 
 	scanossapi "github.com/scanoss/scanoss.api-sdk"
+
+	"github.com/scanoss/scanoss.go/internal/logging"
 )
 
 // DecorationPipeline runs a configurable set of decoration services over the same
@@ -128,7 +130,7 @@ func (p *DecorationPipeline) Run(ctx context.Context, components []Component, op
 	layers := make([]Service, 0, len(p.services))
 	for _, svc := range p.services {
 		if !isDecorationLayer(svc.Name) {
-			p.client.log.Warn("skipping a service that is not a decoration layer", "service", svc.Name)
+			logging.Warn("skipping a service that is not a decoration layer", "service", svc.Name)
 			continue
 		}
 		layers = append(layers, svc)
@@ -136,7 +138,7 @@ func (p *DecorationPipeline) Run(ctx context.Context, components []Component, op
 	if len(layers) == 0 {
 		return nil, fmt.Errorf("none of the %d configured service(s) is a decoration layer", len(p.services))
 	}
-	p.client.log.Debug("decoration pipeline run", "services", len(layers), "components", len(components))
+	logging.Debug("decoration pipeline run", "services", len(layers), "components", len(components))
 
 	type outcome struct {
 		name string

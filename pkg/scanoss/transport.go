@@ -27,8 +27,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/scanoss/scanoss.go/internal/logging"
 	"io"
-	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -56,7 +56,6 @@ type httpTransport struct {
 	maxRetries         int
 	retryBackoffBase   time.Duration
 	maxServerRetryWait time.Duration
-	log                *slog.Logger
 }
 
 // response is what the transport learned about a single API call. It is returned by
@@ -99,7 +98,7 @@ func (t *httpTransport) do(ctx context.Context, req *http.Request) (response, er
 		if !retry {
 			return res, err
 		}
-		t.logger().Debug("retrying", "wait", wait, "attempt", attempt+2,
+		logging.Debug("retrying", "wait", wait, "attempt", attempt+2,
 			"status", res.StatusCode, "url", req.URL.String())
 		if werr := sleepCtx(ctx, wait); werr != nil {
 			return res, werr
@@ -125,19 +124,18 @@ func (t *httpTransport) prepare(ctx context.Context, req *http.Request) *http.Re
 // usable response came back: the request never landed, or its body ended early. Deciding
 // what to do about that belongs to retryDelay.
 func (t *httpTransport) send(req *http.Request, attempt int) (response, error) {
-	logger := t.logger()
 	start := time.Now()
 
 	resp, err := t.httpClient.Do(req)
 	if err != nil {
-		logger.Debug("http request error", "method", req.Method, "url", req.URL.String(),
+		logging.Debug("http request error", "method", req.Method, "url", req.URL.String(),
 			"attempt", attempt+1, "err", err)
 		return response{}, fmt.Errorf("error making request: %w", err)
 	}
 
 	body, rerr := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
-	logger.Debug("http request",
+	logging.Debug("http request",
 		"method", req.Method, "url", req.URL.String(),
 		"status", resp.StatusCode, "bytes", len(body),
 		"attempt", attempt+1,
@@ -182,14 +180,6 @@ func (t *httpTransport) retryDelay(ctx context.Context, req *http.Request, attem
 		return d, true
 	}
 	return backoff(attempt, t.retryBackoffBase), true
-}
-
-// logger is t.log, or the default when the transport was built without one.
-func (t *httpTransport) logger() *slog.Logger {
-	if t.log == nil {
-		return slog.Default()
-	}
-	return t.log
 }
 
 // rewindBody restores the body the attempt just made consumed, so the next one can send it

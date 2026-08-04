@@ -24,7 +24,7 @@
 package wfp
 
 import (
-	"log/slog"
+	"github.com/scanoss/scanoss.go/internal/logging"
 	"os"
 	"sync"
 )
@@ -127,7 +127,7 @@ func Generate(files []string, workers int, root string, onProgress func(done, to
 	if workers < 1 {
 		workers = 1
 	}
-	slog.Debug("fingerprinting files", "count", len(files), "workers", workers)
+	logging.Debug("fingerprinting files", "count", len(files), "workers", workers)
 	pool := newWorkerPool(workers)
 	pool.root = root // WFP "file=" labels relative to root; empty = absolute
 	pool.start()

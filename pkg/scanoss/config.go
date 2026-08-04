@@ -24,7 +24,6 @@
 package scanoss
 
 import (
-	"log/slog"
 	"net/http"
 	"time"
 )
@@ -87,10 +86,6 @@ type Config struct {
 	// MaxServerRetryWait caps a single Retry-After wait (default DefaultMaxServerRetryWait),
 	// bounding a pathological server value. It does not bound RetryBackoffBase's waits.
 	MaxServerRetryWait time.Duration
-
-	// Logger receives the SDK's diagnostics, at Debug/Info/Warn (default
-	// slog.Default()). The SDK never writes to stdout, only through this logger.
-	Logger *slog.Logger
 }
 
 // httpClient builds the client for the transport. The SDK owns it: Config carries the

@@ -24,8 +24,11 @@
 package scanpipeline
 
 import (
+	"bytes"
+	"log/slog"
+
 	"context"
-	"io"
+	"github.com/scanoss/scanoss.go/internal/logging"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -430,23 +433,17 @@ func TestEnrichWarnsOnUndecodableLayer(t *testing.T) {
 	defer srv.Close()
 	client := mustNewClient(t, srv.URL)
 
-	// Enrich reports to stderr, so the warning is captured by swapping it for a pipe.
-	real := os.Stderr
-	pr, pw, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	os.Stderr = pw
+	// The warning goes to the configured sink, not to stderr: this module writes nothing
+	// until an application asks for logs. Capture it by installing a logger.
+	var out bytes.Buffer
+	logging.Set(slog.New(slog.NewTextHandler(&out, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	defer logging.Set(nil)
 
 	inv := sbom.Inventory{Components: []sbom.Component{{Purl: "pkg:npm/lodash", Version: "4.17.20"}}}
 	Enrich(context.Background(), client, &inv, []scanoss.Service{scanoss.ServiceLicenses, scanoss.ServiceVulnerabilities}, nil)
 
-	_ = pw.Close()
-	os.Stderr = real
-	out, _ := io.ReadAll(pr)
-
-	if !strings.Contains(string(out), scanoss.ServiceLicenses.Name) {
-		t.Errorf("no warning naming the licenses service; stderr was %q", out)
+	if !strings.Contains(out.String(), scanoss.ServiceLicenses.Name) {
+		t.Errorf("no warning naming the licenses service; log was %q", out.String())
 	}
 	if lodash := findComponent(inv, "pkg:npm/lodash"); lodash != nil && len(lodash.Licenses) != 0 {
 		t.Errorf("licenses should be absent when the response cannot be read, got %v", lodash.Licenses)
