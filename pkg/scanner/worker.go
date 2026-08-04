@@ -112,7 +112,8 @@ func (wp *WorkerPool) Errors() <-chan error {
 
 // CollectFiles recursively collects the files to scan under rootPath, applying
 // the built-in default filters (skip lists, sizes) plus any .gitignore in the
-// tree. Kept for backward compatibility; use CollectFilesWithOptions to also
+// tree. It is the collection entry point of the C API (libscanoss/core), which
+// exposes no way to pass options; Go callers use CollectFilesWithOptions to also
 // apply scanoss.json rules or to override the defaults.
 func CollectFiles(rootPath string) ([]string, error) {
 	res, err := filter.Collect(rootPath, filter.DefaultOptions())

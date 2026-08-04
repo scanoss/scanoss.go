@@ -16,6 +16,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   but has no notes for the resolved version (`RELEASE_NOTES_UNAVAILABLE`), it
   prints a "no release notes available" notice and exits 0 rather than erroring.
 
+### Removed
+
+- **BREAKING — `settings.GetSBOMData`, `settings.SBOMData` and `settings.FormatSBOMParam`** — the
+  v2 way of shipping BOM rules to the engine as an `sbom`/`scan_type` parameter pair. The v3 flow
+  applies them post-scan through `pkg/postprocess`, so nothing reached them; `FormatSBOMParam` was
+  already deprecated in favour of `GetSBOMData`, which was itself unreachable.
+- **BREAKING — `parsers.RemoveDuplicates`** — every parser dedupes inline against its own `seen`
+  map, so nothing called it.
+- **BREAKING — `output.Writer.WriteFormat`** — never called; `Write` is the whole surface in use.
+- **`config.DefaultPostSize`** and the unused `config.Config` type with its `NewConfig` and
+  `Validate` — scaffolding from the first commit that no code ever referenced. The POST-size
+  batching it configured went away with `pkg/batch`; the v3 upload uses
+  `scanoss.DefaultScanChunkBytes`.
+
 ## [0.7.0] - 2026-08-03
 ### Fixed
 

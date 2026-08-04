@@ -34,9 +34,6 @@ const (
 	// DefaultThreads is the default number of parallel workers
 	DefaultThreads = 10
 
-	// DefaultPostSize is the default maximum POST size in bytes (64KB)
-	DefaultPostSize = 64 * 1024
-
 	// Output format constants
 	FormatRaw       = "raw"
 	FormatSPDX      = "spdx"
@@ -54,43 +51,3 @@ const (
 
 // AppVersion is the application version, resolved at build time.
 var AppVersion = version.Version()
-
-// Config contains the application configuration
-type Config struct {
-	// API settings
-	APIURL string
-	APIKey string
-
-	// Scanning settings
-	Threads  int
-	PostSize int
-
-	// Output settings
-	OutputFile string
-
-	// Processing settings
-	TargetPath string
-}
-
-// NewConfig creates a new configuration with default values
-func NewConfig() *Config {
-	return &Config{
-		APIURL:   DefaultAPIURL,
-		Threads:  DefaultThreads,
-		PostSize: DefaultPostSize,
-	}
-}
-
-// Validate validates the configuration
-func (c *Config) Validate() error {
-	if c.Threads < 1 {
-		c.Threads = DefaultThreads
-	}
-	if c.PostSize < 1024 {
-		c.PostSize = DefaultPostSize
-	}
-	if c.APIURL == "" {
-		c.APIURL = DefaultAPIURL
-	}
-	return nil
-}

@@ -94,22 +94,6 @@ func GetScopedPackage(pkgName string) (namespace, name string) {
 	return "", pkgName
 }
 
-// RemoveDuplicates removes duplicate PURLs from a slice
-func RemoveDuplicates(purls []LocalPurl) []LocalPurl {
-	seen := make(map[string]bool)
-	result := []LocalPurl{}
-
-	for _, purl := range purls {
-		key := purl.Purl
-		if !seen[key] {
-			seen[key] = true
-			result = append(result, purl)
-		}
-	}
-
-	return result
-}
-
 // BuildPURL constructs a Package URL string from components
 func BuildPURL(purlType, namespace, name, version string, qualifiers map[string]string) string {
 	var purl strings.Builder
