@@ -241,6 +241,12 @@ func (m sizeMatcher) Key() string { return fmt.Sprintf("size:%d:%d", m.min, m.ma
 type globMatcher struct {
 	matcher gitignore.Matcher
 	key     string
+	// source names where the pattern group came from ("gitignore", "skip-patterns").
+	// The key has to carry every pattern to stay unique for deduplication, which makes
+	// it useless as a reason: a hundred-line .gitignore would be repeated on every
+	// excluded path. go-git's Matcher answers with a bool, so naming the group is as
+	// precise as this can get without reimplementing its matching.
+	source string
 }
 
 // newGlobMatcher parses the given patterns into a single matcher (blank lines
@@ -258,8 +264,12 @@ func newGlobMatcher(patterns []string, keyPrefix string) globMatcher {
 	return globMatcher{
 		matcher: gitignore.NewMatcher(ps),
 		key:     keyPrefix + ":" + strings.Join(patterns, "\n"),
+		source:  keyPrefix,
 	}
 }
+
+// reason names the pattern group, not its contents — see globMatcher.source.
+func (m globMatcher) reason(os.FileInfo) string { return m.source }
 
 func (m globMatcher) Match(rel string, info os.FileInfo) bool {
 	if m.matcher == nil {
@@ -317,14 +327,35 @@ func (m scopedSizeMatcher) Match(rel string, info os.FileInfo) bool {
 
 func (m scopedSizeMatcher) Key() string { return m.key }
 
+// reason names the rule and its bounds. The patterns stay out: they are in the key for
+// uniqueness, and a scanoss.json size rule can carry as many as the project likes.
+func (m scopedSizeMatcher) reason(os.FileInfo) string {
+	return fmt.Sprintf("scoped-size:%d-%d", m.min, m.max)
+}
+
 // matchKey reports which contained rule skips the path, or "" when none does. It is
 // Match with the reason attached: the keys already exist to deduplicate matchers, and
 // they happen to be exactly what answers "why was this file not scanned?".
 func (c *composite) matchKey(rel string, info os.FileInfo) string {
 	for _, m := range c.matchers {
 		if m.Match(rel, info) {
+			if r, ok := m.(reasoner); ok {
+				return r.reason(info)
+			}
 			return m.Key()
 		}
 	}
 	return ""
+}
+
+// reasoner is a matcher that can name why it matched, for the skip log. extSetMatcher
+// needs it: its Key carries the whole extension set to stay unique for deduplication,
+// which is the right key and a useless reason.
+type reasoner interface {
+	reason(info os.FileInfo) string
+}
+
+// reason names the extension that matched, not the set it belongs to.
+func (m extSetMatcher) reason(info os.FileInfo) string {
+	return "ext:" + strings.ToLower(filepath.Ext(info.Name()))
 }

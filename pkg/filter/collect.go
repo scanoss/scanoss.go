@@ -256,7 +256,7 @@ func Collect(root string, o Options) (*CollectResult, error) {
 		preserveManifests: o.KeepManifests,
 	}
 
-	logging.Debug("collect: rules", "root", root,
+	logging.Debug("filters applied", "root", root,
 		"builtinFolderRules", o.BuiltinFolderRules, "builtinFileRules", o.BuiltinFileRules,
 		"gitignore", o.GitIgnore, "includeHidden", o.IncludeHidden,
 		"minSize", o.MinSize, "maxSize", o.MaxSize,
@@ -286,7 +286,7 @@ func Collect(root string, o Options) (*CollectResult, error) {
 			}
 			if reason := skip.matchKey(rel, info); reason != "" {
 				if explain {
-					logging.Debug("collect: pruned", "path", rel, "rule", reason)
+					logging.Debug("directory pruned", "path", rel, "rule", reason)
 				}
 				return filepath.SkipDir
 			}
@@ -295,7 +295,7 @@ func Collect(root string, o Options) (*CollectResult, error) {
 
 		if reason := skip.matchKey(rel, info); reason != "" {
 			if explain {
-				logging.Debug("collect: skipped", "path", rel, "rule", reason)
+				logging.Debug("file excluded", "path", rel, "rule", reason)
 			}
 			res.SkippedCount++
 			return nil
