@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`components releases`** — list a component's release / changelog entries
+  (version, date, notes, url) for a PURL via the new `/v3/components/releases`
+  endpoint. `--requirement` narrows to a single version or a semver range (e.g.
+  `>=1.0.0, <=2.0.0`); `--limit`/`--offset` paginate. When the component exists
+  but has no notes for the resolved version (`RELEASE_NOTES_UNAVAILABLE`), it
+  prints a "no release notes available" notice and exits 0 rather than erroring.
+
 ## [0.7.0] - 2026-08-03
 ### Fixed
 
