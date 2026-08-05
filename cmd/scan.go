@@ -25,6 +25,7 @@ package cmd
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,6 +36,7 @@ import (
 	"github.com/scanoss/scanoss.go/internal/output"
 	"github.com/scanoss/scanoss.go/pkg/filter"
 	"github.com/scanoss/scanoss.go/pkg/sbom"
+	"github.com/scanoss/scanoss.go/pkg/sbom/scansource"
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
 	"github.com/scanoss/scanoss.go/pkg/scanpipeline"
 	"github.com/scanoss/scanoss.go/pkg/settings"
@@ -266,9 +268,15 @@ func buildResultsCommand(scanID, apiURL, apiKey string) string {
 }
 
 // printErrorSummary prints a summary if any files failed to fingerprint.
-func printErrorSummary(processErrors int) {
-	if processErrors > 0 {
-		warnf("Completed with %d processing errors", processErrors)
+// printErrorSummary reports the files that could not be fingerprinted. The count is the headline;
+// the reasons follow at Debug, where a run being diagnosed will show them.
+func printErrorSummary(processErrors []error) {
+	if len(processErrors) == 0 {
+		return
+	}
+	warnf("Completed with %d processing errors", len(processErrors))
+	for _, err := range processErrors {
+		slog.Debug("file could not be fingerprinted", "err", err)
 	}
 }
 
@@ -458,7 +466,8 @@ func runScan(cmd *cobra.Command, args []string) error {
 }
 
 // runScanWFP scans a pre-generated WFP file directly (no fingerprinting). A bare WFP has no
-// source tree, so the deps layer cannot be sourced; it uses the lower-level scanpipeline.Build.
+// source tree, so the deps layer cannot be sourced; it assembles the inventory from the scan
+// result and gathers the requested layers with a scanpipeline.Enricher.
 func runScanWFP(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
 		return usageError(cmd, "a WFP file is required")
@@ -525,10 +534,12 @@ func runScanWFP(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("scan completed without a result")
 	}
 
-	inv, err := scanpipeline.Build(ctx, client, res.Result, servicesFor(layers), layers.Has(LayerDeps), nil, rep)
+	inv := scansource.Inventory(res.Result)
+	enricher := scanpipeline.Enricher{Client: client, Services: servicesFor(layers), Reporter: rep}
+	enrichErr := enricher.Enrich(ctx, &inv)
 	prog.finish()
-	if err != nil {
-		return err
+	if enrichErr != nil {
+		warnf("Enrichment incomplete: %v", enrichErr)
 	}
 	return emitInventory(cmd, inv, wfpPath)
 }

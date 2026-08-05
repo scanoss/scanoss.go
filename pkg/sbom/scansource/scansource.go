@@ -54,6 +54,11 @@ func Inventory(result *scanossapi.ScanResult) sbom.Inventory {
 	}
 	sort.Strings(hashes)
 
+	// Added rather than appended: the catalog is keyed by url_hash, so two entries can carry the
+	// same PURL at the same version. Add folds those into one component holding both sets of
+	// evidence, which is what a consumer of the returned inventory expects to find.
+	// Gathered first and added in one call: Add reindexes what the inventory already holds on
+	// every call, so adding one at a time would be quadratic in the number of components.
 	components := make([]sbom.Component, 0, len(hashes))
 	for _, hash := range hashes {
 		comp := result.Components[hash]
@@ -75,7 +80,10 @@ func Inventory(result *scanossapi.ScanResult) sbom.Inventory {
 			Evidence:     filesByHash[hash],
 		})
 	}
-	return sbom.Inventory{Components: components}
+
+	var inv sbom.Inventory
+	inv.Add(components...)
+	return inv
 }
 
 // Key is the join key matching a decoration response entry to a component: its PURL plus

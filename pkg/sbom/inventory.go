@@ -27,17 +27,88 @@
 // that build an Inventory from a scan result live in the scansource subpackage.
 package sbom
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // Inventory is the neutral, format-agnostic bill of materials and the core of the CLI's raw
 // output. Detected components (scan matches) and declared dependency components live in ONE
 // Components list, tagged by Component.Scope, so enrichment decorates the union origin-agnostic.
 // Per-component layers (licenses, cryptography, geoprovenance) attach inline on each component;
 // vulnerabilities are a flat top-level list joined to components by base PURL. Build it directly,
-// or via the scansource adapters from a scan result.
+// or via the scansource adapters from a scan result. Add components through Add to keep one entry
+// per component when more than one origin reports the same one.
 type Inventory struct {
 	Components      []Component     `json:"components"`
 	Vulnerabilities []Vulnerability `json:"vulnerabilities,omitempty"`
+}
+
+// Add appends comps, folding any that shares an identity (Purl and Version) with a component
+// already present rather than listing it twice: the evidence lists are combined, and a detected
+// scope wins over declared. A component both matched by a scan and declared in a manifest is one
+// component, detected, carrying its file matches and its manifest occurrence together. An empty
+// Scope counts as detected, as the field documents.
+//
+// The inventory takes its own copy of each component's evidence, so what it holds is not the
+// caller's to change afterwards — and two inventories seeded from one Component value cannot
+// grow into each other's memory.
+//
+// It is how the inventory keeps one entry per component. Appending to Components directly still
+// works, and leaves the caller to answer what two entries for one component mean.
+func (inv *Inventory) Add(comps ...Component) {
+	index := make(map[string]int, len(inv.Components)+len(comps))
+	for i, existing := range inv.Components {
+		index[componentKey(existing)] = i
+	}
+	for _, c := range comps {
+		key := componentKey(c)
+		if i, ok := index[key]; ok {
+			mergeComponent(&inv.Components[i], c)
+			continue
+		}
+		index[key] = len(inv.Components)
+		c.Evidence = slices.Clone(c.Evidence)
+		inv.Components = append(inv.Components, c)
+	}
+}
+
+// componentKey is a component's identity: the same PURL at the same version is the same
+// component, whichever origin reported it.
+func componentKey(c Component) string { return c.Purl + "@" + c.Version }
+
+// mergeComponent folds src into dst, which share an identity.
+func mergeComponent(dst *Component, src Component) {
+	if effectiveScope(*dst) == ScopeDeclared && effectiveScope(src) == ScopeDetected {
+		dst.Scope = ScopeDetected
+	}
+	dst.Evidence = addEvidence(dst.Evidence, src.Evidence...)
+}
+
+// effectiveScope resolves the zero value to what the field documents it to mean.
+func effectiveScope(c Component) ComponentScope {
+	if c.Scope == "" {
+		return ScopeDetected
+	}
+	return c.Scope
+}
+
+// addEvidence appends the occurrences not already recorded. Two occurrences are the same when
+// they name the same path with the same match type.
+func addEvidence(dst []FileEvidence, add ...FileEvidence) []FileEvidence {
+	for _, e := range add {
+		dup := false
+		for _, existing := range dst {
+			if existing.Path == e.Path && existing.MatchType == e.MatchType {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			dst = append(dst, e)
+		}
+	}
+	return dst
 }
 
 // Component is one component in the inventory: identity, scope, scan evidence, and the
