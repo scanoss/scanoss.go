@@ -157,4 +157,18 @@ func TestSubcommandRouting(t *testing.T) {
 	if !strings.Contains(gotQuery, "limit=5") {
 		t.Errorf("components versions: query=%q want limit=5", gotQuery)
 	}
+
+	// components releases (GET) — purl + requirement + limit + offset query params.
+	gotPath, gotQuery = "", ""
+	if err := exec("components", "releases", "--purl", "pkg:a", "--requirement", ">=1.0.0", "--limit", "10", "--offset", "20"); err != nil {
+		t.Fatalf("components releases: %v", err)
+	}
+	if gotPath != "/v3/components/releases" {
+		t.Errorf("components releases: path=%q want /v3/components/releases", gotPath)
+	}
+	for _, want := range []string{"limit=10", "offset=20", "requirement="} {
+		if !strings.Contains(gotQuery, want) {
+			t.Errorf("components releases: query=%q missing %q", gotQuery, want)
+		}
+	}
 }

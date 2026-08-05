@@ -26,6 +26,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/spf13/cobra"
 
@@ -115,6 +116,52 @@ func runComponentsVersions(cmd *cobra.Command, _ []string) error {
 	return writeTyped(cmd, res)
 }
 
+func runComponentsReleases(cmd *cobra.Command, _ []string) error {
+	purl, _ := cmd.Flags().GetString("purl")
+	if purl == "" {
+		// Show usage, not the auth banner: the key is not what is missing.
+		return usageError(cmd, "--purl is required")
+	}
+	if err := checkAuth(cmd); err != nil {
+		return err
+	}
+	requirement, _ := cmd.Flags().GetString("requirement")
+	limit, _ := cmd.Flags().GetInt("limit")
+	offset, _ := cmd.Flags().GetInt("offset")
+
+	client, err := newClient(cmd)
+	if err != nil {
+		return err
+	}
+	res, err := client.Components.Releases(cmd.Context(), purl, requirement, limit, offset)
+	if err != nil {
+		return renderAPIError(err)
+	}
+	// RELEASE_NOTES_UNAVAILABLE means the component exists but has no notes for the
+	// resolved version — an explicit outcome, not an error. Note it on stderr and
+	// still emit the (machine-readable) JSON on stdout with a zero exit.
+	if ic := res.Component.InfoCode; ic != nil && *ic == scanossapi.InfoCodeRELEASENOTESUNAVAILABLE {
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), releaseNotesUnavailableMsg(res.Component))
+	}
+	return writeTyped(cmd, res)
+}
+
+// releaseNotesUnavailableMsg builds the "no release notes available" notice,
+// naming the resolved version when the API echoed one.
+func releaseNotesUnavailableMsg(c scanossapi.ReleaseComponent) string {
+	target := ""
+	if c.Purl != nil {
+		target = *c.Purl
+	}
+	if c.Version != nil && *c.Version != "" {
+		target += "@" + *c.Version
+	}
+	if target == "" {
+		return "no release notes available"
+	}
+	return "no release notes available for " + target
+}
+
 var componentsCmd = &cobra.Command{
 	Use:   "components",
 	Short: "Search components and query versions/status from the SCANOSS API",
@@ -123,6 +170,7 @@ var componentsCmd = &cobra.Command{
 Operations are subcommands:
   search    find components by term/vendor/component (default)
   versions  list known versions (with licenses) for a purl
+  releases  list release / changelog entries for a purl
   status    resolve the lifecycle status for components
 
 Examples:
@@ -131,6 +179,11 @@ Examples:
 
   # Versions for a purl
   scanoss-cli components versions --purl 'pkg:github/scanoss/engine' --limit 50
+
+  # Release notes for a purl (all, a single version, or a range)
+  scanoss-cli components releases --purl 'pkg:github/scanoss/engine'
+  scanoss-cli components releases --purl 'pkg:github/scanoss/engine' --requirement '5.4.7'
+  scanoss-cli components releases --purl 'pkg:github/scanoss/engine' --requirement '>=1.0.0, <=2.0.0' --limit 10
 
   # Lifecycle status for components
   scanoss-cli components status --purl 'pkg:github/scanoss/engine' --requirement '5.4.7'`,
@@ -162,9 +215,25 @@ func init() {
 	versionsCmd.Flags().String("purl", "", "Package URL (purl) to list versions for")
 	versionsCmd.Flags().Int("limit", 0, "Maximum number of versions (0 = server default)")
 
+	releasesCmd := &cobra.Command{
+		Use:   "releases",
+		Short: "List release notes for a purl",
+		Long: `List the release / changelog entries (version, date, notes, url) for a purl.
+
+Without --requirement, all releases are listed. Pass --requirement with an exact
+version (e.g. '5.4.7') to resolve a single version, or a semver range (e.g.
+'>=1.0.0, <=2.0.0') to narrow to a range. --limit/--offset paginate the results.`,
+		Args: cobra.NoArgs,
+		RunE: runComponentsReleases,
+	}
+	releasesCmd.Flags().String("purl", "", "Package URL (purl) to list releases for")
+	releasesCmd.Flags().String("requirement", "", "Version requirement: an exact version or a semver range (e.g. '>=1.0.0, <=2.0.0')")
+	releasesCmd.Flags().Int("limit", 0, "Maximum number of releases (0 = server default)")
+	releasesCmd.Flags().Int("offset", 0, "Pagination offset")
+
 	statusCmd := newPurlServiceCmdTyped("status", "Lifecycle status for components",
 		"Resolve the lifecycle status for the given components.", callComponentsStatus)
 	addPurlInputFlags(statusCmd)
 
-	componentsCmd.AddCommand(searchCmd, versionsCmd, statusCmd)
+	componentsCmd.AddCommand(searchCmd, versionsCmd, releasesCmd, statusCmd)
 }
