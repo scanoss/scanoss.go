@@ -19,70 +19,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`scanoss.SetLogger`** routes the SDK's diagnostics — every package, not one client.
-- **`pkg/filter` reports its work at Debug**: the rules a `Collect` applied, and which rule excluded
-  each file — what `SkippedCount` alone could not answer.
+- **`pkg/filter` reports its work at Debug**: the rules a `Collect` applied, and which rule
+  excluded each file.
+- **`sbom.Inventory.Add`** keeps one entry per component, combining evidence and letting a
+  detected scope win over declared. `scansource.Inventory` builds through it.
 
 ### Fixed
 
-- **The SDK no longer writes to its consumer's stderr uninvited**, nor logs normal operations at
-  Info. It is silent until `SetLogger` is called.
+- **The SDK is silent until `SetLogger` is called** — no writes to its consumer's stderr, no
+  normal operations logged at Info.
 - **`Options.SkipDirs` and friends were silently ignored** when the matching built-in flag was
   off, and otherwise replaced the built-in list instead of adding to it.
 - **`scan --include deps` no longer applies the scanning folder rules to the manifest stage**,
-  which pruned `examples/` and `venv/` — where manifests legitimately live.
-- **A stray service no longer discards a whole pipeline run.** `DecorationPipeline.Run` skips one
-  that is not a decoration layer, with a warning, instead of failing.
-- **A scan that fingerprinted nothing now fails** instead of reporting success with an empty
-  inventory, naming which of the two causes it was: every file failed, or the filters excluded all.
+  which pruned `examples/` and `venv/`.
+- **`DecorationPipeline.Run` skips a service that is not a decoration layer**, with a warning,
+  instead of discarding the whole run.
+- **A scan that fingerprinted nothing now fails**, naming whether every file failed or the
+  filters excluded them all.
 - **A component whose `Scope` is unset counts as detected on a merge**, as the field documents.
+- **A file that cannot be fingerprinted is now reported** instead of silently skipped.
 
 ### Changed
 
 - **BREAKING — the filter profiles take the project's settings and read their own section:**
   `ScanOptions` → `filter.Scanning(s)`, `FingerprintOptions` → `Fingerprinting(s)`,
-  `DependencyOptions` → `Dependencies(s)`; `DefaultOptions` is gone, use `Scanning(nil)`.
-  `settings.ScanFilter`, `FingerprintFilter` and `DependencyFilter` are gone, and `pkg/settings`
-  no longer imports `pkg/filter`.
+  `DependencyOptions` → `Dependencies(s)`. `DefaultOptions` is gone — use `Scanning(nil)`.
 - **BREAKING — `Options.FolderDefaults` / `FileDefaults` are now `BuiltinFolderRules` /
-  `BuiltinFileRules`**, and the `Skip*` fields are additive rather than replacing. New:
-  `SkipDirExts`, `SkipPatterns`, `SizeRules`. `Settings` → dropped, `PreserveDependencyManifests`
-  → `KeepManifests`, `SkipExtensions` → `SkipExts`.
+  `BuiltinFileRules`**, the `Skip*` fields are additive rather than replacing, and
+  `PreserveDependencyManifests` → `KeepManifests`, `SkipExtensions` → `SkipExts`. `Settings` is
+  dropped. New: `SkipDirExts`, `SkipPatterns`, `SizeRules`.
+- **BREAKING — `pkg/scanner` and `pkg/fingerprint/wfp` merge into `pkg/wfp`**, whose entry points
+  are `Folder` (collects and fingerprints, applying the rules itself — a nil `filters` uses the
+  fingerprinting profile, and `Result.Skipped` counts what it excluded) and `Files` (fingerprints
+  a list, applying none — see #77).
+- **BREAKING — `scanpipeline.Build` and `Enrich` give way to `Enricher`**, whose `Enrich` returns
+  an error.
 - **BREAKING — `scanpipeline.Options.Filter` and `DependencySettings` are now `ScanFilters` and
-  `DependencyFilters`.** The caller builds both; the pipeline no longer derives one from the other.
-- **BREAKING — `scanpipeline.Build` and `Enrich` give way to `Enricher`**, holding the client, the
-  layers and the reporter that all three used to repeat. A caller with a scan result assembles with
-  `scansource.Inventory` and enriches with `Enricher.Enrich`, which now returns an error.
-- **BREAKING — `scanpipeline.Result.ProcessErrors` is `[]error`**, the files `pkg/wfp` could not
-  fingerprint rather than a count of them. New `Result.EnrichError` reports layers that never
-  arrived, so a missing licence is distinguishable from a failed request.
-- **BREAKING — `settings.Resolve` is gone.** Its first parameter was a `--settings` flag value, so
-  the flag priority moved to the CLI, where flags exist. Compose the two primitives instead:
-  `Detect(dir)` then `Load(path)`.
-- **`sbom.Inventory.Add`** folds a component that is already listed instead of repeating it:
-  evidence is combined and a detected scope wins over declared. `scansource.Inventory` builds
-  through it, so its result no longer carries two entries for one component.
+  `DependencyFilters`.** The caller builds both.
+- **BREAKING — `scanpipeline.Result.ProcessErrors` is `[]error`** rather than a count; new
+  `EnrichError` reports layers that never arrived.
 - **BREAKING — `DependencyParser.ParseFiles` returns the per-file errors** (`map[string]error`)
-  instead of printing them, so "every manifest failed" is distinguishable from "no dependencies".
-- **BREAKING — `pkg/scanner` and `pkg/fingerprint/wfp` merge into `pkg/wfp`.**
-- **BREAKING — `pkg/wfp` has two entry points, `Folder` and `Files`**, each returning a `Result`
-  with the combined stream, the per-file detail and the files it could not fingerprint.
-  `Folder(dir, filters, …)` applies the filtering rules itself — a nil `filters` uses the
-  fingerprinting profile — and reports what it excluded in `Result.Skipped`. `Files(list, …)`
-  applies none: the list may not have come from a walk. One file is `Files` with a one-file
-  slice. See #77: until the rules can be applied to a list, a caller that builds one from a
-  directory has to filter it first.
+  instead of printing them.
 - **BREAKING — the 29 `Service` values `DecorationPipeline` rejects are unexported.** The four it
   accepts, plus `ServiceDependencies`, stay.
 - **BREAKING — `pkg/output` is now `internal/output`.**
-- **A file that cannot be fingerprinted is now reported** instead of silently skipped.
 
 ### Removed
 
 - **BREAKING — `scanner.GenerateWFP`, `wfp.GenerateFingerprint`, `wfp.CombineFingerprints`,
   `WorkerPool`** and its methods. Use `wfp.Folder` or `wfp.Files`.
-- **BREAKING — `scanner.CollectFiles` and `scanner.CollectFilesWithOptions`** — both delegated to
-  `filter.Collect`. Call it directly with one of the profiles; `CollectFiles` callers get a
-  `*CollectResult` instead of a `[]string`.
+- **BREAKING — `scanner.CollectFiles` and `scanner.CollectFilesWithOptions`.** Use
+  `filter.Collect` with a profile; `CollectFiles` callers get a `*CollectResult`, not a `[]string`.
+- **BREAKING — the filter matcher machinery**: `Matcher`, `Composite`, `Build`, the eight
+  `*Source` functions, `Defaults`/`StdDefaults`, `Skip`, and the seven mutable rule lists.
+- **BREAKING — `settings.Resolve`, `ScanFilter`, `FingerprintFilter` and `DependencyFilter`.**
+  Compose `Detect(dir)` then `Load(path)`; `pkg/settings` no longer imports `pkg/filter`.
 - **BREAKING — the manifest-format types, `ParserState` and the string helpers in
   `dependencies/parsers`** (`PomProject`, `PackageLockV1/V2`, `IsValidURL`, `TrimComments`, …).
   Use `ParseFile`.
@@ -90,10 +81,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pair. v3 applies BOM rules post-scan through `pkg/postprocess`.
 - **BREAKING — `Config.Logger`** — it only ever covered `pkg/scanoss`. Use `scanoss.SetLogger`.
 - **BREAKING — `parsers.RemoveDuplicates`, `output.Writer.WriteFormat`** — never called.
-- **BREAKING — the filter matcher machinery**: `Matcher`, `Composite`, `Build`, the eight
-  `*Source` functions, `Defaults`/`StdDefaults` and `Skip`. The seven mutable lists of built-in
-  rules are unexported too: the skip policy is `pkg/filter`'s, applied through `Collect` and its
-  profiles. A caller that filters its own entries writes its own rule.
 - **`DefaultPostSize`; `GRAM_WFP1`, `WINDOW_WFP1`** — two constants that define the fingerprint
   format rather than configure it.
 
