@@ -24,9 +24,13 @@
 package wfp
 
 import (
-	"github.com/scanoss/scanoss.go/internal/logging"
+	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
+
+	"github.com/scanoss/scanoss.go/internal/logging"
+	"github.com/scanoss/scanoss.go/pkg/filter"
 )
 
 // workerPool manages a pool of workers to process files in parallel.
@@ -112,18 +116,56 @@ func (wp *workerPool) close() {
 // best-effort — a run that skipped three unreadable files still produced a usable WFP —
 // and a caller that ignores it should have to say so.
 type Result struct {
-	WFP    []byte            // the combined stream, ready to upload
-	Files  []FileFingerprint // per-file detail, in completion order
-	Errors []error           // files that could not be fingerprinted
+	WFP     []byte            // the combined stream, ready to upload
+	Files   []FileFingerprint // per-file detail, in completion order
+	Errors  []error           // files that could not be fingerprinted
+	Skipped int               // files the filters excluded; always 0 from Files, which selects nothing
 }
 
-// Generate fingerprints the given files through a bounded worker pool. onProgress, if
-// non-nil, is called as each file completes (done, total).
+// Folder collects the files worth fingerprinting under dir and fingerprints them. A nil filters
+// uses the fingerprinting profile, which is what a caller holding a directory and no opinion
+// about the rules wants.
 //
-// It is the only entry point: fingerprinting one file is Generate with a one-file slice.
-// A separate single-file function would be a second way to do the same thing, and the
-// caller would still have to combine the output itself to upload it.
-func Generate(files []string, workers int, root string, onProgress func(done, total int)) Result {
+// It is the entry point to reach for with a directory in hand: Files fingerprints whatever it is
+// given, so building the list yourself means deciding for yourself what a scan should skip.
+func Folder(dir string, filters *filter.Options, workers int, onProgress func(done, total int)) (Result, error) {
+	o := filter.Fingerprinting(nil)
+	if filters != nil {
+		o = *filters
+	}
+
+	collected, err := filter.Collect(dir, o)
+	if err != nil {
+		return Result{}, fmt.Errorf("collecting files: %w", err)
+	}
+
+	// The WFP labels paths relative to the directory walked. A file handed to Folder is its
+	// own collection of one, and the label belongs to the directory holding it.
+	root := dir
+	if info, statErr := os.Stat(dir); statErr == nil && !info.IsDir() {
+		root = filepath.Dir(dir)
+	}
+	if abs, absErr := filepath.Abs(root); absErr == nil {
+		root = abs
+	}
+
+	res := Files(collected.Files, workers, root, onProgress)
+	res.Skipped = collected.SkippedCount
+	return res, nil
+}
+
+// Files fingerprints the given files through a bounded worker pool. onProgress, if non-nil, is
+// called as each file completes (done, total).
+//
+// It does no selection: which files are worth fingerprinting was decided by whoever built the
+// list. Fingerprinting one file is Files with a one-file slice — a separate single-file function
+// would be a second way to do the same thing, and the caller would still have to combine the
+// output itself to upload it.
+//
+// TODO(#77): filter here as well, once the rules can be applied to a list. Folder filters and
+// Files does not, which their names do not suggest: a caller that hands over every file in a
+// directory gets a WFP full of files a scan would have skipped.
+func Files(files []string, workers int, root string, onProgress func(done, total int)) Result {
 	if workers < 1 {
 		workers = 1
 	}

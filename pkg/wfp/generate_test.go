@@ -50,7 +50,7 @@ func TestGenerateWFPKeepsSmallFiles(t *testing.T) {
 	writeSized(t, tiny, 40)
 	writeSized(t, big, 200)
 
-	fp := Generate([]string{tiny, big}, 2, root, nil)
+	fp := Files([]string{tiny, big}, 2, root, nil)
 	if len(fp.Errors) > 0 {
 		t.Fatalf("Generate errors = %v", fp.Errors)
 	}
@@ -71,7 +71,7 @@ func TestGenerateWFPDoesNotDecideOnHiddenFiles(t *testing.T) {
 	writeSized(t, hidden, 200)
 	writeSized(t, visible, 200)
 
-	fp := Generate([]string{hidden, visible}, 1, root, nil)
+	fp := Files([]string{hidden, visible}, 1, root, nil)
 	if len(fp.Errors) > 0 {
 		t.Fatalf("Generate errors = %v", fp.Errors)
 	}
@@ -95,7 +95,7 @@ func TestGenerateWFPDoesNotFilter(t *testing.T) {
 	png := filepath.Join(root, "logo.png")
 	writeSized(t, png, 400)
 
-	fp := Generate([]string{png}, 1, root, nil)
+	fp := Files([]string{png}, 1, root, nil)
 	if len(fp.Errors) > 0 {
 		t.Fatalf("Generate errors = %v", fp.Errors)
 	}
@@ -119,5 +119,50 @@ func TestCollectionStillExcludesWhatTheLayerNoLongerDoes(t *testing.T) {
 		if filepath.Base(f) == "logo.png" {
 			t.Error("collection must still exclude logo.png")
 		}
+	}
+}
+
+// Folder filters and Files does not: the difference is the whole reason both exist. The same
+// directory through each yields a fingerprinted .md from Files and none from Folder.
+func TestFolderFiltersAndFilesDoesNot(t *testing.T) {
+	root := t.TempDir()
+	code := filepath.Join(root, "code.c")
+	notes := filepath.Join(root, "notes.md")
+	writeSized(t, code, 200)
+	writeSized(t, notes, 200)
+
+	folder, err := Folder(root, nil, 1, nil)
+	if err != nil {
+		t.Fatalf("Folder: %v", err)
+	}
+	if len(folder.Files) != 1 || filepath.Base(folder.Files[0].Path) != "code.c" {
+		t.Errorf("Folder kept %d file(s) (%+v), want only code.c", len(folder.Files), folder.Files)
+	}
+	if folder.Skipped != 1 {
+		t.Errorf("Skipped = %d, want 1 — the .md the filters excluded", folder.Skipped)
+	}
+
+	files := Files([]string{code, notes}, 1, root, nil)
+	if len(files.Files) != 2 {
+		t.Errorf("Files kept %d file(s), want both: it selects nothing", len(files.Files))
+	}
+	if files.Skipped != 0 {
+		t.Errorf("Skipped = %d, want 0 from Files", files.Skipped)
+	}
+}
+
+// A nil filters means the fingerprinting profile, so a caller with a directory and no opinion
+// gets the rules a scan would apply.
+func TestFolderNilFiltersUsesTheFingerprintingProfile(t *testing.T) {
+	root := t.TempDir()
+	writeSized(t, filepath.Join(root, "keep.c"), 200)
+	writeSized(t, filepath.Join(root, "drop.json"), 200)
+
+	res, err := Folder(root, nil, 1, nil)
+	if err != nil {
+		t.Fatalf("Folder: %v", err)
+	}
+	if len(res.Files) != 1 || filepath.Base(res.Files[0].Path) != "keep.c" {
+		t.Errorf("collected %+v, want only keep.c (.json is in the built-in skip list)", res.Files)
 	}
 }

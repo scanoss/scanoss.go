@@ -36,7 +36,7 @@ var update = flag.Bool("update", false, "update the WFP golden file")
 
 // TestGenerateFingerprintGolden pins the exact WFP output for a fixed source file.
 // It guards refactors of the fingerprint assembly against any byte-level change.
-// Regenerate the golden with: go test ./pkg/fingerprint/wfp -run Golden -update
+// Regenerate the golden with: go test ./pkg/wfp -run Golden -update
 func TestGenerateFingerprintGolden(t *testing.T) {
 	fp, err := generateFingerprint(filepath.Join("testdata", "sample.c"), "testdata")
 	if err != nil {

@@ -64,8 +64,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING — `DependencyParser.ParseFiles` returns the per-file errors** (`map[string]error`)
   instead of printing them, so "every manifest failed" is distinguishable from "no dependencies".
 - **BREAKING — `pkg/scanner` and `pkg/fingerprint/wfp` merge into `pkg/wfp`.**
-- **BREAKING — `wfp.Generate` is the only entry point**, returning a `Result` with the combined
-  stream, the per-file detail and the files it skipped. One file is a one-file slice.
+- **BREAKING — `pkg/wfp` has two entry points, `Folder` and `Files`**, each returning a `Result`
+  with the combined stream, the per-file detail and the files it could not fingerprint.
+  `Folder(dir, filters, …)` applies the filtering rules itself — a nil `filters` uses the
+  fingerprinting profile — and reports what it excluded in `Result.Skipped`. `Files(list, …)`
+  applies none: the list may not have come from a walk. One file is `Files` with a one-file
+  slice. See #77: until the rules can be applied to a list, a caller that builds one from a
+  directory has to filter it first.
 - **BREAKING — the 29 `Service` values `DecorationPipeline` rejects are unexported.** The four it
   accepts, plus `ServiceDependencies`, stay.
 - **BREAKING — `pkg/output` is now `internal/output`.**
@@ -74,7 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - **BREAKING — `scanner.GenerateWFP`, `wfp.GenerateFingerprint`, `wfp.CombineFingerprints`,
-  `WorkerPool`** and its methods. Use `wfp.Generate`.
+  `WorkerPool`** and its methods. Use `wfp.Folder` or `wfp.Files`.
 - **BREAKING — `scanner.CollectFiles` and `scanner.CollectFilesWithOptions`** — both delegated to
   `filter.Collect`. Call it directly with one of the profiles; `CollectFiles` callers get a
   `*CollectResult` instead of a `[]string`.
