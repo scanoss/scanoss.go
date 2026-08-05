@@ -26,3 +26,5 @@ __pycache__/
 .DS_Store
 .vscode/
 .idea
+# SDD specs are planning docs, kept local and not tracked
+specs/
