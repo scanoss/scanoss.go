@@ -39,6 +39,7 @@ var (
 	ServiceComponentsVersions = Service{Name: "components.versions", endpoint: "/v3/components/versions"}
 	ServiceComponentsStatus   = Service{Name: "components.status", endpoint: "/v3/components/status"}
 	ServiceComponentStatus    = Service{Name: "component.status", endpoint: "/v3/components/status"}
+	ServiceComponentsReleases = Service{Name: "components.releases", endpoint: "/v3/components/releases"}
 )
 
 // ComponentSearch holds the filters for a component search. At least one of
@@ -57,6 +58,7 @@ type ComponentSearch struct {
 type ComponentsAPI interface {
 	Search(ctx context.Context, q ComponentSearch) (*scanossapi.ComponentsSearchResponse, error)
 	Versions(ctx context.Context, purl string, limit int) (*scanossapi.ComponentVersionsResponse, error)
+	Releases(ctx context.Context, purl, requirement string, limit, offset int) (*scanossapi.ReleasesResponse, error)
 	Status(ctx context.Context, comps []Component, opts ...DecorateOption) (*scanossapi.ComponentsStatusResponse, error)
 	StatusOne(ctx context.Context, comp Component, opts ...DecorateOption) (*scanossapi.ComponentsStatusResponse, error)
 }
@@ -111,6 +113,32 @@ func (s componentsService) Versions(ctx context.Context, purl string, limit int)
 		return nil, err
 	}
 	return as[scanossapi.ComponentVersionsResponse](res)
+}
+
+// Releases lists a component's release / changelog entries for a purl. An
+// optional requirement narrows the result to a resolved version (an exact
+// version) or a semver range (e.g. ">=1.0.0, <=2.0.0"); limit/offset bound and
+// paginate the results. Values that are empty/non-positive are omitted so the
+// server applies its defaults.
+func (s componentsService) Releases(ctx context.Context, purl, requirement string, limit, offset int) (*scanossapi.ReleasesResponse, error) {
+	if purl == "" {
+		return nil, fmt.Errorf("no purl to query")
+	}
+	v := url.Values{"purl": {purl}}
+	if requirement != "" {
+		v.Set("requirement", requirement)
+	}
+	if limit > 0 {
+		v.Set("limit", strconv.Itoa(limit))
+	}
+	if offset > 0 {
+		v.Set("offset", strconv.Itoa(offset))
+	}
+	res, err := s.c.getResult(ctx, ServiceComponentsReleases.endpoint, v)
+	if err != nil {
+		return nil, err
+	}
+	return as[scanossapi.ReleasesResponse](res)
 }
 
 // Status resolves the lifecycle status for the given components (batch).
