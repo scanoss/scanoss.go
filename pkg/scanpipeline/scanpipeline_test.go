@@ -40,6 +40,7 @@ import (
 
 	"github.com/scanoss/scanoss.go/pkg/dependencies/parsers"
 	"github.com/scanoss/scanoss.go/pkg/sbom"
+	"github.com/scanoss/scanoss.go/pkg/sbom/scansource"
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
 )
 
@@ -54,8 +55,8 @@ func mustNewClient(t *testing.T, apiURL string) *scanoss.Client {
 }
 
 // decorationServer answers the licenses, vulnerabilities, dependency-resolve, cryptography,
-// geoprovenance and copyright endpoints with canned responses so Build can be exercised
-// without a live API.
+// geoprovenance and copyright endpoints with canned responses so the enrichment path can be
+// exercised without a live API.
 func decorationServer() *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -113,15 +114,28 @@ func hasVuln(inv sbom.Inventory, id string) bool {
 	return false
 }
 
-func TestBuildEnrichesDetected(t *testing.T) {
+// assembleAndEnrich reproduces what Run does once it holds a scan result: build the inventory,
+// add the declared components when they were asked for, then gather the requested layers. The
+// tests exercise that sequence rather than a single entry point, because the pipeline no longer
+// has one for it — a caller with a scan result assembles and enriches in two visible steps.
+func assembleAndEnrich(t *testing.T, client *scanoss.Client, result *scanossapi.ScanResult, services []scanoss.Service, includeDeclared bool, declared *parsers.LocalDependencies) sbom.Inventory {
+	t.Helper()
+	inv := scansource.Inventory(result)
+	if includeDeclared && declared != nil && len(declared.Files) > 0 {
+		inv.Add(sourceDeclared(declared, "")...)
+	}
+	if err := (Enricher{Client: client, Services: services}).Enrich(context.Background(), &inv); err != nil {
+		t.Fatalf("Enrich: %v", err)
+	}
+	return inv
+}
+
+func TestEnrichesDetected(t *testing.T) {
 	srv := decorationServer()
 	defer srv.Close()
 	client := mustNewClient(t, srv.URL)
 
-	inv, err := Build(context.Background(), client, detectedResult(), []scanoss.Service{scanoss.ServiceLicenses, scanoss.ServiceVulnerabilities}, false, nil, nil)
-	if err != nil {
-		t.Fatalf("Build: %v", err)
-	}
+	inv := assembleAndEnrich(t, client, detectedResult(), []scanoss.Service{scanoss.ServiceLicenses, scanoss.ServiceVulnerabilities}, false, nil)
 
 	lodash := findComponent(inv, "pkg:npm/lodash")
 	if lodash == nil {
@@ -135,8 +149,8 @@ func TestBuildEnrichesDetected(t *testing.T) {
 	}
 }
 
-// TestEnrichHandBuiltInventory proves the exported Enrich decorates an inventory that never came
-// from a scan — the enrich command's entry point (parse an SBOM into an Inventory, then Enrich it
+// TestEnrichHandBuiltInventory proves Enricher decorates an inventory that never came from a
+// scan — the enrich command's entry point (parse an SBOM into an Inventory, then Enrich it
 // with no fingerprinting or scan). Layers attach by PURL just as on the scan path.
 func TestEnrichHandBuiltInventory(t *testing.T) {
 	srv := decorationServer()
@@ -146,7 +160,10 @@ func TestEnrichHandBuiltInventory(t *testing.T) {
 	inv := sbom.Inventory{Components: []sbom.Component{
 		{Purl: "pkg:npm/lodash", Version: "4.17.20"},
 	}}
-	Enrich(context.Background(), client, &inv, []scanoss.Service{scanoss.ServiceLicenses, scanoss.ServiceVulnerabilities}, nil)
+	enricher := Enricher{Client: client, Services: []scanoss.Service{scanoss.ServiceLicenses, scanoss.ServiceVulnerabilities}}
+	if err := enricher.Enrich(context.Background(), &inv); err != nil {
+		t.Fatalf("Enrich: %v", err)
+	}
 
 	lodash := findComponent(inv, "pkg:npm/lodash")
 	if lodash == nil {
@@ -160,17 +177,14 @@ func TestEnrichHandBuiltInventory(t *testing.T) {
 	}
 }
 
-// TestBuildLayersAreOptIn proves no purl-layer is gathered unless requested: a bare Build
-// enriches nothing, so a plain scan does no decoration work.
-func TestBuildLayersAreOptIn(t *testing.T) {
+// TestLayersAreOptIn proves no purl-layer is gathered unless requested: an Enricher with no
+// services enriches nothing, so a plain scan does no decoration work.
+func TestLayersAreOptIn(t *testing.T) {
 	srv := decorationServer()
 	defer srv.Close()
 	client := mustNewClient(t, srv.URL)
 
-	inv, err := Build(context.Background(), client, detectedResult(), nil, false, nil, nil)
-	if err != nil {
-		t.Fatalf("Build: %v", err)
-	}
+	inv := assembleAndEnrich(t, client, detectedResult(), nil, false, nil)
 	lodash := findComponent(inv, "pkg:npm/lodash")
 	if lodash == nil {
 		t.Fatal("detected component pkg:npm/lodash missing")
@@ -183,28 +197,22 @@ func TestBuildLayersAreOptIn(t *testing.T) {
 	}
 }
 
-// TestBuildDepsDrivenByLayer proves declared dependencies are gathered only when the deps
-// layer is requested — never implicitly.
-func TestBuildDepsDrivenByLayer(t *testing.T) {
+// TestDepsDrivenByLayer proves declared dependencies are gathered only when the deps layer is
+// requested — never implicitly.
+func TestDepsDrivenByLayer(t *testing.T) {
 	srv := decorationServer()
 	defer srv.Close()
 	client := mustNewClient(t, srv.URL)
 
 	// deps NOT requested: the declared input is ignored.
-	inv, err := Build(context.Background(), client, detectedResult(), nil, false, declaredLeftPad(), nil)
-	if err != nil {
-		t.Fatalf("Build: %v", err)
-	}
+	inv := assembleAndEnrich(t, client, detectedResult(), nil, false, declaredLeftPad())
 	if findComponent(inv, "pkg:npm/left-pad") != nil {
 		t.Error("declared dependency must not appear without --include deps")
 	}
 
 	// deps requested: the declared dependency is sourced straight from the manifest (no service
 	// call), so a package.json-only entry keeps its version range rather than a resolved version.
-	inv, err = Build(context.Background(), client, detectedResult(), nil, true, declaredLeftPad(), nil)
-	if err != nil {
-		t.Fatalf("Build: %v", err)
-	}
+	inv = assembleAndEnrich(t, client, detectedResult(), nil, true, declaredLeftPad())
 	leftPad := findComponent(inv, "pkg:npm/left-pad")
 	if leftPad == nil {
 		t.Fatal("declared dependency pkg:npm/left-pad missing with --include deps")
@@ -220,17 +228,14 @@ func TestBuildDepsDrivenByLayer(t *testing.T) {
 	}
 }
 
-// TestBuildDeclaredEnrichedForVulns proves declared dependencies are sourced before the
-// decoration pipeline, so requesting vulns enriches them alongside the scan matches.
-func TestBuildDeclaredEnrichedForVulns(t *testing.T) {
+// TestDeclaredEnrichedForVulns proves declared dependencies are added before the decoration
+// pipeline runs, so requesting vulns enriches them alongside the scan matches.
+func TestDeclaredEnrichedForVulns(t *testing.T) {
 	srv := decorationServer()
 	defer srv.Close()
 	client := mustNewClient(t, srv.URL)
 
-	inv, err := Build(context.Background(), client, detectedResult(), []scanoss.Service{scanoss.ServiceVulnerabilities}, true, declaredLeftPad(), nil)
-	if err != nil {
-		t.Fatalf("Build: %v", err)
-	}
+	inv := assembleAndEnrich(t, client, detectedResult(), []scanoss.Service{scanoss.ServiceVulnerabilities}, true, declaredLeftPad())
 
 	var forDetected, forDeclared bool
 	for _, v := range inv.Vulnerabilities {
@@ -251,17 +256,14 @@ func TestBuildDeclaredEnrichedForVulns(t *testing.T) {
 	}
 }
 
-// TestBuildDepsWithoutDetectedMatches proves a project with only declared dependencies (no
-// scan matches) still yields those components.
-func TestBuildDepsWithoutDetectedMatches(t *testing.T) {
+// TestDepsWithoutDetectedMatches proves a project with only declared dependencies (no scan
+// matches) still yields those components.
+func TestDepsWithoutDetectedMatches(t *testing.T) {
 	srv := decorationServer()
 	defer srv.Close()
 	client := mustNewClient(t, srv.URL)
 
-	inv, err := Build(context.Background(), client, &scanossapi.ScanResult{}, nil, true, declaredLeftPad(), nil)
-	if err != nil {
-		t.Fatalf("Build: %v", err)
-	}
+	inv := assembleAndEnrich(t, client, &scanossapi.ScanResult{}, nil, true, declaredLeftPad())
 	if len(inv.Components) != 1 || inv.Components[0].Purl != "pkg:npm/left-pad" {
 		t.Fatalf("expected only the declared dependency, got %+v", inv.Components)
 	}
@@ -327,17 +329,14 @@ func TestSourceDeclared(t *testing.T) {
 	}
 }
 
-// TestBuildEnrichesAllPurlLayers proves the crypto and geo layers are gathered and attached
-// inline on the component when requested.
-func TestBuildEnrichesAllPurlLayers(t *testing.T) {
+// TestEnrichesAllPurlLayers proves the crypto and geo layers are gathered and attached inline
+// on the component when requested.
+func TestEnrichesAllPurlLayers(t *testing.T) {
 	srv := decorationServer()
 	defer srv.Close()
 	client := mustNewClient(t, srv.URL)
 
-	inv, err := Build(context.Background(), client, detectedResult(), []scanoss.Service{scanoss.ServiceCryptographyAlgorithms, scanoss.ServiceGeoprovenanceOrigin}, false, nil, nil)
-	if err != nil {
-		t.Fatalf("Build: %v", err)
-	}
+	inv := assembleAndEnrich(t, client, detectedResult(), []scanoss.Service{scanoss.ServiceCryptographyAlgorithms, scanoss.ServiceGeoprovenanceOrigin}, false, nil)
 	lodash := findComponent(inv, "pkg:npm/lodash")
 	if lodash == nil {
 		t.Fatal("detected component pkg:npm/lodash missing")
@@ -347,53 +346,6 @@ func TestBuildEnrichesAllPurlLayers(t *testing.T) {
 	}
 	if len(lodash.Geoprovenance) != 1 || lodash.Geoprovenance[0].Name != "US" {
 		t.Errorf("expected the US origin, got %v", lodash.Geoprovenance)
-	}
-}
-
-// TestDedupeComponents proves duplicate identities (PURL+version) collapse to one — so SBOM ids
-// stay unique — while distinct versions of the same PURL are kept, and a detected/declared
-// overlap merges into a single detected component that combines the file-match and manifest
-// evidence.
-func TestDedupeComponents(t *testing.T) {
-	in := []sbom.Component{
-		{Purl: "pkg:npm/lodash", Version: "4.17.21", Scope: sbom.ScopeDetected, Evidence: []sbom.FileEvidence{{Path: "a.js", MatchType: "file"}}},
-		{Purl: "pkg:npm/lodash", Version: "4.17.21", Scope: sbom.ScopeDeclared, Evidence: []sbom.FileEvidence{{Path: "package.json", MatchType: "declared"}}}, // dup of the above
-		{Purl: "pkg:npm/abort-controller", Version: "3.0.0", Scope: sbom.ScopeDeclared, Evidence: []sbom.FileEvidence{{Path: "package.json", MatchType: "declared"}}},
-		{Purl: "pkg:npm/abort-controller", Version: "3.0.0", Scope: sbom.ScopeDeclared, Evidence: []sbom.FileEvidence{{Path: "package-lock.json", MatchType: "declared"}}}, // exact dup — evidence merged
-		{Purl: "pkg:npm/tar", Version: "6.2.0", Scope: sbom.ScopeDeclared},
-		{Purl: "pkg:npm/tar", Version: "7.5.7", Scope: sbom.ScopeDeclared}, // same purl, different version — kept
-	}
-
-	out := dedupeComponents(in)
-	if len(out) != 4 {
-		t.Fatalf("got %d components, want 4: %+v", len(out), out)
-	}
-
-	// lodash: detected wins, and the file-match + manifest evidence are combined.
-	lodash := out[0]
-	if lodash.Scope != sbom.ScopeDetected || len(lodash.Evidence) != 2 {
-		t.Errorf("lodash merge wrong (want detected with 2 evidences): %+v", lodash)
-	}
-
-	// tar keeps both versions.
-	var tarVersions []string
-	for _, c := range out {
-		if c.Purl == "pkg:npm/tar" {
-			tarVersions = append(tarVersions, c.Version)
-		}
-	}
-	if len(tarVersions) != 2 {
-		t.Errorf("tar should keep both versions, got %v", tarVersions)
-	}
-
-	// every (purl,version) is unique.
-	seen := map[string]bool{}
-	for _, c := range out {
-		k := c.Purl + "@" + c.Version
-		if seen[k] {
-			t.Errorf("duplicate identity survived: %s", k)
-		}
-		seen[k] = true
 	}
 }
 
@@ -440,7 +392,12 @@ func TestEnrichWarnsOnUndecodableLayer(t *testing.T) {
 	defer logging.Set(nil)
 
 	inv := sbom.Inventory{Components: []sbom.Component{{Purl: "pkg:npm/lodash", Version: "4.17.20"}}}
-	Enrich(context.Background(), client, &inv, []scanoss.Service{scanoss.ServiceLicenses, scanoss.ServiceVulnerabilities}, nil)
+	enricher := Enricher{Client: client, Services: []scanoss.Service{scanoss.ServiceLicenses, scanoss.ServiceVulnerabilities}}
+	if err := enricher.Enrich(context.Background(), &inv); err == nil {
+		t.Error("a layer whose response cannot be read must be reported, not only warned about")
+	} else if !strings.Contains(err.Error(), scanoss.ServiceLicenses.Name) {
+		t.Errorf("the error should name the licenses service, got %v", err)
+	}
 
 	if !strings.Contains(out.String(), scanoss.ServiceLicenses.Name) {
 		t.Errorf("no warning naming the licenses service; log was %q", out.String())

@@ -28,6 +28,7 @@ import (
 
 	"github.com/scanoss/scanoss.go/internal/cliconfig"
 	"github.com/scanoss/scanoss.go/internal/config"
+	"github.com/scanoss/scanoss.go/pkg/sbom/scansource"
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
 	"github.com/scanoss/scanoss.go/pkg/scanpipeline"
 	"github.com/spf13/cobra"
@@ -125,9 +126,10 @@ func runResults(cmd *cobra.Command, args []string) error {
 	// same deliverable: the raw envelope carries schema_version and metadata, and
 	// the SBOM formats are convertible by `sbom`. Emitting the API response
 	// verbatim made a resumed scan a dead end.
-	inv, err := scanpipeline.Build(ctx, client, res.Result, servicesFor(layers), layers.Has(LayerDeps), nil, rep)
-	if err != nil {
-		return renderAPIError(err)
+	inv := scansource.Inventory(res.Result)
+	enricher := scanpipeline.Enricher{Client: client, Services: servicesFor(layers), Reporter: rep}
+	if err := enricher.Enrich(ctx, &inv); err != nil {
+		warnf("Enrichment incomplete: %v", err)
 	}
 	// No source path here — the sbom module applies its default project name.
 	return emitInventory(cmd, inv, "")

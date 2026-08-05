@@ -67,7 +67,7 @@ func init() {
 
 // runEnrich parses an inventory/SBOM, enriches its components with the requested purl-layers
 // through the decoration pipeline, and renders the result. No scanning is involved: enrichment is
-// the scan pipeline's format-blind tail stage (scanpipeline.Enrich) run on an inventory the
+// the scan pipeline's format-blind tail stage (scanpipeline.Enricher) run on an inventory the
 // command parsed itself.
 func runEnrich(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
@@ -121,8 +121,16 @@ func runEnrich(cmd *cobra.Command, args []string) error {
 	ctx, cancel := createCancellableContext()
 	defer cancel()
 
-	scanpipeline.Enrich(ctx, client, &inv, servicesFor(layers), scanpipeline.NewReporter(prog.layer))
+	enricher := scanpipeline.Enricher{
+		Client:   client,
+		Services: servicesFor(layers),
+		Reporter: scanpipeline.NewReporter(prog.layer),
+	}
+	enrichErr := enricher.Enrich(ctx, &inv)
 	prog.finish()
+	if enrichErr != nil {
+		warnf("Enrichment incomplete: %v", enrichErr)
+	}
 
 	return emitInventory(cmd, inv, args[0])
 }

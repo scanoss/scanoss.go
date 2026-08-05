@@ -24,14 +24,15 @@
 // Package scanpipeline runs the scan pipeline that assembles a neutral sbom.Inventory. Run is
 // the full flow over a source path: collect files → fingerprint → scan → source declared
 // dependencies from the same files → gather + enrich the requested layers via the SDK's
-// decoration pipeline (scanoss.DecorationPipeline). Build is the lower half (scan result →
-// inventory) for callers that already have a scan result (e.g. a pre-generated WFP). Rendering
+// decoration pipeline (scanoss.DecorationPipeline). Enricher is the gathering half on its own,
+// for callers that already have an inventory (a scan result, or a parsed SBOM). Rendering
 // is left to sbom.Generate — this package does not render. Layers to gather are driven by the
 // caller's request, never by any output format.
 package scanpipeline
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -84,15 +85,26 @@ type Options struct {
 	OnProgress func(Progress)
 }
 
-// Result is the outcome of Run: the gathered inventory, the generated WFP (for --save-wfp) and the
-// count of files that failed to fingerprint.
+// Result is the outcome of Run: the gathered inventory, the generated WFP (for --save-wfp), the
+// files that could not be fingerprinted, and whether enrichment came back whole.
 //
 // What the filters excluded is not here: it is reported as the collect layer completing, while the
 // scan is still ahead, rather than handed back once everything is over.
 type Result struct {
-	Inventory     sbom.Inventory
-	WFP           []byte
-	ProcessErrors int
+	Inventory sbom.Inventory
+	WFP       []byte
+
+	// ProcessErrors are the files that could not be fingerprinted, as pkg/wfp reported them.
+	// A scan of 3000 files that skipped 3 unreadable ones still produced a usable WFP, so these
+	// are not fatal — but which file failed and why is the caller's to judge, and a count alone
+	// cannot answer it. Empty when every file was fingerprinted.
+	ProcessErrors []error
+
+	// EnrichError reports that the requested layers did not all come back. The pipeline stays
+	// non-fatal — a service that fails does not discard a scan — so this is how a caller tells an
+	// inventory with no licences because the project declares none from one with no licences
+	// because every request failed. Nil when everything asked for arrived.
+	EnrichError error
 }
 
 // Run executes the full pipeline over Options.SourcePath: collect the files (applying the
@@ -170,12 +182,13 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 	// endpoints and share no state, so there is no reason to serialize them. Enrichment waits for
 	// both, since it decorates detected and declared components together.
 	var (
-		scanResult    *scanossapi.ScanResult
-		fingerprints  []byte
-		procErrors    int
-		scanErr       error
-		declaredComps []sbom.Component
-		wg            sync.WaitGroup
+		scanResult     *scanossapi.ScanResult
+		fingerprints   []byte
+		procErrors     []error
+		scanErr        error
+		fingerprintErr error
+		declaredComps  []sbom.Component
+		wg             sync.WaitGroup
 	)
 
 	wg.Add(1)
@@ -187,11 +200,25 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 		// and handing them to the SDK instead would mean three scan options existing for no reason
 		// but to carry them back. It reports the stage itself and hands over a finished WFP.
 		fp := wfp.Generate(files, threads, scanRoot, r.Fingerprinting)
-		fingerprints, procErrors = fp.WFP, len(fp.Errors)
-		emit(Progress{Layer: LayerFingerprint, Status: StatusCompleted, Done: len(files), Total: len(files)})
+		fingerprints, procErrors = fp.WFP, fp.Errors
+		// An empty WFP is a failed stage, not a completed one: there is nothing to upload, so
+		// the scan cannot run. Reporting it as completed and returning a nil error made a scan
+		// that fingerprinted nothing indistinguishable from one that matched nothing.
+		//
+		// Whether that is fatal is not decided here: the manifest stage runs alongside, and a
+		// project whose scannable files are all filtered can still have a dependency inventory
+		// worth handing back. The verdict waits until both stages are in.
 		if len(fp.WFP) == 0 {
+			if len(fp.Errors) > 0 {
+				fingerprintErr = fmt.Errorf("no file could be fingerprinted (%d failed): %w",
+					len(fp.Errors), errors.Join(fp.Errors...))
+			} else {
+				fingerprintErr = errors.New("no files to fingerprint: the filters excluded every file")
+			}
+			emit(Progress{Layer: LayerFingerprint, Status: StatusFailed, Total: len(files)})
 			return
 		}
+		emit(Progress{Layer: LayerFingerprint, Status: StatusCompleted, Done: len(files), Total: len(files)})
 
 		// The reporter travels with the call, not with the client: the client is the caller's, and a
 		// reporter it registered for itself keeps working untouched.
@@ -241,89 +268,53 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 	if scanErr != nil {
 		return Result{}, scanErr
 	}
+	// Nothing was fingerprinted. Fatal only when the manifest stage produced nothing either:
+	// otherwise the declared components are a real inventory, and discarding them would throw
+	// away work that succeeded because a different stage found nothing to do.
+	if fingerprintErr != nil && len(declaredComps) == 0 {
+		return Result{}, fingerprintErr
+	}
 	if scanResult == nil && len(declaredComps) == 0 {
-		return Result{ProcessErrors: procErrors}, nil
+		// The WFP travels back even here: it cost the fingerprinting work, and --save-wfp asks
+		// for it whatever the scan then found.
+		return Result{WFP: fingerprints, ProcessErrors: procErrors}, nil
 	}
 
-	// assemble runs the enrichment layers, which report to r as well.
-	inv := assemble(ctx, opts.Client, scanResult, declaredComps, opts.Services, r)
-	return Result{Inventory: inv, WFP: fingerprints, ProcessErrors: procErrors}, nil
+	// The enrichment layers report to r as well.
+	inv := scansource.Inventory(scanResult)
+	inv.Add(declaredComps...)
+	enrichErr := Enricher{Client: opts.Client, Services: opts.Services, Reporter: r}.Enrich(ctx, &inv)
+	return Result{
+		Inventory:     inv,
+		WFP:           fingerprints,
+		ProcessErrors: procErrors,
+		EnrichError:   enrichErr,
+	}, nil
 }
 
-// Build sources an Inventory from a scan result and enriches it with the requested layers. It is
-// the lower half of the pipeline (scan result → inventory), used directly by callers that
-// already have a scan result. Scan matches populate the detected components; when the deps layer
-// is requested and declared manifests are supplied, they are resolved into the same Components
-// list, tagged declared. Every requested purl-layer (licenses, vulns, crypto, geo) is then
-// gathered over all components, via the decoration pipeline. The requested layers, not any format,
-// decide what is gathered. Enrichment is non-fatal: a failed service is logged and skipped so a
-// partial inventory is still returned.
-func Build(ctx context.Context, client *scanoss.Client, result *scanossapi.ScanResult, services []scanoss.Service, includeDeclared bool, declared *parsers.LocalDependencies, reporter scanoss.DecorationReporter) (sbom.Inventory, error) {
-	// SOURCE the declared dependency components (opt-in via the deps layer) straight from the parsed
-	// manifests — no dependency-service round trip, since the lockfile already carries resolved
-	// PURLs. Once sourced they are ordinary components, enriched alongside the scan matches.
-	var declaredComps []sbom.Component
-	if includeDeclared && declared != nil && len(declared.Files) > 0 {
-		declaredComps = sourceDeclared(declared, "")
-	}
-	return assemble(ctx, client, result, declaredComps, services, reporter), nil
+// Enricher is what the requested layers are gathered with: a client to ask, the layers to ask
+// for, and who to report progress to. Run builds one from its Options; a caller that already has
+// an inventory — from a scan result, or parsed from an existing SBOM — builds one directly.
+//
+// The zero Services asks for nothing, which is not an error: a bare scan does no decoration work.
+type Enricher struct {
+	Client   *scanoss.Client
+	Services []scanoss.Service
+	Reporter scanoss.DecorationReporter
 }
 
-// assemble merges the detected components (from the scan result) with the already-resolved
-// declared components into one inventory, then enriches every component with the requested
-// purl-layers. With no purl-layer requested the enrich step is a no-op — a bare scan does no
-// decoration work.
-func assemble(ctx context.Context, client *scanoss.Client, result *scanossapi.ScanResult, declaredComps []sbom.Component, services []scanoss.Service, r scanoss.DecorationReporter) sbom.Inventory {
-	inv := scansource.Inventory(result)
-	inv.Components = append(inv.Components, declaredComps...)
-	inv.Components = dedupeComponents(inv.Components)
-	if len(inv.Components) > 0 {
-		Enrich(ctx, client, &inv, services, r)
-	}
-	return inv
-}
-
-// dedupeComponents collapses components that share the same identity (PURL + version) into one.
-// The scan and the manifests routinely surface the same component — a package listed in both
-// package.json and package-lock.json, or a detected match that is also a declared dependency —
-// and left in place the duplicates repeat in the raw output and, worse, produce clashing SBOM
-// identifiers (SPDX SPDXID / CycloneDX bom-ref are keyed by PURL+version), making the document
-// invalid. Different versions of the same PURL are kept (distinct identity).
-func dedupeComponents(comps []sbom.Component) []sbom.Component {
-	index := make(map[string]int, len(comps))
-	out := make([]sbom.Component, 0, len(comps))
-	for _, c := range comps {
-		key := c.Purl + "@" + c.Version
-		if i, ok := index[key]; ok {
-			mergeComponent(&out[i], c)
-			continue
-		}
-		index[key] = len(out)
-		out = append(out, c)
-	}
-	return out
-}
-
-// mergeComponent folds src into dst (same identity): a detected scope wins over declared, and the
-// evidence lists are combined — so a component that is both scan-detected and manifest-declared
-// keeps its file matches and its manifest occurrence together.
-func mergeComponent(dst *sbom.Component, src sbom.Component) {
-	if dst.Scope == sbom.ScopeDeclared && src.Scope == sbom.ScopeDetected {
-		dst.Scope = sbom.ScopeDetected
-	}
-	dst.Evidence = addEvidence(dst.Evidence, src.Evidence...)
-}
-
-// Enrich runs the decoration pipeline over the inventory's components and attaches the requested
-// purl-layers in place — licenses/cryptography/geoprovenance inline on each component,
-// vulnerabilities as the flat top-level list. It is the pipeline's format-blind enrichment stage,
-// keyed purely by PURL (+ version): the scan path reaches it through Build/Run, and the enrich
-// command calls it directly on an inventory parsed from an existing SBOM — no scan required. Each
-// layer is opt-in (driven by the requested set, never the output format); with no purl-layer
-// requested it makes no API call. Enrichment is non-fatal: a failed service is logged and skipped.
-func Enrich(ctx context.Context, client *scanoss.Client, inv *sbom.Inventory, services []scanoss.Service, reporter scanoss.DecorationReporter) {
-	if len(services) == 0 {
-		return
+// Enrich attaches the requested purl-layers to the inventory's components in place —
+// licenses/cryptography/geoprovenance inline on each component, vulnerabilities as the flat
+// top-level list. It is format-blind, keyed purely by PURL (+ version).
+//
+// Enrichment is non-fatal, so the inventory is usable whatever this returns: a layer that failed
+// is simply absent. The error names what did not arrive, which is the only way to tell an
+// inventory with no licences because the project declares none from one with no licences because
+// every request failed. With no layer requested, or no component to decorate, it makes no API
+// call and returns nil.
+func (e Enricher) Enrich(ctx context.Context, inv *sbom.Inventory) error {
+	if len(e.Services) == 0 || len(inv.Components) == 0 {
+		return nil
 	}
 
 	comps := make([]scanoss.Component, 0, len(inv.Components))
@@ -335,19 +326,21 @@ func Enrich(ctx context.Context, client *scanoss.Client, inv *sbom.Inventory, se
 	// appearing when its first response lands. The services run concurrently but answer at very
 	// different speeds — one endpoint can take ten times longer per request than another — and a
 	// layer that only shows up once it has an answer looks like a layer that started late.
-	if reporter != nil {
-		for _, svc := range services {
-			reporter.Decorating(svc.Name, 0, len(comps))
+	if e.Reporter != nil {
+		for _, svc := range e.Services {
+			e.Reporter.Decorating(svc.Name, 0, len(comps))
 		}
 	}
 
-	res, err := client.DecorationPipeline(services...).Run(ctx, comps, scanoss.WithDecorationReporter(reporter))
+	res, err := e.Client.DecorationPipeline(e.Services...).Run(ctx, comps, scanoss.WithDecorationReporter(e.Reporter))
 	if err != nil {
 		logging.Warn("decoration pipeline failed", "err", err)
-		return
+		return fmt.Errorf("gathering the requested layers: %w", err)
 	}
+	var layerErrs []error
 	for name, svcErr := range res.Errors {
 		logging.Warn("could not fetch a layer", "service", name, "err", svcErr)
+		layerErrs = append(layerErrs, fmt.Errorf("%s: %w", name, svcErr))
 	}
 
 	// Per-component layers attach inline by PURL (+ version where the response echoes it).
@@ -381,6 +374,10 @@ func Enrich(ctx context.Context, client *scanoss.Client, inv *sbom.Inventory, se
 		warnPartial(scanoss.ServiceVulnerabilities.Name, vul.Failed)
 		inv.Vulnerabilities = scansource.Vulnerabilities(vul.Response)
 	}
+
+	// A layer that answered for some components but not all stays a warning: it answered. Only a
+	// layer that did not answer at all is reported here.
+	return errors.Join(layerErrs...)
 }
 
 // warnPartial reports a layer that arrived incomplete, naming the components it left out.

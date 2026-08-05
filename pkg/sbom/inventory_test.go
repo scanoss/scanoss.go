@@ -23,7 +23,10 @@
 
 package sbom
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 // The SBOM name field must hold a package name, not a PURL. Detected components
 // carry one from the scan result; declared ones (sourced from a manifest) carry
@@ -48,4 +51,137 @@ func TestComponentDisplayName(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Add collapses duplicate identities (PURL+version) into one — so SBOM ids stay unique — while
+// keeping distinct versions of the same PURL, and a detected/declared overlap merges into a
+// single detected component that combines the file-match and manifest evidence.
+func TestInventoryAdd(t *testing.T) {
+	var inv Inventory
+	inv.Add(
+		Component{Purl: "pkg:npm/lodash", Version: "4.17.21", Scope: ScopeDetected, Evidence: []FileEvidence{{Path: "a.js", MatchType: "file"}}},
+		Component{Purl: "pkg:npm/lodash", Version: "4.17.21", Scope: ScopeDeclared, Evidence: []FileEvidence{{Path: "package.json", MatchType: "declared"}}}, // dup of the above
+		Component{Purl: "pkg:npm/abort-controller", Version: "3.0.0", Scope: ScopeDeclared, Evidence: []FileEvidence{{Path: "package.json", MatchType: "declared"}}},
+		Component{Purl: "pkg:npm/abort-controller", Version: "3.0.0", Scope: ScopeDeclared, Evidence: []FileEvidence{{Path: "package-lock.json", MatchType: "declared"}}}, // exact dup — evidence merged
+		Component{Purl: "pkg:npm/tar", Version: "6.2.0", Scope: ScopeDeclared},
+		Component{Purl: "pkg:npm/tar", Version: "7.5.7", Scope: ScopeDeclared}, // same purl, different version — kept
+	)
+
+	if len(inv.Components) != 4 {
+		t.Fatalf("got %d components, want 4: %+v", len(inv.Components), inv.Components)
+	}
+
+	// lodash: detected wins, and the file-match + manifest evidence are combined.
+	lodash := inv.Components[0]
+	if lodash.Scope != ScopeDetected || len(lodash.Evidence) != 2 {
+		t.Errorf("lodash merge wrong (want detected with 2 evidences): %+v", lodash)
+	}
+
+	// tar keeps both versions.
+	var tarVersions []string
+	for _, c := range inv.Components {
+		if c.Purl == "pkg:npm/tar" {
+			tarVersions = append(tarVersions, c.Version)
+		}
+	}
+	if len(tarVersions) != 2 {
+		t.Errorf("tar should keep both versions, got %v", tarVersions)
+	}
+
+	// every (purl,version) is unique.
+	seen := map[string]bool{}
+	for _, c := range inv.Components {
+		k := c.Purl + "@" + c.Version
+		if seen[k] {
+			t.Errorf("duplicate identity survived: %s", k)
+		}
+		seen[k] = true
+	}
+}
+
+// The zero Scope means detected, as the field documents, so it must win over declared on a merge
+// too. An inventory parsed from an external SBOM carries no scope, and merging declared
+// dependencies into it used to leave the result labelled declared.
+func TestInventoryAddTreatsEmptyScopeAsDetected(t *testing.T) {
+	for name, tc := range map[string]struct{ first, second ComponentScope }{
+		"empty then declared": {"", ScopeDeclared},
+		"declared then empty": {ScopeDeclared, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var inv Inventory
+			inv.Add(Component{Purl: "pkg:npm/lodash", Version: "4.17.21", Scope: tc.first})
+			inv.Add(Component{Purl: "pkg:npm/lodash", Version: "4.17.21", Scope: tc.second})
+
+			if len(inv.Components) != 1 {
+				t.Fatalf("got %d components, want 1", len(inv.Components))
+			}
+			if inv.Components[0].IsDeclared() {
+				t.Errorf("scope = %q, want detected to win", inv.Components[0].Scope)
+			}
+		})
+	}
+}
+
+// Appending to Components directly still works: Add is how the inventory keeps one entry per
+// component, not a gate on building one.
+func TestInventoryAddAfterDirectAppend(t *testing.T) {
+	inv := Inventory{Components: []Component{{Purl: "pkg:npm/lodash", Version: "4.17.21", Scope: ScopeDeclared}}}
+	inv.Add(Component{Purl: "pkg:npm/lodash", Version: "4.17.21", Scope: ScopeDetected})
+
+	if len(inv.Components) != 1 {
+		t.Fatalf("got %d components, want the appended one folded in: %+v", len(inv.Components), inv.Components)
+	}
+	if inv.Components[0].Scope != ScopeDetected {
+		t.Errorf("scope = %q, want detected", inv.Components[0].Scope)
+	}
+}
+
+// Add must not keep the caller's evidence array. A Component's Evidence is a slice, so storing
+// it as given leaves the inventory and the caller sharing memory: appending to it later writes
+// into the caller's array, and two inventories seeded from one Component value overwrite each
+// other's occurrences.
+func TestInventoryAddDoesNotAliasCallerEvidence(t *testing.T) {
+	t.Run("two inventories from one component", func(t *testing.T) {
+		// Spare capacity is what makes append reuse the array rather than allocate.
+		shared := make([]FileEvidence, 1, 8)
+		shared[0] = FileEvidence{Path: "shared.c", MatchType: "file"}
+		base := Component{Purl: "pkg:x/y", Version: "1", Evidence: shared}
+
+		var invA, invB Inventory
+		invA.Add(base)
+		invB.Add(base)
+		invA.Add(Component{Purl: "pkg:x/y", Version: "1", Evidence: []FileEvidence{{Path: "only-in-A", MatchType: "file"}}})
+		invB.Add(Component{Purl: "pkg:x/y", Version: "1", Evidence: []FileEvidence{{Path: "only-in-B", MatchType: "file"}}})
+
+		if got := evidencePaths(invA); !slices.Equal(got, []string{"shared.c", "only-in-A"}) {
+			t.Errorf("inventory A = %v, want its own occurrence", got)
+		}
+		if got := evidencePaths(invB); !slices.Equal(got, []string{"shared.c", "only-in-B"}) {
+			t.Errorf("inventory B = %v, want its own occurrence", got)
+		}
+		if shared[0].Path != "shared.c" || len(shared) != 1 {
+			t.Errorf("the caller's slice was written through: %+v", shared)
+		}
+	})
+
+	t.Run("caller mutates its slice afterwards", func(t *testing.T) {
+		ev := []FileEvidence{{Path: "original.c", MatchType: "file"}}
+		var inv Inventory
+		inv.Add(Component{Purl: "pkg:x/y", Version: "1", Evidence: ev})
+
+		ev[0].Path = "changed by the caller"
+
+		if got := inv.Components[0].Evidence[0].Path; got != "original.c" {
+			t.Errorf("evidence path = %q, want the inventory to hold its own copy", got)
+		}
+	})
+}
+
+// evidencePaths lists the occurrence paths of an inventory's first component.
+func evidencePaths(inv Inventory) []string {
+	out := make([]string, 0, len(inv.Components[0].Evidence))
+	for _, e := range inv.Components[0].Evidence {
+		out = append(out, e.Path)
+	}
+	return out
 }

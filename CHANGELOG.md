@@ -32,6 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which pruned `examples/` and `venv/` — where manifests legitimately live.
 - **A stray service no longer discards a whole pipeline run.** `DecorationPipeline.Run` skips one
   that is not a decoration layer, with a warning, instead of failing.
+- **A scan that fingerprinted nothing now fails** instead of reporting success with an empty
+  inventory, naming which of the two causes it was: every file failed, or the filters excluded all.
+- **A component whose `Scope` is unset counts as detected on a merge**, as the field documents.
 
 ### Changed
 
@@ -46,6 +49,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   → `KeepManifests`, `SkipExtensions` → `SkipExts`.
 - **BREAKING — `scanpipeline.Options.Filter` and `DependencySettings` are now `ScanFilters` and
   `DependencyFilters`.** The caller builds both; the pipeline no longer derives one from the other.
+- **BREAKING — `scanpipeline.Build` and `Enrich` give way to `Enricher`**, holding the client, the
+  layers and the reporter that all three used to repeat. A caller with a scan result assembles with
+  `scansource.Inventory` and enriches with `Enricher.Enrich`, which now returns an error.
+- **BREAKING — `scanpipeline.Result.ProcessErrors` is `[]error`**, the files `pkg/wfp` could not
+  fingerprint rather than a count of them. New `Result.EnrichError` reports layers that never
+  arrived, so a missing licence is distinguishable from a failed request.
+- **`sbom.Inventory.Add`** folds a component that is already listed instead of repeating it:
+  evidence is combined and a detected scope wins over declared. `scansource.Inventory` builds
+  through it, so its result no longer carries two entries for one component.
 - **BREAKING — `DependencyParser.ParseFiles` returns the per-file errors** (`map[string]error`)
   instead of printing them, so "every manifest failed" is distinguishable from "no dependencies".
 - **BREAKING — `pkg/scanner` and `pkg/fingerprint/wfp` merge into `pkg/wfp`.**
