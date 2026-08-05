@@ -160,9 +160,12 @@ func Load(path string) (*Settings, error) {
 	return &settings, nil
 }
 
-// Detect looks for a settings file in the given directory.
-// It checks for both "scanoss.json" and "settings.json" (in that order).
-// Returns the path to the first found file, or empty string if none found.
+// Detect looks for a settings file in the given directory, checking "scanoss.json" then
+// "settings.json". It returns the path of the first one found, or "" if there is none —
+// a project without settings is the normal case, not a failure.
+//
+// A file path is accepted too, and its directory is searched: a scan target can be a single
+// file, and the settings that apply to it live alongside it.
 func Detect(dir string) string {
 	// Ensure we're checking a directory
 	info, err := os.Stat(dir)
