@@ -39,7 +39,6 @@ import (
 
 	"github.com/scanoss/scanoss.go/pkg/dependencies"
 	"github.com/scanoss/scanoss.go/pkg/filter"
-	"github.com/scanoss/scanoss.go/pkg/settings"
 )
 
 // baselineTree builds a fixture that exercises every axis the filters touch:
@@ -107,7 +106,7 @@ func assertSet(t *testing.T, what string, got, want []string) {
 // What `scan` and `wfp` collect today.
 func TestBaselineScanCollection(t *testing.T) {
 	root := baselineTree(t)
-	st, err := settings.Resolve("", root)
+	st, err := resolveSettings("", root)
 	if err != nil {
 		t.Fatal(err)
 	}

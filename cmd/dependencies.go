@@ -35,7 +35,6 @@ import (
 	"github.com/scanoss/scanoss.go/pkg/dependencies/parsers"
 	"github.com/scanoss/scanoss.go/pkg/filter"
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
-	"github.com/scanoss/scanoss.go/pkg/settings"
 )
 
 var dependenciesCmd = &cobra.Command{
@@ -349,7 +348,7 @@ func runScanMode(cfg scanoss.Config, targetPath, outputFile, settingsFlag string
 // default extension list (.json, .mod, .xml, …) through
 // KeepManifests, so what the parser receives is unchanged.
 func collectDependencyFiles(root, settingsFlag string) ([]string, int, error) {
-	depSettings, err := settings.Resolve(settingsFlag, root)
+	depSettings, err := resolveSettings(settingsFlag, root)
 	if err != nil {
 		return nil, 0, fmt.Errorf("error loading settings: %w", err)
 	}

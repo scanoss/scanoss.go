@@ -182,39 +182,3 @@ func Detect(dir string) string {
 	}
 	return ""
 }
-
-// Resolve determines the settings file to use based on the provided flag value
-// and the scan target path. The --settings flag takes highest priority;
-// if not provided, auto-detection in the scan folder is attempted.
-//
-// Returns the loaded Settings (or nil if no settings file), and an error if loading fails.
-func Resolve(settingsFlag string, scanPath string) (*Settings, error) {
-	var settingsPath string
-
-	if settingsFlag != "" {
-		// --settings flag provided: resolve path
-		if filepath.IsAbs(settingsFlag) {
-			settingsPath = settingsFlag
-		} else {
-			// Relative to current working directory
-			absPath, err := filepath.Abs(settingsFlag)
-			if err != nil {
-				return nil, fmt.Errorf("error resolving settings path: %w", err)
-			}
-			settingsPath = absPath
-		}
-
-		// Verify file exists
-		if _, err := os.Stat(settingsPath); err != nil {
-			return nil, fmt.Errorf("settings file not found: %s", settingsPath)
-		}
-	} else {
-		// Auto-detect in scan folder
-		settingsPath = Detect(scanPath)
-		if settingsPath == "" {
-			return nil, nil // No settings file found, not an error
-		}
-	}
-
-	return Load(settingsPath)
-}
