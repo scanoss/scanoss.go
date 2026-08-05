@@ -55,6 +55,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING — `scanpipeline.Result.ProcessErrors` is `[]error`**, the files `pkg/wfp` could not
   fingerprint rather than a count of them. New `Result.EnrichError` reports layers that never
   arrived, so a missing licence is distinguishable from a failed request.
+- **BREAKING — `settings.Resolve` is gone.** Its first parameter was a `--settings` flag value, so
+  the flag priority moved to the CLI, where flags exist. Compose the two primitives instead:
+  `Detect(dir)` then `Load(path)`.
 - **`sbom.Inventory.Add`** folds a component that is already listed instead of repeating it:
   evidence is combined and a detected scope wins over declared. `scansource.Inventory` builds
   through it, so its result no longer carries two entries for one component.

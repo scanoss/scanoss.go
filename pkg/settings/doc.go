@@ -23,6 +23,6 @@
 
 // Package settings loads a project's scanoss.json (or settings.json): the BOM
 // rules (include/identify/ignore/remove/replace) and the skip rules (patterns and
-// size bounds per operation). Resolve locates and parses the file; pkg/filter reads the
+// size bounds per operation). Detect finds the file and Load parses it; pkg/filter reads the
 // skip rules straight out of it, one operation per profile.
 package settings

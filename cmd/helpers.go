@@ -32,8 +32,45 @@ import (
 	"syscall"
 
 	"github.com/scanoss/scanoss.go/pkg/filter"
+	"github.com/scanoss/scanoss.go/pkg/settings"
 	"github.com/spf13/cobra"
 )
+
+// resolveSettings picks the scanoss.json to use: --settings when given, otherwise whatever
+// autodetection finds next to the target. No file is not an error — it returns a nil Settings,
+// which every consumer of one already accepts.
+//
+// The priority is the CLI's, so it lives here. pkg/settings offers the two primitives it composes
+// (Detect and Load) and knows nothing about flags — a library function whose first parameter is a
+// flag value leaves an SDK consumer passing "" to say "I have no flags".
+func resolveSettings(settingsFlag, targetPath string) (*settings.Settings, error) {
+	if settingsFlag == "" {
+		path := settings.Detect(targetPath)
+		if path == "" {
+			return nil, nil
+		}
+		return settings.Load(path)
+	}
+
+	// An explicit path is checked before loading, so a typo reports the path it looked for
+	// rather than a parse failure on a file that is not there.
+	//
+	// Only a relative path is made absolute. filepath.Abs cleans as it goes, and cleaning
+	// resolves ".." by editing the string: through a symlinked directory that names a different
+	// file than the one the OS would open, and the error would name a path the user never typed.
+	path := settingsFlag
+	if !filepath.IsAbs(path) {
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			return nil, fmt.Errorf("error resolving settings path: %w", err)
+		}
+		path = abs
+	}
+	if _, err := os.Stat(path); err != nil {
+		return nil, fmt.Errorf("settings file not found: %s", path)
+	}
+	return settings.Load(path)
+}
 
 // usageError shows a command's help and returns an error naming what it was missing. It is how a
 // command reports being invoked without the input it needs.

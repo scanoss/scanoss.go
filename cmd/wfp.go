@@ -31,7 +31,6 @@ import (
 	"github.com/scanoss/scanoss.go/internal/config"
 	"github.com/scanoss/scanoss.go/internal/output"
 	"github.com/scanoss/scanoss.go/pkg/filter"
-	"github.com/scanoss/scanoss.go/pkg/settings"
 	"github.com/scanoss/scanoss.go/pkg/wfp"
 	"github.com/spf13/cobra"
 )
@@ -99,7 +98,7 @@ func runWFP(cmd *cobra.Command, args []string) error {
 
 	// Fingerprinting rules, not scanning ones: scanoss.json keeps the two
 	// operations apart, and this command only fingerprints.
-	wfpSettings, err := settings.Resolve(settingsFlag, targetPath)
+	wfpSettings, err := resolveSettings(settingsFlag, targetPath)
 	if err != nil {
 		return fmt.Errorf("error loading settings: %w", err)
 	}

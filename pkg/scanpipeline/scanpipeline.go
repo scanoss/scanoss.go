@@ -85,8 +85,8 @@ type Options struct {
 	OnProgress func(Progress)
 }
 
-// Result is the outcome of Run: the gathered inventory, the generated WFP (for --save-wfp), the
-// files that could not be fingerprinted, and whether enrichment came back whole.
+// Result is the outcome of Run: the gathered inventory, the generated WFP for a caller that wants
+// to keep it, the files that could not be fingerprinted, and whether enrichment came back whole.
 //
 // What the filters excluded is not here: it is reported as the collect layer completing, while the
 // scan is still ahead, rather than handed back once everything is over.
@@ -275,8 +275,8 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 		return Result{}, fingerprintErr
 	}
 	if scanResult == nil && len(declaredComps) == 0 {
-		// The WFP travels back even here: it cost the fingerprinting work, and --save-wfp asks
-		// for it whatever the scan then found.
+		// The WFP travels back even here: it cost the fingerprinting work, and a caller that
+		// keeps it wants it whatever the scan then found.
 		return Result{WFP: fingerprints, ProcessErrors: procErrors}, nil
 	}
 

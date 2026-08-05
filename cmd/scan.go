@@ -411,7 +411,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	// Settings drive file filtering. Of the BOM rules, bom.remove and bom.replace are applied
 	// (SDK-side, post-scan, via WithBOM); identify/ignore are not.
-	scanSettings, err := settings.Resolve(settingsFlag, targetPath)
+	scanSettings, err := resolveSettings(settingsFlag, targetPath)
 	if err != nil {
 		return fmt.Errorf("error loading settings: %w", err)
 	}
@@ -507,7 +507,7 @@ func runScanWFP(cmd *cobra.Command, args []string) error {
 	}
 
 	settingsFlag, _ := cmd.Flags().GetString("settings")
-	scanSettings, err := settings.Resolve(settingsFlag, filepath.Dir(wfpPath))
+	scanSettings, err := resolveSettings(settingsFlag, filepath.Dir(wfpPath))
 	if err != nil {
 		return fmt.Errorf("error loading settings: %w", err)
 	}

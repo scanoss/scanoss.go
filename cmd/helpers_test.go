@@ -24,9 +24,12 @@
 package cmd
 
 import (
-	"github.com/scanoss/scanoss.go/pkg/filter"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/scanoss/scanoss.go/pkg/filter"
 )
 
 func TestValidateSizeBounds(t *testing.T) {
@@ -115,5 +118,106 @@ func TestApplyCollectFlagsOnlyRemovesRules(t *testing.T) {
 	if len(d.SkipDirs) != 0 || len(d.SkipDirExts) != 0 {
 		t.Errorf("--all-folders must clear the profile's directory rules, got SkipDirs=%v SkipDirExts=%v",
 			d.SkipDirs, d.SkipDirExts)
+	}
+}
+
+// resolveSettings carries the CLI's priority: --settings wins, autodetection fills in, and no
+// file at all is not an error. It lives here rather than in pkg/settings because the priority is
+// the CLI's, not the library's.
+func TestResolveSettings(t *testing.T) {
+	t.Run("explicit settings flag", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "my-settings.json")
+		content := `{"bom": {"identify": [{"purl": "pkg:npm/test@1.0.0"}]}}`
+		os.WriteFile(settingsPath, []byte(content), 0644)
+
+		s, err := resolveSettings(settingsPath, dir)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		if s == nil {
+			t.Fatal("Expected settings, got nil")
+		}
+		if len(s.BOM.Identify) != 1 {
+			t.Errorf("Expected 1 identify entry, got %d", len(s.BOM.Identify))
+		}
+	})
+
+	t.Run("auto-detect", func(t *testing.T) {
+		dir := t.TempDir()
+		content := `{"bom": {"ignore": [{"purl": "pkg:npm/auto@*"}]}}`
+		os.WriteFile(filepath.Join(dir, "scanoss.json"), []byte(content), 0644)
+
+		s, err := resolveSettings("", dir)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		if s == nil {
+			t.Fatal("Expected settings, got nil")
+		}
+		if len(s.BOM.Ignore) != 1 {
+			t.Errorf("Expected 1 ignore entry, got %d", len(s.BOM.Ignore))
+		}
+	})
+
+	t.Run("no settings", func(t *testing.T) {
+		dir := t.TempDir()
+
+		s, err := resolveSettings("", dir)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		if s != nil {
+			t.Error("Expected nil settings, got non-nil")
+		}
+	})
+
+	t.Run("explicit flag overrides auto-detect", func(t *testing.T) {
+		dir := t.TempDir()
+		// Auto-detect file in scan dir
+		os.WriteFile(filepath.Join(dir, "scanoss.json"), []byte(`{"bom": {"identify": [{"purl": "pkg:npm/auto@1.0.0"}]}}`), 0644)
+
+		// Explicit settings file elsewhere
+		explicitDir := t.TempDir()
+		explicitPath := filepath.Join(explicitDir, "custom.json")
+		os.WriteFile(explicitPath, []byte(`{"bom": {"identify": [{"purl": "pkg:npm/explicit@2.0.0"}]}}`), 0644)
+
+		s, err := resolveSettings(explicitPath, dir)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		if s == nil {
+			t.Fatal("Expected settings, got nil")
+		}
+		if s.BOM.Identify[0].Purl != "pkg:npm/explicit@2.0.0" {
+			t.Errorf("Expected explicit settings to override, got purl '%s'", s.BOM.Identify[0].Purl)
+		}
+	})
+
+	t.Run("non-existent explicit file", func(t *testing.T) {
+		_, err := resolveSettings("/nonexistent/settings.json", t.TempDir())
+		if err == nil {
+			t.Error("Expected error for non-existent explicit file")
+		}
+	})
+}
+
+// An absolute --settings is passed through as given. filepath.Abs cleans as it goes, and
+// cleaning resolves ".." lexically: through a symlinked directory that names a different file
+// than the one the OS would open. The error naming a path the user never typed is the visible
+// half of the same bug, and the one this pins without needing a symlink.
+func TestResolveSettingsKeepsAnAbsolutePathAsGiven(t *testing.T) {
+	dir := t.TempDir()
+	// Built by concatenation on purpose: filepath.Join cleans too, so a path assembled with it
+	// would arrive already normalised and prove nothing.
+	sep := string(filepath.Separator)
+	given := dir + sep + "sub" + sep + ".." + sep + "missing.json"
+
+	_, err := resolveSettings(given, dir)
+	if err == nil {
+		t.Fatal("expected an error for a missing explicit settings file")
+	}
+	if !strings.Contains(err.Error(), given) {
+		t.Errorf("error = %q, want it to name the path as given (%q)", err, given)
 	}
 }
