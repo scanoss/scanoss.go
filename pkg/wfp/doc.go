@@ -22,10 +22,14 @@
  */
 
 // Package wfp turns files into WFP (Winnowing Fingerprint) fingerprints — the payload a
-// SCANOSS scan uploads. Generate is the whole surface: it fingerprints a set of files
-// through a bounded worker pool and returns both the combined stream and the per-file
-// detail behind it.
+// SCANOSS scan uploads. Both entry points fingerprint through a bounded worker pool and
+// return the combined stream together with the per-file detail behind it.
 //
-// It does no file selection: which files are worth fingerprinting is decided during
-// collection, with filter.Collect and one of its profiles.
+// Folder takes a directory and applies the filtering rules itself, which is what a caller
+// holding a tree wants. Files takes a list and applies none: it fingerprints whatever it is
+// given, because the list may have come from somewhere other than a walk — an explicit
+// selection, an archive stream, a file named on a command line.
+//
+// The asymmetry is deliberate but not obvious from the names, so a caller building the list
+// from a directory itself should filter it first, with filter.Collect and one of its profiles.
 package wfp

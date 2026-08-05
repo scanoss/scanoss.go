@@ -61,7 +61,7 @@ func GenerateWFP(filePath *C.char) *C.char {
 		return C.CString("")
 	}
 
-	res := wfp.Generate([]string{goFilePath}, 1, "", nil)
+	res := wfp.Files([]string{goFilePath}, 1, "", nil)
 	if len(res.Files) == 0 {
 		return C.CString("")
 	}
@@ -79,7 +79,7 @@ func GenerateWFPJSON(filePath *C.char) *C.char {
 		return C.CString(string(errJSON))
 	}
 
-	res := wfp.Generate([]string{goFilePath}, 1, "", nil)
+	res := wfp.Files([]string{goFilePath}, 1, "", nil)
 	if len(res.Files) == 0 {
 		if len(res.Errors) > 0 {
 			return errorJSON(res.Errors[0])

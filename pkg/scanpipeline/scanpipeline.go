@@ -199,7 +199,7 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 		// this package already has the file list, the root and the worker count as plain values,
 		// and handing them to the SDK instead would mean three scan options existing for no reason
 		// but to carry them back. It reports the stage itself and hands over a finished WFP.
-		fp := wfp.Generate(files, threads, scanRoot, r.Fingerprinting)
+		fp := wfp.Files(files, threads, scanRoot, r.Fingerprinting)
 		fingerprints, procErrors = fp.WFP, fp.Errors
 		// An empty WFP is a failed stage, not a completed one: there is nothing to upload, so
 		// the scan cannot run. Reporting it as completed and returning a nil error made a scan

@@ -146,7 +146,7 @@ func runWFP(cmd *cobra.Command, args []string) error {
 
 	// Generate the WFP through the shared path (same as `scan`), with paths
 	// relative to the scan root.
-	fp := wfp.Generate(files, threads, scanRoot, func(done, total int) {
+	fp := wfp.Files(files, threads, scanRoot, func(done, total int) {
 		bar.SetCurrent(int64(done))
 	})
 	bar.SetCurrent(int64(len(files)))

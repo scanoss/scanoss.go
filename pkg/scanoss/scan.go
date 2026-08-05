@@ -81,13 +81,18 @@ const DefaultScanChunkBytes = 1 << 20
 type ScanOption func(*scanOptions)
 
 type scanOptions struct {
-	chunkBytes   int            // WFP upload block size
-	filters      filter.Options // file collection filters (Folder only)
-	root         string         // when set, WFP file paths are rewritten relative to it
-	bom          *settings.BOM  // when set, BOM rules are applied to the result (post-scan)
-	pollInterval time.Duration  // scan status poll cadence (WithPollInterval)
-	reporter     ScanReporter   // receives this scan's stages (WithScanReporter)
-	onScanID     func(string)   // receives this scan's id once it is resumable (WithScanIDNotify)
+	chunkBytes int            // WFP upload block size
+	filters    filter.Options // file collection filters (Folder only)
+
+	// root is what WFP paths are labelled relative to. No option sets it today, so Files
+	// labels each file by its full path; Folder does not read it at all, resolving the
+	// scanned folder as its own root.
+	root string
+
+	bom          *settings.BOM // when set, BOM rules are applied to the result (post-scan)
+	pollInterval time.Duration // scan status poll cadence (WithPollInterval)
+	reporter     ScanReporter  // receives this scan's stages (WithScanReporter)
+	onScanID     func(string)  // receives this scan's id once it is resumable (WithScanIDNotify)
 }
 
 func resolveScanOptions(opts []ScanOption) scanOptions {
@@ -158,28 +163,62 @@ var _ ScanAPI = scanService{}
 // then scans the resulting WFP.
 func (s scanService) Folder(ctx context.Context, path string, opts ...ScanOption) (scanossapi.ScanEnvelope, error) {
 	o := resolveScanOptions(opts)
-	if o.root == "" {
-		o.root = path // report result paths relative to the scanned folder
-	}
-	res, err := filter.Collect(path, o.filters)
-	if err != nil {
-		return scanossapi.ScanEnvelope{}, fmt.Errorf("error collecting files: %w", err)
-	}
-	wfp, err := s.fingerprint(res.Files, o)
+
+	// wfp.Folder collects and fingerprints in one step, and resolves the scan root itself so
+	// the WFP labels come out relative to the folder even when path is relative.
+	res, err := wfp.Folder(path, &o.filters, s.c.workers, s.onFingerprint(o))
 	if err != nil {
 		return scanossapi.ScanEnvelope{}, err
 	}
-	return s.scan(ctx, wfp, o)
+	stream, err := uploadable(res)
+	if err != nil {
+		return scanossapi.ScanEnvelope{}, err
+	}
+	return s.scan(ctx, stream, o)
 }
 
 // Files fingerprints an explicit list of files, then scans the resulting WFP.
 func (s scanService) Files(ctx context.Context, files []string, opts ...ScanOption) (scanossapi.ScanEnvelope, error) {
 	o := resolveScanOptions(opts)
-	wfp, err := s.fingerprint(files, o)
+	if len(files) == 0 {
+		return scanossapi.ScanEnvelope{}, fmt.Errorf("no files to scan")
+	}
+	res := wfp.Files(files, s.c.workers, o.root, s.onFingerprint(o))
+	stream, err := uploadable(res)
 	if err != nil {
 		return scanossapi.ScanEnvelope{}, err
 	}
-	return s.scan(ctx, wfp, o)
+	return s.scan(ctx, stream, o)
+}
+
+// onFingerprint adapts the caller's reporter to the fingerprinting callback.
+func (s scanService) onFingerprint(o scanOptions) func(done, total int) {
+	return func(done, total int) {
+		if o.reporter != nil {
+			o.reporter.Fingerprinting(done, total)
+		}
+	}
+}
+
+// uploadable turns a fingerprinting run into the stream to send.
+//
+// Fingerprinting is best-effort, so a skipped file does not fail the scan — but it is reported.
+// Discarding these silently made a scan of a tree with unreadable files look like a scan of a
+// smaller tree. Nothing attempted at all is a different failure from nothing produced, and the
+// two get their own messages: the first says the scan had no input, the second that it had input
+// it could not use.
+func uploadable(res wfp.Result) ([]byte, error) {
+	logging.Debug("fingerprinted files", "files", len(res.Files)+len(res.Errors), "wfpBytes", len(res.WFP))
+	for _, fpErr := range res.Errors {
+		logging.Warn("skipped a file that could not be fingerprinted", "err", fpErr)
+	}
+	if len(res.Files) == 0 && len(res.Errors) == 0 {
+		return nil, fmt.Errorf("no files to scan")
+	}
+	if len(res.WFP) == 0 {
+		return nil, fmt.Errorf("no fingerprints generated")
+	}
+	return res.WFP, nil
 }
 
 // WFP scans an already-assembled WFP byte stream.
@@ -207,30 +246,6 @@ func (s scanService) scan(ctx context.Context, wfp []byte, o scanOptions) (scano
 	}
 	logging.Debug("scan complete", "scanID", scanID)
 	return env, nil
-}
-
-// fingerprint runs the worker pool over files and returns the combined WFP,
-// emitting per-file progress. Bounded by the client's worker limit.
-func (s scanService) fingerprint(files []string, o scanOptions) ([]byte, error) {
-	if len(files) == 0 {
-		return nil, fmt.Errorf("no files to scan")
-	}
-	res := wfp.Generate(files, s.c.workers, o.root, func(done, total int) {
-		if o.reporter != nil {
-			o.reporter.Fingerprinting(done, total)
-		}
-	})
-	logging.Debug("fingerprinted files", "files", len(files), "wfpBytes", len(res.WFP))
-	// Fingerprinting is best-effort, so a skipped file does not fail the scan — but it is
-	// reported. Discarding these silently made a scan of a tree with unreadable files look
-	// like a scan of a smaller tree.
-	for _, fpErr := range res.Errors {
-		logging.Warn("skipped a file that could not be fingerprinted", "err", fpErr)
-	}
-	if len(res.WFP) == 0 {
-		return nil, fmt.Errorf("no fingerprints generated")
-	}
-	return res.WFP, nil
 }
 
 // upload generates the scan id (UUIDv7) client-side, uploads every WFP chunk
