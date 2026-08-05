@@ -433,9 +433,9 @@ scanoss-cli copyright --purl 'pkg:github/scanoss/engine' --api-key "$SCANOSS_API
 scanoss-cli copyright holders --purl 'pkg:github/scanoss/engine' --api-key "$SCANOSS_API_KEY"
 ```
 
-### `components` — `search` (default), `versions`, `status`
+### `components` — `search` (default), `versions`, `releases`, `status`
 
-`search` and `versions` take their own flags instead of the PURL list.
+`search`, `versions` and `releases` take their own flags instead of the PURL list.
 
 ```bash
 # Search by vendor/component/term
@@ -445,6 +445,11 @@ scanoss-cli components search --search engine --purl-type github --limit 20 --of
 # Known versions (with licenses) for a purl
 scanoss-cli components versions --purl 'pkg:github/scanoss/engine' --limit 50 --api-key "$SCANOSS_API_KEY"
 
+# Release notes for a purl: all, a single version, or a semver range
+scanoss-cli components releases --purl 'pkg:github/scanoss/engine' --api-key "$SCANOSS_API_KEY"
+scanoss-cli components releases --purl 'pkg:github/scanoss/engine' --requirement '5.4.7' --api-key "$SCANOSS_API_KEY"
+scanoss-cli components releases --purl 'pkg:github/scanoss/engine' --requirement '>=1.0.0, <=2.0.0' --limit 10 --offset 0 --api-key "$SCANOSS_API_KEY"
+
 # Lifecycle status for a PURL list
 scanoss-cli components status --purl 'pkg:github/scanoss/engine' --requirement '1.2.3' --api-key "$SCANOSS_API_KEY"
 ```
@@ -452,6 +457,12 @@ scanoss-cli components status --purl 'pkg:github/scanoss/engine' --requirement '
 `components search` flags: `--search`, `--vendor`, `--component` (at least one),
 `--purl-type` (default `github`), `--limit`, `--offset`.
 `components versions` flags: `--purl`, `--limit`.
+`components releases` flags: `--purl` (required), `--requirement` (an exact
+version or a semver range), `--limit`, `--offset`. With no `--requirement` it
+lists all releases; the flags are not mutually exclusive. When the component
+exists but has no notes for the resolved version, the API returns
+`RELEASE_NOTES_UNAVAILABLE` — the command prints a "no release notes available"
+notice on stderr, still emits the JSON, and exits 0 (not an error).
 
 ## `scanoss.json` reference
 
