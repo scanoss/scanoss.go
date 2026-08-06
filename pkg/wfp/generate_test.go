@@ -26,6 +26,7 @@ package wfp
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -119,6 +120,88 @@ func TestCollectionStillExcludesWhatTheLayerNoLongerDoes(t *testing.T) {
 		if filepath.Base(f) == "logo.png" {
 			t.Error("collection must still exclude logo.png")
 		}
+	}
+}
+
+// The WFP is byte-reproducible: completion order depends on worker scheduling,
+// so the output is sorted by path, whatever the thread count.
+func TestFilesOutputSortedByPath(t *testing.T) {
+	root := t.TempDir()
+	var paths []string
+	for _, name := range []string{"zebra.go", "alpha.go", "mid.go", "beta.go", "omega.go", "delta.go", "kappa.go", "gamma.go"} {
+		p := filepath.Join(root, name)
+		writeSized(t, p, 100+len(name)*30) // varied sizes shuffle completion order
+		paths = append(paths, p)
+	}
+
+	first := Files(paths, 8, root, nil)
+	if len(first.Errors) > 0 {
+		t.Fatalf("errors = %v", first.Errors)
+	}
+
+	var got []string
+	for _, line := range strings.Split(string(first.WFP), "\n") {
+		if rest, ok := strings.CutPrefix(line, "file="); ok {
+			parts := strings.SplitN(rest, ",", 3)
+			got = append(got, parts[2])
+		}
+	}
+	want := []string{"alpha.go", "beta.go", "delta.go", "gamma.go", "kappa.go", "mid.go", "omega.go", "zebra.go"}
+	if !slices.Equal(got, want) {
+		t.Errorf("WFP file order = %v, want %v", got, want)
+	}
+	for i, fp := range first.Files {
+		if fp.Path != want[i] {
+			t.Errorf("Files[%d].Path = %q, want %q", i, fp.Path, want[i])
+		}
+	}
+
+	second := Files(paths, 8, root, nil)
+	if !slices.Equal(first.WFP, second.WFP) {
+		t.Error("two runs over the same files produced different WFP bytes")
+	}
+}
+
+// A directory handed to Files is reported, not silently skipped: the caller
+// built the list, so an entry that cannot be fingerprinted is its mistake to hear about.
+func TestFilesReportsDirectories(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "somedir")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(root, "main.go")
+	writeSized(t, file, 200)
+
+	fp := Files([]string{dir, file}, 2, root, nil)
+	if len(fp.Errors) != 1 || !strings.Contains(fp.Errors[0].Error(), "somedir") {
+		t.Errorf("Errors = %v, want one naming somedir", fp.Errors)
+	}
+	if !strings.Contains(string(fp.WFP), "main.go") {
+		t.Errorf("the sibling file must still be fingerprinted; got:\n%s", fp.WFP)
+	}
+}
+
+// Progress counts failures too: a run with unreadable files still ends at
+// done == total, so a progress bar fed by the callback completes.
+func TestFilesProgressCountsFailures(t *testing.T) {
+	root := t.TempDir()
+	good := filepath.Join(root, "good.go")
+	writeSized(t, good, 200)
+	missing := filepath.Join(root, "gone.go")
+
+	var last int
+	fp := Files([]string{good, missing}, 2, root, func(done, total int) {
+		last = done
+		if total != 2 {
+			t.Errorf("total = %d, want 2", total)
+		}
+	})
+	if last != 2 {
+		t.Errorf("final done = %d, want 2 (failures must advance progress)", last)
+	}
+	if len(fp.Errors) != 1 {
+		t.Errorf("Errors = %v, want one for the missing file", fp.Errors)
 	}
 }
 
