@@ -37,7 +37,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A scan that fingerprinted nothing now fails**, naming whether every file failed or the
   filters excluded them all.
 - **A component whose `Scope` is unset counts as detected on a merge**, as the field documents.
-- **A file that cannot be fingerprinted is now reported** instead of silently skipped.
+- **A file that cannot be fingerprinted is now reported** instead of silently skipped —
+  including a directory passed to `wfp.Files` — and failures advance the progress
+  callback too, so `done` reaches `total`.
+- **The WFP stream and `Result.Files` are sorted by path**, so multi-threaded runs are
+  byte-reproducible.
 - **Inverted size bounds (`min` > `max`) are warned about and ignored** — from
   `scanoss.json` `skip.sizes` or `Options.MinSize`/`MaxSize` — instead of silently
   excluding every matching file.

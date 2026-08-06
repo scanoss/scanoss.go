@@ -27,6 +27,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 
 	"github.com/scanoss/scanoss.go/internal/logging"
@@ -79,8 +81,10 @@ func (wp *workerPool) worker(id int) {
 			continue
 		}
 
-		// Skip directories
+		// A directory cannot be fingerprinted; reporting it beats returning an
+		// empty result to whoever put it in the list.
 		if stat.IsDir() {
+			wp.errors <- fmt.Errorf("%s: is a directory, not fingerprinted", filePath)
 			continue
 		}
 
@@ -117,7 +121,7 @@ func (wp *workerPool) close() {
 // and a caller that ignores it should have to say so.
 type Result struct {
 	WFP     []byte            // the combined stream, ready to upload
-	Files   []FileFingerprint // per-file detail, in completion order
+	Files   []FileFingerprint // per-file detail, sorted by path
 	Errors  []error           // files that could not be fingerprinted
 	Skipped int               // files the filters excluded; always 0 from Files, which selects nothing
 }
@@ -155,7 +159,7 @@ func Folder(dir string, filters *filter.Options, workers int, onProgress func(do
 }
 
 // Files fingerprints the given files through a bounded worker pool. onProgress, if non-nil, is
-// called as each file completes (done, total).
+// called as each file completes (done, total), counting failures too, so done reaches total.
 //
 // It does no selection: which files are worth fingerprinting was decided by whoever built the
 // list. Fingerprinting one file is Files with a one-file slice — a separate single-file function
@@ -181,24 +185,40 @@ func Files(files []string, workers int, root string, onProgress func(done, total
 		pool.close()
 	}()
 
-	var errs []error
-	var errWg sync.WaitGroup
-	errWg.Add(1)
-	go func() {
-		defer errWg.Done()
-		for err := range pool.errors {
+	// One loop over both channels so a failed file advances the progress too:
+	// a run with failures still ends at done == total.
+	var (
+		errs []error
+		fps  []*FileFingerprint
+		done int
+	)
+	results, failures := pool.results, pool.errors
+	for results != nil || failures != nil {
+		select {
+		case fp, ok := <-results:
+			if !ok {
+				results = nil
+				continue
+			}
+			fps = append(fps, fp)
+		case err, ok := <-failures:
+			if !ok {
+				failures = nil
+				continue
+			}
 			errs = append(errs, err)
 		}
-	}()
-
-	var fps []*FileFingerprint
-	for fp := range pool.results {
-		fps = append(fps, fp)
+		done++
 		if onProgress != nil {
-			onProgress(len(fps), len(files))
+			onProgress(done, len(files))
 		}
 	}
-	errWg.Wait()
+
+	// Completion order depends on worker scheduling; sorting makes the WFP
+	// byte-reproducible across runs, whatever the thread count.
+	slices.SortFunc(fps, func(a, b *FileFingerprint) int {
+		return strings.Compare(a.Path, b.Path)
+	})
 
 	out := make([]FileFingerprint, 0, len(fps))
 	for _, fp := range fps {
