@@ -22,7 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`pkg/filter` reports its work at Debug**: the rules a `Collect` applied, and which rule
   excluded each file.
 - **`sbom.Inventory.Add`** keeps one entry per component, combining evidence and letting a
-  detected scope win over declared. `scansource.Inventory` builds through it.
+  detected component win over a declared one — scope and metadata both.
+  `scansource.Inventory` builds through it.
 
 ### Fixed
 
