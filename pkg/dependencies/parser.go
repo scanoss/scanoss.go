@@ -139,9 +139,9 @@ func (dp *DependencyParser) ParseFile(filePath string) (*parsers.LocalDependency
 // ParseFiles parses every file, best-effort: one that fails is skipped and its error
 // returned in failed, keyed by path.
 //
-// The count is what makes "every manifest failed" distinguishable from "the manifests
-// declared no dependencies" — printing the errors and returning nil made those two
-// identical, so a caller could not downgrade its confidence in the result.
+// The failed map is what makes "every manifest failed" distinguishable from "the
+// manifests declared no dependencies" — printing the errors and returning nil made
+// those two identical, so a caller could not downgrade its confidence in the result.
 func (dp *DependencyParser) ParseFiles(files []string) (*parsers.LocalDependencies, map[string]error) {
 	result := &parsers.LocalDependencies{
 		Files: []parsers.LocalDependency{},
