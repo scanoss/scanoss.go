@@ -24,14 +24,27 @@
 package filter
 
 import (
+	"bytes"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 
+	"github.com/scanoss/scanoss.go/internal/logging"
 	"github.com/scanoss/scanoss.go/pkg/settings"
 )
+
+// recordWarnings routes the module's logs into a buffer for the test's duration,
+// so a test can assert that a warning was (or was not) emitted.
+func recordWarnings(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	logging.Set(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { logging.Set(nil) })
+	return &buf
+}
 
 func keySet(ms []matcher) map[string]bool {
 	s := make(map[string]bool, len(ms))
@@ -124,6 +137,38 @@ func TestSizeSource(t *testing.T) {
 	}
 	if !ms[0].Match("tiny", aFile("tiny", 40)) {
 		t.Error("file below min should be skipped")
+	}
+}
+
+// An inverted range (min > max) can match nothing: applying it would silently
+// exclude every file, so it is warned about and ignored instead.
+func TestSizeSourceInvertedBoundsIgnored(t *testing.T) {
+	warnings := recordWarnings(t)
+
+	if ms := sizeSource(1000, 100); ms != nil {
+		t.Fatalf("sizeSource(1000, 100) = %v, want nil (inverted bounds ignored)", keySet(ms))
+	}
+	if !strings.Contains(warnings.String(), "min exceeds max") {
+		t.Errorf("expected a min-exceeds-max warning, got %q", warnings.String())
+	}
+}
+
+// min == max is a valid one-size window, not an inverted range.
+func TestSizeSourceMinEqualsMax(t *testing.T) {
+	warnings := recordWarnings(t)
+
+	ms := sizeSource(100, 100)
+	if len(ms) != 1 {
+		t.Fatalf("matchers = %v, want one", keySet(ms))
+	}
+	if ms[0].Match("exact", aFile("exact", 100)) {
+		t.Error("a file of exactly min == max bytes should not be skipped")
+	}
+	if !ms[0].Match("over", aFile("over", 101)) {
+		t.Error("a file above max should be skipped")
+	}
+	if warnings.Len() != 0 {
+		t.Errorf("no warning expected, got %q", warnings.String())
 	}
 }
 
@@ -241,6 +286,30 @@ func TestSettingsSourceSizes(t *testing.T) {
 	}
 	if m.Match("big.txt", aFile("big.txt", 200)) {
 		t.Error("non-matching pattern should not be skipped on size")
+	}
+}
+
+// An inverted skip.sizes rule in scanoss.json is a typo that would silently
+// exclude every matching file: it is warned about and skipped, and the
+// remaining rules still apply.
+func TestSettingsSourceInvertedSizeRuleIgnored(t *testing.T) {
+	warnings := recordWarnings(t)
+
+	ms := patternSource(Options{SizeRules: []SizeRule{
+		{Patterns: []string{"*.bin"}, Min: 1000, Max: 100},
+		{Patterns: []string{"*.log"}, Max: 100},
+	}})
+	if len(ms) != 1 {
+		t.Fatalf("count = %d, want 1 (the valid rule only)", len(ms))
+	}
+	if !ms[0].Match("big.log", aFile("big.log", 200)) {
+		t.Error("the valid sibling rule must still apply")
+	}
+	if ms[0].Match("big.bin", aFile("big.bin", 2000)) {
+		t.Error("the inverted rule must not have been built")
+	}
+	if !strings.Contains(warnings.String(), "min exceeds max") {
+		t.Errorf("expected a min-exceeds-max warning, got %q", warnings.String())
 	}
 }
 
