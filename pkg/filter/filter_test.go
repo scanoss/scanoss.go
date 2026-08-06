@@ -247,6 +247,22 @@ func TestCollectSizeBoundsIndependentOfDefaults(t *testing.T) {
 	}
 }
 
+// Inverted bounds (min > max) would exclude every file; Collect ignores them
+// (with a warning) and collects as if no bounds were set.
+func TestCollectInvertedSizeBoundsIgnored(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "tiny.go"), 40)
+	writeFile(t, filepath.Join(root, "big.go"), 200)
+
+	res, err := Collect(root, Options{MinSize: 1000, MaxSize: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := baseNames(res.Files); !equalStrings(got, []string{"big.go", "tiny.go"}) {
+		t.Fatalf("kept %v, want both files — inverted bounds must not exclude anything", got)
+	}
+}
+
 // Size bounds are their own source, so a caller composing by hand gets them
 // whether or not it also asked for the built-in lists.
 func TestComposedSizeBoundsIndependentOfDefaults(t *testing.T) {

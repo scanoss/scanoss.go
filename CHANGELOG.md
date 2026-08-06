@@ -38,6 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   filters excluded them all.
 - **A component whose `Scope` is unset counts as detected on a merge**, as the field documents.
 - **A file that cannot be fingerprinted is now reported** instead of silently skipped.
+- **Inverted size bounds (`min` > `max`) are warned about and ignored** — from
+  `scanoss.json` `skip.sizes` or `Options.MinSize`/`MaxSize` — instead of silently
+  excluding every matching file.
 
 ### Changed
 

@@ -30,6 +30,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/scanoss/scanoss.go/internal/logging"
 )
 
 // defaults holds the skip lists and size bounds a defaultSource turns into
@@ -129,8 +131,15 @@ func hiddenSource() []matcher {
 // (Options.MinSize/MaxSize), not from the built-in lists: switching the defaults
 // off must not discard a bound the caller asked for. A min of 0 imposes no
 // minimum and a max of 0 no maximum, so 0/0 yields no matcher at all.
+// An inverted range (min > max, both set) can match nothing; applying it would
+// silently exclude every file, so it is warned about and ignored instead.
 func sizeSource(min, max int64) []matcher {
 	if min <= 0 && max <= 0 {
+		return nil
+	}
+	if max > 0 && min > max {
+		logging.Warn("ignoring size bounds: min exceeds max, no file could match",
+			"min", min, "max", max)
 		return nil
 	}
 	return []matcher{newSizeMatcher(min, max)}
@@ -154,6 +163,13 @@ func patternSource(o Options) []matcher {
 	}
 	for _, rule := range o.SizeRules {
 		if len(rule.Patterns) == 0 {
+			continue
+		}
+		// Same guard as sizeSource: an inverted range would exclude every matching
+		// file, and a typo in scanoss.json must not silently lose data.
+		if rule.Max > 0 && rule.Min > rule.Max {
+			logging.Warn("ignoring scanoss.json skip.sizes rule: min exceeds max, no file could match",
+				"patterns", strings.Join(rule.Patterns, ","), "min", rule.Min, "max", rule.Max)
 			continue
 		}
 		ms = append(ms, newScopedSizeMatcher(rule.Patterns, rule.Min, rule.Max))
