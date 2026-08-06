@@ -24,10 +24,11 @@
 package scanoss
 
 import (
-	scanossapi "github.com/scanoss/scanoss.api-sdk"
 	"os"
 	"path/filepath"
 	"testing"
+
+	scanossapi "github.com/scanoss/scanoss.api-sdk"
 )
 
 // The fixtures in testdata/ are verbatim GET /v3/wfp/scan/{id} envelopes captured

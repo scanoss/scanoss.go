@@ -26,12 +26,12 @@ package sbom
 import (
 	"bytes"
 	"fmt"
-	"github.com/google/uuid"
 	"strconv"
 	"strings"
 	"time"
 
 	cdx "github.com/CycloneDX/cyclonedx-go"
+	"github.com/google/uuid"
 )
 
 // scanossURLHashProp is the CycloneDX component property carrying the scanoss url_hash

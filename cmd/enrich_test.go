@@ -31,8 +31,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/scanoss/scanoss.go/internal/config"
 	"github.com/spf13/cobra"
+
+	"github.com/scanoss/scanoss.go/internal/config"
 )
 
 // rawInput is a scanoss raw inventory (the scan raw output envelope) with one component.

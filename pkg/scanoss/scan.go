@@ -29,18 +29,17 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-
-	scanossapi "github.com/scanoss/scanoss.api-sdk"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	scanossapi "github.com/scanoss/scanoss.api-sdk"
+
+	"github.com/scanoss/scanoss.go/internal/logging"
 	"github.com/scanoss/scanoss.go/pkg/filter"
 	"github.com/scanoss/scanoss.go/pkg/postprocess"
 	"github.com/scanoss/scanoss.go/pkg/settings"
 	"github.com/scanoss/scanoss.go/pkg/wfp"
-
-	"github.com/scanoss/scanoss.go/internal/logging"
 )
 
 // ScanAPI is the batch scan service surface. Folder, Files and WFP each run the

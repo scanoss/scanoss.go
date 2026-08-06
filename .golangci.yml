@@ -10,3 +10,16 @@ linters:
     # Do not apply linters to test files.
     paths:
       - _test\.go$
+
+formatters:
+  # gci enforces import grouping: stdlib, then third-party, then this module.
+  # gofmt here lets `golangci-lint fmt` (make fmt) resolve all formatting at once.
+  enable:
+    - gci
+    - gofmt
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - localmodule

@@ -31,6 +31,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/spf13/cobra"
+	"github.com/vbauerster/mpb/v8"
+
 	"github.com/scanoss/scanoss.go/internal/cliconfig"
 	"github.com/scanoss/scanoss.go/internal/config"
 	"github.com/scanoss/scanoss.go/internal/output"
@@ -40,8 +43,6 @@ import (
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
 	"github.com/scanoss/scanoss.go/pkg/scanpipeline"
 	"github.com/scanoss/scanoss.go/pkg/settings"
-	"github.com/spf13/cobra"
-	"github.com/vbauerster/mpb/v8"
 )
 
 // scanProgress draws pipeline layers as terminal progress bars, one bar per layer in a shared mpb
