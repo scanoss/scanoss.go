@@ -24,6 +24,7 @@
 package sbom
 
 import (
+	"fmt"
 	"slices"
 	"testing"
 )
@@ -119,6 +120,83 @@ func TestInventoryAddTreatsEmptyScopeAsDetected(t *testing.T) {
 				t.Errorf("scope = %q, want detected to win", inv.Components[0].Scope)
 			}
 		})
+	}
+}
+
+// Detected wins over declared as a whole: when a detected component folds into a declared
+// entry, its metadata comes along — a component labelled detected must not carry the declared
+// entry's empty name/vendor/url/licenses. The CLI pipeline always adds detected first, so this
+// protects external Add callers building in the other order.
+func TestInventoryAddDeclaredThenDetectedKeepsDetectedMetadata(t *testing.T) {
+	detected := Component{
+		Purl: "pkg:npm/lodash", Version: "4.17.21", Scope: ScopeDetected,
+		Name: "lodash", Vendor: "lodash", URL: "https://github.com/lodash/lodash",
+		Rank: 1, Licenses: []License{{ID: "MIT"}},
+		Evidence: []FileEvidence{{Path: "src/clone.js", MatchType: "snippet"}},
+	}
+	declared := Component{
+		Purl: "pkg:npm/lodash", Version: "4.17.21", Scope: ScopeDeclared,
+		Evidence: []FileEvidence{{Path: "package.json", MatchType: "declared"}},
+	}
+
+	for name, order := range map[string][]Component{
+		"declared first": {declared, detected},
+		"detected first": {detected, declared},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var inv Inventory
+			inv.Add(order[0])
+			inv.Add(order[1])
+
+			if len(inv.Components) != 1 {
+				t.Fatalf("got %d components, want 1", len(inv.Components))
+			}
+			c := inv.Components[0]
+			if c.Scope != ScopeDetected {
+				t.Errorf("scope = %q, want detected", c.Scope)
+			}
+			if c.Name != "lodash" || c.Vendor != "lodash" || c.URL != detected.URL || c.Rank != 1 {
+				t.Errorf("detected metadata lost on merge: %+v", c)
+			}
+			if len(c.Licenses) != 1 || c.Licenses[0].ID != "MIT" {
+				t.Errorf("licenses lost on merge: %+v", c.Licenses)
+			}
+			if len(c.Evidence) != 2 {
+				t.Errorf("evidence from both origins must survive, got %+v", c.Evidence)
+			}
+		})
+	}
+}
+
+// BenchmarkInventoryAdd measures the merge path: half the components are declared
+// entries whose identity is then re-added as a detected component with metadata and
+// evidence, so every declared entry goes through the declared→detected fold.
+func BenchmarkInventoryAdd(b *testing.B) {
+	const n = 1000
+	declared := make([]Component, n)
+	detected := make([]Component, n)
+	for i := range n {
+		purl := fmt.Sprintf("pkg:npm/component-%d", i)
+		declared[i] = Component{
+			Purl: purl, Version: "1.0.0", Scope: ScopeDeclared,
+			Evidence: []FileEvidence{{Path: "package.json", MatchType: "declared"}},
+		}
+		detected[i] = Component{
+			Purl: purl, Version: "1.0.0", Scope: ScopeDetected,
+			Name: fmt.Sprintf("component-%d", i), Vendor: "vendor", Rank: 1,
+			URL: "https://example.com", Licenses: []License{{ID: "MIT"}},
+			Evidence: []FileEvidence{{Path: fmt.Sprintf("src/file-%d.js", i), MatchType: "file"}},
+		}
+	}
+
+	b.ReportAllocs()
+	for b.Loop() {
+		var inv Inventory
+		inv.Add(declared...)
+		inv.Add(detected...)
+		if len(inv.Components) != n {
+			b.Fatalf("got %d components, want %d", len(inv.Components), n)
+		}
 	}
 }
 

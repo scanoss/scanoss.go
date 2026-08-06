@@ -46,7 +46,7 @@ type Inventory struct {
 
 // Add appends comps, folding any that shares an identity (Purl and Version) with a component
 // already present rather than listing it twice: the evidence lists are combined, and a detected
-// scope wins over declared. A component both matched by a scan and declared in a manifest is one
+// component wins over a declared one — scope and metadata both. A component both matched by a scan and declared in a manifest is one
 // component, detected, carrying its file matches and its manifest occurrence together. An empty
 // Scope counts as detected, as the field documents.
 //
@@ -77,10 +77,17 @@ func (inv *Inventory) Add(comps ...Component) {
 // component, whichever origin reported it.
 func componentKey(c Component) string { return c.Purl + "@" + c.Version }
 
-// mergeComponent folds src into dst, which share an identity.
+// mergeComponent folds src into dst, which share an identity. Detected wins over
+// declared as a whole, not just the scope tag: a declared entry carries nothing
+// but its identity and its manifest occurrence, so when a detected src arrives
+// its metadata (name, vendor, url, licenses, …) replaces dst's empty fields.
+// Evidence from both origins is kept either way.
 func mergeComponent(dst *Component, src Component) {
 	if effectiveScope(*dst) == ScopeDeclared && effectiveScope(src) == ScopeDetected {
-		dst.Scope = ScopeDetected
+		src.Evidence = addEvidence(dst.Evidence, src.Evidence...)
+		*dst = src
+		dst.Scope = ScopeDetected // src's zero scope must not render as ""
+		return
 	}
 	dst.Evidence = addEvidence(dst.Evidence, src.Evidence...)
 }
