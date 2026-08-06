@@ -5,95 +5,64 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.8.0] - 2026-08-10
 
 ### Added
 
-- **`components releases`** — list a component's release / changelog entries
-  (version, date, notes, url) for a PURL via the new `/v3/components/releases`
-  endpoint. `--requirement` narrows to a single version or a semver range (e.g.
-  `>=1.0.0, <=2.0.0`); `--limit`/`--offset` paginate. When the component exists
-  but has no notes for the resolved version (`RELEASE_NOTES_UNAVAILABLE`), it
-  prints a "no release notes available" notice and exits 0 rather than erroring.
-
-### Added
-
-- **`scanoss.SetLogger`** routes the SDK's diagnostics — every package, not one client.
-- **`pkg/filter` reports its work at Debug**: the rules a `Collect` applied, and which rule
-  excluded each file.
-- **`sbom.Inventory.Add`** keeps one entry per component, combining evidence and letting a
-  detected component win over a declared one — scope and metadata both.
-  `scansource.Inventory` builds through it.
+- **`components releases`** — list a component's releases (version, date, notes, url) for a
+  PURL; `--requirement` narrows to a version or semver range, `--limit`/`--offset` paginate.
+- **`scanoss.SetLogger`** routes every SDK package's diagnostics through one logger;
+  `pkg/filter` reports the rules applied and each exclusion at Debug.
+- **`sbom.Inventory.Add`** keeps one entry per component, merging evidence; a detected
+  component wins over a declared one (scope and metadata).
 
 ### Fixed
 
-- **The SDK is silent until `SetLogger` is called** — no writes to its consumer's stderr, no
-  normal operations logged at Info.
-- **`Options.SkipDirs` and friends were silently ignored** when the matching built-in flag was
-  off, and otherwise replaced the built-in list instead of adding to it.
-- **`scan --include deps` no longer applies the scanning folder rules to the manifest stage**,
-  which pruned `examples/` and `venv/`.
-- **`DecorationPipeline.Run` skips a service that is not a decoration layer**, with a warning,
-  instead of discarding the whole run.
-- **A scan that fingerprinted nothing now fails**, naming whether every file failed or the
-  filters excluded them all.
-- **A component whose `Scope` is unset counts as detected on a merge**, as the field documents.
-- **A file that cannot be fingerprinted is now reported** instead of silently skipped —
-  including a directory passed to `wfp.Files` — and failures advance the progress
-  callback too, so `done` reaches `total`.
-- **The WFP stream and `Result.Files` are sorted by path**, so multi-threaded runs are
+- **The SDK is silent until `SetLogger` is called** — no uninvited writes to stderr.
+- **`Options.SkipDirs` and friends** now add to the built-in lists instead of replacing
+  them, and still apply when the built-in flags are off.
+- **`scan --include deps`** no longer applies the scanning folder rules to the manifest stage.
+- **`DecorationPipeline.Run`** skips a non-decoration service with a warning instead of
+  discarding the run.
+- **A scan that fingerprinted nothing fails**, naming the cause.
+- **An unset `Scope` counts as detected** on a merge, as the field documents.
+- **Fingerprint failures are reported** (directories handed to `wfp.Files` included) and
+  advance the progress callback, so `done` reaches `total`.
+- **The WFP stream and `Result.Files` are sorted by path** — multi-threaded runs are
   byte-reproducible.
-- **Inverted size bounds (`min` > `max`) are warned about and ignored** — from
-  `scanoss.json` `skip.sizes` or `Options.MinSize`/`MaxSize` — instead of silently
+- **Inverted size bounds (`min` > `max`) are warned about and ignored** instead of silently
   excluding every matching file.
 
 ### Changed
 
-- **An enrichment failure no longer fails `scan`, `enrich`, or `results`** — the command
-  warns ("Enrichment incomplete") and still emits the base inventory, exiting 0.
-  Previously an enrichment error failed the command.
-- **BREAKING — the filter profiles take the project's settings and read their own section:**
-  `ScanOptions` → `filter.Scanning(s)`, `FingerprintOptions` → `Fingerprinting(s)`,
-  `DependencyOptions` → `Dependencies(s)`. `DefaultOptions` is gone — use `Scanning(nil)`.
-- **BREAKING — `Options.FolderDefaults` / `FileDefaults` are now `BuiltinFolderRules` /
-  `BuiltinFileRules`**, the `Skip*` fields are additive rather than replacing, and
-  `PreserveDependencyManifests` → `KeepManifests`, `SkipExtensions` → `SkipExts`. `Settings` is
-  dropped. New: `SkipDirExts`, `SkipPatterns`, `SizeRules`.
-- **BREAKING — `pkg/scanner` and `pkg/fingerprint/wfp` merge into `pkg/wfp`**, whose entry points
-  are `Folder` (collects and fingerprints, applying the rules itself — a nil `filters` uses the
-  fingerprinting profile, and `Result.Skipped` counts what it excluded) and `Files` (fingerprints
-  a list, applying none — see #77).
-- **BREAKING — `scanpipeline.Build` and `Enrich` give way to `Enricher`**, whose `Enrich` returns
-  an error.
-- **BREAKING — `scanpipeline.Options.Filter` and `DependencySettings` are now `ScanFilters` and
-  `DependencyFilters`.** The caller builds both.
-- **BREAKING — `scanpipeline.Result.ProcessErrors` is `[]error`** rather than a count; new
-  `EnrichError` reports layers that never arrived.
-- **BREAKING — `DependencyParser.ParseFiles` returns the per-file errors** (`map[string]error`)
-  instead of printing them.
-- **BREAKING — the 29 `Service` values `DecorationPipeline` rejects are unexported.** The four it
-  accepts, plus `ServiceDependencies`, stay.
+- **An enrichment failure no longer fails the command** — it warns and still emits the base
+  inventory, exiting 0.
+- **BREAKING — the filter profiles read the project's settings themselves:**
+  `filter.Scanning(s)`, `Fingerprinting(s)`, `Dependencies(s)`; `DefaultOptions` is gone.
+- **BREAKING — `filter.Options` renames:** `FolderDefaults`/`FileDefaults` →
+  `BuiltinFolderRules`/`BuiltinFileRules`, `PreserveDependencyManifests` → `KeepManifests`,
+  `SkipExtensions` → `SkipExts`; new `SkipDirExts`, `SkipPatterns`, `SizeRules`.
+- **BREAKING — `pkg/scanner` and `pkg/fingerprint/wfp` merge into `pkg/wfp`:** `Folder`
+  collects and fingerprints; `Files` fingerprints a list as-is (see #77).
+- **BREAKING — `scanpipeline`:** `Build`/`Enrich` give way to `Enricher` (returns an error);
+  `Options.Filter`/`DependencySettings` → `ScanFilters`/`DependencyFilters`;
+  `Result.ProcessErrors` is `[]error`; new `EnrichError`.
+- **BREAKING — `DependencyParser.ParseFiles` returns the per-file errors**
+  (`map[string]error`) instead of printing them.
+- **BREAKING — the `Service` values `DecorationPipeline` rejects are unexported.**
 - **BREAKING — `pkg/output` is now `internal/output`.**
 
 ### Removed
 
-- **BREAKING — `scanner.GenerateWFP`, `wfp.GenerateFingerprint`, `wfp.CombineFingerprints`,
-  `WorkerPool`** and its methods. Use `wfp.Folder` or `wfp.Files`.
-- **BREAKING — `scanner.CollectFiles` and `scanner.CollectFilesWithOptions`.** Use
-  `filter.Collect` with a profile; `CollectFiles` callers get a `*CollectResult`, not a `[]string`.
-- **BREAKING — the filter matcher machinery**: `Matcher`, `Composite`, `Build`, the eight
-  `*Source` functions, `Defaults`/`StdDefaults`, `Skip`, and the seven mutable rule lists.
-- **BREAKING — `settings.Resolve`, `ScanFilter`, `FingerprintFilter` and `DependencyFilter`.**
-  Compose `Detect(dir)` then `Load(path)`; `pkg/settings` no longer imports `pkg/filter`.
-- **BREAKING — the manifest-format types, `ParserState` and the string helpers in
-  `dependencies/parsers`** (`PomProject`, `PackageLockV1/V2`, `IsValidURL`, `TrimComments`, …).
-  Use `ParseFile`.
-- **BREAKING — `settings.GetSBOMData`, `SBOMData`, `FormatSBOMParam`** — the v2 BOM parameter
-  pair. v3 applies BOM rules post-scan through `pkg/postprocess`.
-- **BREAKING — `Config.Logger`** — it only ever covered `pkg/scanoss`. Use `scanoss.SetLogger`.
-- **BREAKING — `parsers.RemoveDuplicates`, `output.Writer.WriteFormat`** — never called.
-- **`DefaultPostSize`; `GRAM_WFP1`, `WINDOW_WFP1`** — two constants that define the fingerprint
-  format rather than configure it.
+- **BREAKING —** `scanner.GenerateWFP`, `wfp.GenerateFingerprint`, `wfp.CombineFingerprints`
+  and `WorkerPool` (use `wfp.Folder`/`Files`); `scanner.CollectFiles`(`WithOptions`) (use
+  `filter.Collect` with a profile); the exported filter matcher machinery; `settings.Resolve`
+  and the per-operation `*Filter` helpers (compose `Detect(dir)` then `Load(path)`); the
+  manifest-format types and string helpers in `dependencies/parsers` (use `ParseFile`);
+  `settings.GetSBOMData`/`SBOMData`/`FormatSBOMParam` (v3 applies BOM rules through
+  `pkg/postprocess`); `Config.Logger` (use `scanoss.SetLogger`).
+- `parsers.RemoveDuplicates`, `output.Writer.WriteFormat`, `DefaultPostSize`, `GRAM_WFP1`,
+  `WINDOW_WFP1`.
 
 ## [0.7.0] - 2026-08-03
 ### Fixed
@@ -316,6 +285,7 @@ Initial release of the SCANOSS Go CLI and SDK (`scanoss`).
   CycloneDX and SPDX (with `WithTool`/`WithAuthor`/`WithTimestamp` document-metadata options).
 - **C shared library** (`libscanoss`) with Node.js and Python bindings.
 
+[0.8.0]: https://github.com/scanoss/scanoss.go/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/scanoss/scanoss.go/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/scanoss/scanoss.go/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/scanoss/scanoss.go/compare/v0.4.0...v0.5.0
