@@ -247,6 +247,44 @@ func TestCollectSizeBoundsIndependentOfDefaults(t *testing.T) {
 	}
 }
 
+// The caller's Skip* lists add to the built-in ones — they never replace them,
+// and they apply whether or not the matching built-in flag is on. This is the
+// regression test for the fix that made them additive: they used to replace the
+// built-in list when its flag was on, and be silently ignored when it was off.
+func TestSkipRulesAddToBuiltins(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "main.go"), 200)              // always kept
+	writeFile(t, filepath.Join(root, "image.png"), 200)            // built-in ext rule
+	writeFile(t, filepath.Join(root, "node_modules", "x.js"), 200) // built-in dir rule
+	writeFile(t, filepath.Join(root, "generated", "y.go"), 200)    // caller dir rule
+	writeFile(t, filepath.Join(root, "data.foo"), 200)             // caller ext rule
+
+	for name, tc := range map[string]struct {
+		builtins bool
+		want     []string
+	}{
+		// Both rule sets prune: the caller's lists added to the built-ins.
+		"built-ins on": {true, []string{"main.go"}},
+		// The caller's rules still apply with the built-in flags off.
+		"built-ins off": {false, []string{"image.png", "main.go", "x.js"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			res, err := Collect(root, Options{
+				BuiltinFolderRules: tc.builtins,
+				BuiltinFileRules:   tc.builtins,
+				SkipDirs:           []string{"generated"},
+				SkipExts:           []string{".foo"},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := baseNames(res.Files); !equalStrings(got, tc.want) {
+				t.Errorf("kept %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 // Inverted bounds (min > max) would exclude every file; Collect ignores them
 // (with a warning) and collects as if no bounds were set.
 func TestCollectInvertedSizeBoundsIgnored(t *testing.T) {
