@@ -24,10 +24,54 @@
 package logging
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
+	"strings"
 	"testing"
 )
+
+// The sink discards until an application asks for logs: nothing is enabled,
+// and calls complete without a destination.
+func TestSinkSilentUntilSet(t *testing.T) {
+	Set(nil)
+	t.Cleanup(func() { Set(nil) })
+
+	for _, level := range []slog.Level{slog.LevelDebug, slog.LevelInfo, slog.LevelWarn, slog.LevelError} {
+		if Enabled(level) {
+			t.Errorf("level %v enabled before Set — the sink must discard", level)
+		}
+	}
+	Debug("into the void", "k", "v")
+	Warn("into the void")
+}
+
+// Set(lg) routes the module's records to lg — the guarantee behind scanoss.SetLogger.
+func TestSetRoutesRecords(t *testing.T) {
+	t.Cleanup(func() { Set(nil) })
+
+	var buf bytes.Buffer
+	Set(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+
+	Debug("debug msg", "path", "a.go")
+	Warn("warn msg", "count", 3)
+
+	out := buf.String()
+	for _, want := range []string{"debug msg", "path=a.go", "warn msg", "count=3"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q; got %q", want, out)
+		}
+	}
+
+	// Set(nil) restores silence: nothing further reaches the old logger.
+	Set(nil)
+	before := buf.Len()
+	Debug("after reset")
+	Warn("after reset")
+	if buf.Len() != before {
+		t.Errorf("records still arrive after Set(nil): %q", buf.String()[before:])
+	}
+}
 
 func TestConfigureLevel(t *testing.T) {
 	ctx := context.Background()
