@@ -48,6 +48,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **An enrichment failure no longer fails `scan`, `enrich`, or `results`** — the command
+  warns ("Enrichment incomplete") and still emits the base inventory, exiting 0.
+  Previously an enrichment error failed the command.
 - **BREAKING — the filter profiles take the project's settings and read their own section:**
   `ScanOptions` → `filter.Scanning(s)`, `FingerprintOptions` → `Fingerprinting(s)`,
   `DependencyOptions` → `Dependencies(s)`. `DefaultOptions` is gone — use `Scanning(nil)`.
