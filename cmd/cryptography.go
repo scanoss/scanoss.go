@@ -26,9 +26,9 @@ package cmd
 import (
 	"context"
 
+	scanossapi "github.com/scanoss/scanoss.api-sdk"
 	"github.com/spf13/cobra"
 
-	scanossapi "github.com/scanoss/scanoss.api-sdk"
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
 )
 

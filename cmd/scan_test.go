@@ -28,9 +28,9 @@ import (
 	"testing"
 
 	scanossapi "github.com/scanoss/scanoss.api-sdk"
+	"github.com/spf13/cobra"
 
 	"github.com/scanoss/scanoss.go/pkg/sbom"
-	"github.com/spf13/cobra"
 )
 
 func testScanResult() *scanossapi.ScanResult {

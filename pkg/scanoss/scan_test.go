@@ -27,7 +27,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	scanossapi "github.com/scanoss/scanoss.api-sdk"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -37,6 +36,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	scanossapi "github.com/scanoss/scanoss.api-sdk"
 
 	"github.com/scanoss/scanoss.go/pkg/settings"
 )

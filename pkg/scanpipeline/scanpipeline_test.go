@@ -25,10 +25,8 @@ package scanpipeline
 
 import (
 	"bytes"
-	"log/slog"
-
 	"context"
-	"github.com/scanoss/scanoss.go/internal/logging"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -38,6 +36,7 @@ import (
 
 	scanossapi "github.com/scanoss/scanoss.api-sdk"
 
+	"github.com/scanoss/scanoss.go/internal/logging"
 	"github.com/scanoss/scanoss.go/pkg/dependencies/parsers"
 	"github.com/scanoss/scanoss.go/pkg/sbom"
 	"github.com/scanoss/scanoss.go/pkg/sbom/scansource"

@@ -30,7 +30,6 @@ import (
 	"slices"
 
 	"github.com/scanoss/scanoss.go/internal/logging"
-
 	"github.com/scanoss/scanoss.go/pkg/manifests"
 	"github.com/scanoss/scanoss.go/pkg/settings"
 )

@@ -24,8 +24,9 @@
 package postprocess
 
 import (
-	scanossapi "github.com/scanoss/scanoss.api-sdk"
 	"testing"
+
+	scanossapi "github.com/scanoss/scanoss.api-sdk"
 
 	"github.com/scanoss/scanoss.go/pkg/settings"
 )

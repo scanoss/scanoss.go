@@ -28,9 +28,9 @@ import (
 	"encoding/json"
 	"fmt"
 
+	scanossapi "github.com/scanoss/scanoss.api-sdk"
 	"github.com/spf13/cobra"
 
-	scanossapi "github.com/scanoss/scanoss.api-sdk"
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
 )
 

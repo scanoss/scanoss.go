@@ -27,7 +27,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/scanoss/scanoss.go/internal/logging"
 	"io"
 	"net"
 	"net/http"
@@ -35,6 +34,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/scanoss/scanoss.go/internal/logging"
 )
 
 // httpTransport is the HTTP implementation of the SDK's transport layer: it owns

@@ -54,13 +54,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
-
-	"github.com/scanoss/scanoss.go/internal/logging"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/scanoss/scanoss.go/internal/logging"
 )
 
 // Client is the SCANOSS SDK entry point. Create one with New and reuse it; it

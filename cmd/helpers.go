@@ -31,9 +31,10 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/spf13/cobra"
+
 	"github.com/scanoss/scanoss.go/pkg/filter"
 	"github.com/scanoss/scanoss.go/pkg/settings"
-	"github.com/spf13/cobra"
 )
 
 // resolveSettings picks the scanoss.json to use: --settings when given, otherwise whatever

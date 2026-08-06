@@ -27,9 +27,10 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/spf13/cobra"
+
 	"github.com/scanoss/scanoss.go/internal/config"
 	"github.com/scanoss/scanoss.go/pkg/scanpipeline"
-	"github.com/spf13/cobra"
 )
 
 var enrichCmd = &cobra.Command{

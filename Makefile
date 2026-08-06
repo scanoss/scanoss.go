@@ -37,8 +37,8 @@ vet: ## Run go vet
 	$(GO) vet $(PKGS)
 
 .PHONY: fmt
-fmt: ## Format all Go files in place
-	gofmt -w $(GOFMT_FILES)
+fmt: ## Format all Go files in place (gofmt + import grouping)
+	$(GOLANGCI_LINT) fmt
 
 .PHONY: fmt-check
 fmt-check: ## Fail if any Go file is not gofmt-clean

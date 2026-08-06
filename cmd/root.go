@@ -29,9 +29,10 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/spf13/cobra"
+
 	"github.com/scanoss/scanoss.go/internal/logging"
 	"github.com/scanoss/scanoss.go/internal/version"
-	"github.com/spf13/cobra"
 )
 
 var rootCmd = &cobra.Command{
