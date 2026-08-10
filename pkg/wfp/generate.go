@@ -224,5 +224,5 @@ func Files(files []string, workers int, root string, onProgress func(done, total
 	for _, fp := range fps {
 		out = append(out, *fp)
 	}
-	return Result{WFP: []byte(combineFingerprints(fps)), Files: out, Errors: errs}
+	return Result{WFP: combineFingerprints(fps), Files: out, Errors: errs}
 }
