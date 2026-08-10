@@ -34,8 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **An unset `Scope` counts as detected** on a merge, as the field documents.
 - **Fingerprint failures are reported** (directories handed to `wfp.Files` included) and
   advance the progress callback, so `done` reaches `total`.
-- **The WFP stream and `Result.Files` are sorted by path** — multi-threaded runs are
-  byte-reproducible.
+- **`wfp.Files`/`Folder` output and `Result.Files` are sorted by path** — multi-threaded
+  runs of the `wfp` command are byte-reproducible. (The scan path streams instead and
+  keeps completion order — see Changed.)
 - **Inverted size bounds (`min` > `max`) are warned about and ignored** instead of silently
   excluding every matching file.
 
@@ -58,7 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `BuiltinFolderRules`/`BuiltinFileRules`, `PreserveDependencyManifests` → `KeepManifests`,
   `SkipExtensions` → `SkipExts`; new `SkipDirExts`, `SkipPatterns`, `SizeRules`.
 - **BREAKING — `pkg/scanner` and `pkg/fingerprint/wfp` merge into `pkg/wfp`:** `Folder`
-  collects and fingerprints; `Files` fingerprints a list as-is (see #77).
+  collects and fingerprints; `Files` fingerprints a list as-is.
 - **BREAKING — `scanpipeline`:** `Build`/`Enrich` give way to `Enricher` (returns an error);
   `Options.Filter`/`DependencySettings` → `ScanFilters`/`DependencyFilters`;
   `Result.ProcessErrors` is `[]error`; new `EnrichError`.
