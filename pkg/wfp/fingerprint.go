@@ -23,8 +23,6 @@
 
 package wfp
 
-import "strings"
-
 // FileFingerprint is one file's fingerprint: what the scan uploads about it, and what every
 // stage between hashing and upload passes around.
 //
@@ -45,21 +43,20 @@ type FileFingerprint struct {
 // The builder is pre-sized because a naive `result += ...` is O(n²) — each += copies
 // the whole accumulated string — and that dominated wall-clock time on large scans:
 // ~38s to assemble a 16 MB WFP from ~8900 files.
-func combineFingerprints(fps []*FileFingerprint) string {
+func combineFingerprints(fps []*FileFingerprint) []byte {
 	var total int
 	for _, fp := range fps {
 		// fingerprint + up to one missing trailing newline + one blank line
 		total += len(fp.Fingerprint) + 2
 	}
 
-	var b strings.Builder
-	b.Grow(total)
+	var b = make([]byte, 0, total)
 	for _, fp := range fps {
-		b.WriteString(fp.Fingerprint)
+		b = append(b, fp.Fingerprint...)
 		if len(fp.Fingerprint) > 0 && fp.Fingerprint[len(fp.Fingerprint)-1] != '\n' {
-			b.WriteByte('\n')
+			b = append(b, '\n')
 		}
-		b.WriteByte('\n')
+		b = append(b, '\n')
 	}
-	return b.String()
+	return b
 }

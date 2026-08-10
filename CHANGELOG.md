@@ -37,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **An enrichment failure no longer fails the command** — it warns and still emits the base
   inventory, exiting 0.
+- **The combined WFP stream is built once, as bytes** — the string-to-bytes conversion that
+  duplicated the whole WFP in memory at its peak is gone.
 - **BREAKING — the filter profiles read the project's settings themselves:**
   `filter.Scanning(s)`, `Fingerprinting(s)`, `Dependencies(s)`; `DefaultOptions` is gone.
 - **BREAKING — `filter.Options` renames:** `FolderDefaults`/`FileDefaults` →

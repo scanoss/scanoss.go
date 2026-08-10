@@ -23,7 +23,9 @@
 
 package wfp
 
-import "testing"
+import (
+	"testing"
+)
 
 // naiveCombine is the original O(n²) implementation, kept here as the reference
 // oracle: combineFingerprints must produce byte-identical output.
@@ -57,7 +59,7 @@ func TestCombineFingerprintsParity(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			got := combineFingerprints(fps)
 			want := naiveCombine(fps)
-			if got != want {
+			if string(got) != want {
 				t.Errorf("output differs from reference\n got: %q\nwant: %q", got, want)
 			}
 		})
