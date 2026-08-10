@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pkg/filter` reports the rules applied and each exclusion at Debug.
 - **`sbom.Inventory.Add`** keeps one entry per component, merging evidence; a detected
   component wins over a declared one (scope and metadata).
+- **`wfp.Stream`** fingerprints into an `io.Writer`, writing each file's block as it
+  completes instead of holding the whole WFP in memory. Block order is completion
+  order — scan results are unaffected; use `Files` for byte-reproducible output.
 
 ### Fixed
 
