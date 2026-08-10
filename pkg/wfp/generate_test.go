@@ -24,6 +24,8 @@
 package wfp
 
 import (
+	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -161,6 +163,64 @@ func TestFilesOutputSortedByPath(t *testing.T) {
 		t.Error("two runs over the same files produced different WFP bytes")
 	}
 }
+
+// Stream writes the same bytes Files assembles, without retaining them. One worker
+// makes Stream's completion order the submission order, so a pre-sorted list lets the
+// two outputs be compared byte for byte; with more workers only the block order may
+// differ, which is Stream's documented contract.
+func TestStreamMatchesFilesWithOneWorker(t *testing.T) {
+	root := t.TempDir()
+	var paths []string
+	for _, name := range []string{"zebra.go", "alpha.go", "mid.go", "beta.go"} {
+		p := filepath.Join(root, name)
+		writeSized(t, p, 100+len(name)*30)
+		paths = append(paths, p)
+	}
+	slices.Sort(paths) // Files sorts by path; give Stream the same order up front
+
+	want := Files(paths, 1, root, nil)
+	if len(want.Errors) > 0 {
+		t.Fatalf("Files errors = %v", want.Errors)
+	}
+
+	var buf bytes.Buffer
+	fileErrs, err := Stream(paths, 1, root, &buf, nil)
+	if err != nil {
+		t.Fatalf("Stream write error = %v", err)
+	}
+	if len(fileErrs) > 0 {
+		t.Fatalf("Stream file errors = %v", fileErrs)
+	}
+	if !bytes.Equal(buf.Bytes(), want.WFP) {
+		t.Errorf("Stream output differs from Files\n got: %q\nwant: %q", buf.Bytes(), want.WFP)
+	}
+}
+
+// A write failure is fatal for the stream, but the pool is still drained: progress
+// reaches its total and the per-file errors keep arriving.
+func TestStreamReportsWriteFailure(t *testing.T) {
+	root := t.TempDir()
+	var paths []string
+	for _, name := range []string{"a.go", "b.go", "c.go"} {
+		p := filepath.Join(root, name)
+		writeSized(t, p, 100)
+		paths = append(paths, p)
+	}
+
+	var done int
+	_, err := Stream(paths, 1, root, failingWriter{}, func(d, total int) { done = d })
+	if err == nil {
+		t.Fatal("Stream returned nil for a writer that always fails")
+	}
+	if done != len(paths) {
+		t.Errorf("progress stopped at %d, want %d: a failed write must still drain the pool", done, len(paths))
+	}
+}
+
+// failingWriter rejects every write, standing in for a full disk or a closed pipe.
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("boom") }
 
 // A directory handed to Files is reported, not silently skipped: the caller
 // built the list, so an entry that cannot be fingerprinted is its mistake to hear about.

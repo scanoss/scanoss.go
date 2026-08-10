@@ -25,6 +25,7 @@ package wfp
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -225,4 +226,68 @@ func Files(files []string, workers int, root string, onProgress func(done, total
 		out = append(out, *fp)
 	}
 	return Result{WFP: combineFingerprints(fps), Files: out, Errors: errs}
+}
+
+// Stream fingerprints the files and writes each block to w as it completes, retaining
+// none of them: memory stays bounded by the in-flight window whatever the tree size.
+//
+// the server matches per block, so
+// order does not affect scan results. Use Files where byte-reproducible output matters.
+//
+// The []error lists the files that could not be fingerprinted — best-effort, like
+// Result.Errors. The error reports a failed write to w, which is fatal: a stream
+// missing a block is unusable, so nothing further is written, though the pool is
+// still drained so every worker finishes and progress reaches its total.
+func Stream(files []string, workers int, root string, w io.Writer, onProgress func(done, total int)) ([]error, error) {
+	if workers < 1 {
+		workers = 1
+	}
+	logging.Debug("fingerprinting files (streaming)", "count", len(files), "workers", workers)
+	pool := newWorkerPool(workers)
+	pool.root = root // WFP "file=" labels relative to root; empty = absolute
+	pool.start()
+
+	go func() {
+		for _, f := range files {
+			pool.submit(f)
+		}
+		pool.close()
+	}()
+
+	// One loop over both channels so a failed file advances the progress too:
+	// a run with failures still ends at done == total. This loop is the single
+	// writer to w — workers never touch it, so blocks cannot interleave.
+	var (
+		errs     []error
+		writeErr error
+		block    []byte // reused across iterations; only one block is alive at a time
+		done     int
+	)
+	results, failures := pool.results, pool.errors
+	for results != nil || failures != nil {
+		select {
+		case fp, ok := <-results:
+			if !ok {
+				results = nil
+				continue
+			}
+			if writeErr == nil {
+				block = appendBlock(block[:0], fp.Fingerprint)
+				if _, err := w.Write(block); err != nil {
+					writeErr = fmt.Errorf("writing the WFP stream: %w", err)
+				}
+			}
+		case err, ok := <-failures:
+			if !ok {
+				failures = nil
+				continue
+			}
+			errs = append(errs, err)
+		}
+		done++
+		if onProgress != nil {
+			onProgress(done, len(files))
+		}
+	}
+	return errs, writeErr
 }

@@ -50,13 +50,19 @@ func combineFingerprints(fps []*FileFingerprint) []byte {
 		total += len(fp.Fingerprint) + 2
 	}
 
-	var b = make([]byte, 0, total)
+	b := make([]byte, 0, total)
 	for _, fp := range fps {
-		b = append(b, fp.Fingerprint...)
-		if len(fp.Fingerprint) > 0 && fp.Fingerprint[len(fp.Fingerprint)-1] != '\n' {
-			b = append(b, '\n')
-		}
-		b = append(b, '\n')
+		b = appendBlock(b, fp.Fingerprint)
 	}
 	return b
+}
+
+// appendBlock appends one file's fingerprint to dst in the stream format: the
+// fingerprint, its trailing newline when missing, and the blank-line separator.
+func appendBlock(dst []byte, fingerprint string) []byte {
+	dst = append(dst, fingerprint...)
+	if len(fingerprint) > 0 && fingerprint[len(fingerprint)-1] != '\n' {
+		dst = append(dst, '\n')
+	}
+	return append(dst, '\n')
 }
