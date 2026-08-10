@@ -45,14 +45,14 @@ import (
 func TestChunkRanges(t *testing.T) {
 	tests := []struct {
 		name        string
-		total, size int
-		want        [][2]int
+		total, size int64
+		want        [][2]int64
 	}{
 		{"empty", 0, 10, nil},
-		{"single-when-size-zero", 100, 0, [][2]int{{0, 99}}},
-		{"exact-multiple", 10, 5, [][2]int{{0, 4}, {5, 9}}},
-		{"remainder", 12, 5, [][2]int{{0, 4}, {5, 9}, {10, 11}}},
-		{"smaller-than-size", 3, 10, [][2]int{{0, 2}}},
+		{"single-when-size-zero", 100, 0, [][2]int64{{0, 99}}},
+		{"exact-multiple", 10, 5, [][2]int64{{0, 4}, {5, 9}}},
+		{"remainder", 12, 5, [][2]int64{{0, 4}, {5, 9}, {10, 11}}},
+		{"smaller-than-size", 3, 10, [][2]int64{{0, 2}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

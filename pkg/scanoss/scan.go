@@ -28,6 +28,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -80,7 +81,7 @@ const DefaultScanChunkBytes = 1 << 20
 type ScanOption func(*scanOptions)
 
 type scanOptions struct {
-	chunkBytes int            // WFP upload block size
+	chunkBytes int64          // WFP upload block size
 	filters    filter.Options // file collection filters (Folder only)
 
 	// root is what WFP paths are labelled relative to. No option sets it today, so Files
@@ -121,7 +122,7 @@ func WithScanIDNotify(fn func(scanID string)) ScanOption {
 func WithChunkBytes(n int) ScanOption {
 	return func(o *scanOptions) {
 		if n > 0 {
-			o.chunkBytes = n
+			o.chunkBytes = int64(n)
 		}
 	}
 }
@@ -173,7 +174,7 @@ func (s scanService) Folder(ctx context.Context, path string, opts ...ScanOption
 	if err != nil {
 		return scanossapi.ScanEnvelope{}, err
 	}
-	return s.scan(ctx, stream, o)
+	return s.scan(ctx, bytes.NewReader(stream), int64(len(stream)), o)
 }
 
 // Files fingerprints an explicit list of files, then scans the resulting WFP.
@@ -187,7 +188,7 @@ func (s scanService) Files(ctx context.Context, files []string, opts ...ScanOpti
 	if err != nil {
 		return scanossapi.ScanEnvelope{}, err
 	}
-	return s.scan(ctx, stream, o)
+	return s.scan(ctx, bytes.NewReader(stream), int64(len(stream)), o)
 }
 
 // onFingerprint adapts the caller's reporter to the fingerprinting callback.
@@ -222,14 +223,14 @@ func uploadable(res wfp.Result) ([]byte, error) {
 
 // WFP scans an already-assembled WFP byte stream.
 func (s scanService) WFP(ctx context.Context, wfp []byte, opts ...ScanOption) (scanossapi.ScanEnvelope, error) {
-	return s.scan(ctx, wfp, resolveScanOptions(opts))
+	return s.scan(ctx, bytes.NewReader(wfp), int64(len(wfp)), resolveScanOptions(opts))
 }
 
 // scan uploads a ready WFP (parallel chunks) and waits for completion. The three entry
 // points (Folder/Files/WFP) each produce the WFP, then funnel through here.
-func (s scanService) scan(ctx context.Context, wfp []byte, o scanOptions) (scanossapi.ScanEnvelope, error) {
-	logging.Debug("scan: uploading WFP", "bytes", len(wfp), "chunkBytes", o.chunkBytes)
-	scanID, err := s.upload(ctx, wfp, o)
+func (s scanService) scan(ctx context.Context, r io.ReaderAt, size int64, o scanOptions) (scanossapi.ScanEnvelope, error) {
+	logging.Debug("scan: uploading WFP", "bytes", size, "chunkBytes", o.chunkBytes)
+	scanID, err := s.upload(ctx, r, size, o)
 	if err != nil {
 		return scanossapi.ScanEnvelope{}, err
 	}
@@ -251,8 +252,8 @@ func (s scanService) scan(ctx context.Context, wfp []byte, o scanOptions) (scano
 // concurrently (each carrying the id, bounded by the client's worker limit), then
 // fires the notify hook. The hook fires only after the full WFP is on the server,
 // so the surfaced id is always resumable. It returns the scan id.
-func (s scanService) upload(ctx context.Context, wfp []byte, o scanOptions) (string, error) {
-	if len(wfp) == 0 {
+func (s scanService) upload(ctx context.Context, r io.ReaderAt, size int64, o scanOptions) (string, error) {
+	if size == 0 {
 		return "", fmt.Errorf("no fingerprints to scan")
 	}
 
@@ -262,10 +263,10 @@ func (s scanService) upload(ctx context.Context, wfp []byte, o scanOptions) (str
 	}
 	scanID := id.String()
 
-	ranges := chunkRanges(len(wfp), o.chunkBytes)
+	ranges := chunkRanges(size, o.chunkBytes)
 	logging.Debug("uploading WFP chunks", "scanID", scanID, "chunks", len(ranges))
 	prog := &chunkProgress{r: o.reporter, total: len(ranges)}
-	if err := s.uploadChunks(ctx, scanID, wfp, ranges, prog); err != nil {
+	if err := s.uploadChunks(ctx, scanID, r, size, ranges, prog); err != nil {
 		return "", err
 	}
 
@@ -279,7 +280,7 @@ func (s scanService) upload(ctx context.Context, wfp []byte, o scanOptions) (str
 
 // uploadChunks uploads all chunks concurrently, bounded by the client's worker
 // limit, aborting all on the first error.
-func (s scanService) uploadChunks(ctx context.Context, scanID string, wfp []byte, ranges [][2]int, prog *chunkProgress) error {
+func (s scanService) uploadChunks(ctx context.Context, scanID string, r io.ReaderAt, size int64, ranges [][2]int64, prog *chunkProgress) error {
 	if len(ranges) == 0 {
 		return nil
 	}
@@ -295,21 +296,21 @@ func (s scanService) uploadChunks(ctx context.Context, scanID string, wfp []byte
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	jobs := make(chan [2]int)
+	jobs := make(chan [2]int64)
 	errCh := make(chan error, len(ranges))
 	var wg sync.WaitGroup
 	for w := 0; w < workers; w++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for r := range jobs {
+			for rng := range jobs {
 				select {
 				case <-ctx.Done():
 					errCh <- ctx.Err()
 					continue
 				default:
 				}
-				if err := s.c.uploadChunk(ctx, scanID, r[0], r[1], len(wfp), blockOf(wfp, r)); err != nil {
+				if err := s.c.uploadChunk(ctx, scanID, r, rng[0], rng[1], size); err != nil {
 					errCh <- err
 					cancel()
 					continue
@@ -318,8 +319,8 @@ func (s scanService) uploadChunks(ctx context.Context, scanID string, wfp []byte
 			}
 		}()
 	}
-	for _, r := range ranges {
-		jobs <- r
+	for _, rng := range ranges {
+		jobs <- rng
 	}
 	close(jobs)
 	wg.Wait()
@@ -336,40 +337,43 @@ func (s scanService) uploadChunks(ctx context.Context, scanID string, wfp []byte
 // chunkRanges splits a payload of total bytes into [off,end] (inclusive) blocks
 // of at most size bytes; the final block is short. size <= 0 yields a single
 // block; total <= 0 yields none.
-func chunkRanges(total, size int) [][2]int {
+func chunkRanges(total int64, size int64) [][2]int64 {
 	if total <= 0 {
 		return nil
 	}
 	if size <= 0 {
-		return [][2]int{{0, total - 1}}
+		return [][2]int64{{0, total - 1}}
 	}
-	ranges := make([][2]int, 0, (total+size-1)/size)
-	for off := 0; off < total; off += size {
+	ranges := make([][2]int64, 0, (total+size-1)/size)
+	for off := int64(0); off < total; off += size {
 		end := off + size - 1
 		if end > total-1 {
 			end = total - 1
 		}
-		ranges = append(ranges, [2]int{off, end})
+		ranges = append(ranges, [2]int64{off, end})
 	}
 	return ranges
 }
 
-// blockOf returns the WFP byte slice for the inclusive range r = [off, end].
-func blockOf(wfp []byte, r [2]int) []byte { return wfp[r[0] : r[1]+1] }
-
-// uploadChunk POSTs one WFP byte range to the scan endpoint. The client-generated
-// scanID is sent on every chunk via the X-Scan-Id request header.
+// uploadChunk POSTs one WFP byte range to the scan endpoint, reading the block from src.
+// The client-generated scanID is sent on every chunk via the X-Scan-Id request header.
 //
 // A 409 counts as success: it is what the server answers when it already holds the range,
 // which is the normal outcome of a retry whose predecessor landed and whose response was
 // lost to a timeout. The ranges this client sends are deterministic and never overlap, so
 // a conflict cannot mean anything else. Treating it as a failure would report a scan as
 // broken when its upload in fact completed — and the session it names is still resumable.
-func (c *Client) uploadChunk(ctx context.Context, scanID string, off, end, total int, block []byte) error {
-	req, err := c.newRequest(http.MethodPost, serviceScan.endpoint, bytes.NewReader(block))
+func (c *Client) uploadChunk(ctx context.Context, scanID string, src io.ReaderAt, off, end, total int64) error {
+	block := func() *io.SectionReader { return io.NewSectionReader(src, off, end-off+1) }
+	req, err := c.newRequest(http.MethodPost, serviceScan.endpoint, block())
 	if err != nil {
 		return err
 	}
+	// http.NewRequest wires ContentLength and body replay (GetBody) only for bytes and
+	// strings readers. A SectionReader gets neither: without these, the send falls back
+	// to chunked transfer-encoding and a retried chunk has no body to resend.
+	req.ContentLength = end - off + 1
+	req.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(block()), nil }
 	req.Header.Set("Content-Type", "application/octet-stream")
 	req.Header.Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", off, end, total))
 	req.Header.Set("X-Scan-Id", scanID)

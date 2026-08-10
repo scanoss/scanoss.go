@@ -42,6 +42,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inventory, exiting 0.
 - **The combined WFP stream is built once, as bytes** — the string-to-bytes conversion that
   duplicated the whole WFP in memory at its peak is gone.
+- **The scan upload reads the WFP from any positional source** (`io.ReaderAt`) instead of
+  requiring it in memory, so it can stream from a file next. Chunk requests keep their
+  explicit length and can be replayed on a retry. No public API change.
 - **BREAKING — the filter profiles read the project's settings themselves:**
   `filter.Scanning(s)`, `Fingerprinting(s)`, `Dependencies(s)`; `DefaultOptions` is gone.
 - **BREAKING — `filter.Options` renames:** `FolderDefaults`/`FileDefaults` →
