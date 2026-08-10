@@ -24,12 +24,14 @@
 package scanoss
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -58,6 +60,10 @@ type ScanAPI interface {
 
 	// WFP scans an already-assembled WFP byte stream.
 	WFP(ctx context.Context, wfp []byte, opts ...ScanOption) (scanossapi.ScanEnvelope, error)
+
+	// WFPReader scans an already-assembled WFP read from r — WFP without the
+	// in-memory requirement, for a caller whose WFP lives in a file.
+	WFPReader(ctx context.Context, r io.ReaderAt, size int64, opts ...ScanOption) (scanossapi.ScanEnvelope, error)
 
 	// Status performs a single status poll for a known scan id.
 	Status(ctx context.Context, scanID string) (scanossapi.ScanEnvelope, error)
@@ -159,36 +165,25 @@ type scanService struct{ c *Client }
 
 var _ ScanAPI = scanService{}
 
-// Folder collects files under path (applying the filter options), fingerprints them,
-// then scans the resulting WFP.
+// Folder collects files under path (applying the filter options), fingerprints them
+// straight to a temporary spill file, then scans it. The whole WFP never sits in memory.
 func (s scanService) Folder(ctx context.Context, path string, opts ...ScanOption) (scanossapi.ScanEnvelope, error) {
 	o := resolveScanOptions(opts)
-
-	// wfp.Folder collects and fingerprints in one step, and resolves the scan root itself so
-	// the WFP labels come out relative to the folder even when path is relative.
-	res, err := wfp.Folder(path, &o.filters, s.c.workers, s.onFingerprint(o))
-	if err != nil {
-		return scanossapi.ScanEnvelope{}, err
-	}
-	stream, err := uploadable(res)
-	if err != nil {
-		return scanossapi.ScanEnvelope{}, err
-	}
-	return s.scan(ctx, bytes.NewReader(stream), int64(len(stream)), o)
+	return s.scanStreamed(ctx, o, func(w io.Writer) ([]error, error) {
+		return wfp.StreamFolder(path, &o.filters, s.c.workers, w, s.onFingerprint(o))
+	})
 }
 
-// Files fingerprints an explicit list of files, then scans the resulting WFP.
+// Files fingerprints an explicit list of files straight to a temporary spill file,
+// then scans it. The whole WFP never sits in memory.
 func (s scanService) Files(ctx context.Context, files []string, opts ...ScanOption) (scanossapi.ScanEnvelope, error) {
 	o := resolveScanOptions(opts)
 	if len(files) == 0 {
 		return scanossapi.ScanEnvelope{}, fmt.Errorf("no files to scan")
 	}
-	res := wfp.Files(files, s.c.workers, o.root, s.onFingerprint(o))
-	stream, err := uploadable(res)
-	if err != nil {
-		return scanossapi.ScanEnvelope{}, err
-	}
-	return s.scan(ctx, bytes.NewReader(stream), int64(len(stream)), o)
+	return s.scanStreamed(ctx, o, func(w io.Writer) ([]error, error) {
+		return wfp.Stream(files, s.c.workers, o.root, w, s.onFingerprint(o))
+	})
 }
 
 // onFingerprint adapts the caller's reporter to the fingerprinting callback.
@@ -200,30 +195,59 @@ func (s scanService) onFingerprint(o scanOptions) func(done, total int) {
 	}
 }
 
-// uploadable turns a fingerprinting run into the stream to send.
+// scanStreamed spills the WFP produced by fingerprint into a temporary file and uploads
+// from it, so the stream never sits in memory whole. The file is removed whatever the
+// outcome: a resumable scan is recovered by its id (Wait), never by re-reading the spill.
 //
-// Fingerprinting is best-effort, so a skipped file does not fail the scan — but it is reported.
-// Discarding these silently made a scan of a tree with unreadable files look like a scan of a
-// smaller tree. Nothing attempted at all is a different failure from nothing produced, and the
-// two get their own messages: the first says the scan had no input, the second that it had input
-// it could not use.
-func uploadable(res wfp.Result) ([]byte, error) {
-	logging.Debug("fingerprinted files", "files", len(res.Files)+len(res.Errors), "wfpBytes", len(res.WFP))
-	for _, fpErr := range res.Errors {
+// Fingerprinting is best-effort, so a skipped file does not fail the scan — but it is
+// reported. A successfully fingerprinted file always writes bytes, so an empty spill
+// separates the two failures worth telling apart: input that could not be used (some
+// files failed) and no input at all (the filters or the caller supplied nothing).
+func (s scanService) scanStreamed(ctx context.Context, o scanOptions, fingerprint func(io.Writer) ([]error, error)) (scanossapi.ScanEnvelope, error) {
+	spill, err := os.CreateTemp("", "scanoss-wfp-*")
+	if err != nil {
+		return scanossapi.ScanEnvelope{}, fmt.Errorf("creating the WFP spill file: %w", err)
+	}
+	defer func() {
+		_ = spill.Close()
+		_ = os.Remove(spill.Name())
+	}()
+
+	// Buffered so each ~2 KB fingerprint block does not become its own syscall. The
+	// flush must land before Stat sizes the file.
+	buffered := bufio.NewWriterSize(spill, 64<<10)
+	fileErrs, err := fingerprint(buffered)
+	if err != nil {
+		return scanossapi.ScanEnvelope{}, err
+	}
+	if err := buffered.Flush(); err != nil {
+		return scanossapi.ScanEnvelope{}, fmt.Errorf("writing the WFP spill file: %w", err)
+	}
+	for _, fpErr := range fileErrs {
 		logging.Warn("skipped a file that could not be fingerprinted", "err", fpErr)
 	}
-	if len(res.Files) == 0 && len(res.Errors) == 0 {
-		return nil, fmt.Errorf("no files to scan")
+
+	info, err := spill.Stat()
+	if err != nil {
+		return scanossapi.ScanEnvelope{}, fmt.Errorf("sizing the WFP spill file: %w", err)
 	}
-	if len(res.WFP) == 0 {
-		return nil, fmt.Errorf("no fingerprints generated")
+	if info.Size() == 0 {
+		if len(fileErrs) > 0 {
+			return scanossapi.ScanEnvelope{}, fmt.Errorf("no fingerprints generated")
+		}
+		return scanossapi.ScanEnvelope{}, fmt.Errorf("no files to scan")
 	}
-	return res.WFP, nil
+	return s.scan(ctx, spill, info.Size(), o)
 }
 
 // WFP scans an already-assembled WFP byte stream.
 func (s scanService) WFP(ctx context.Context, wfp []byte, opts ...ScanOption) (scanossapi.ScanEnvelope, error) {
 	return s.scan(ctx, bytes.NewReader(wfp), int64(len(wfp)), resolveScanOptions(opts))
+}
+
+// WFPReader scans an already-assembled WFP read from r (see ScanAPI.WFPReader).
+func (s scanService) WFPReader(ctx context.Context, r io.ReaderAt, size int64, opts ...ScanOption) (scanossapi.ScanEnvelope, error) {
+	return s.scan(ctx, r, size, resolveScanOptions(opts))
 }
 
 // scan uploads a ready WFP (parallel chunks) and waits for completion. The three entry

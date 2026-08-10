@@ -134,6 +134,29 @@ type Result struct {
 // It is the entry point to reach for with a directory in hand: Files fingerprints whatever it is
 // given, so building the list yourself means deciding for yourself what a scan should skip.
 func Folder(dir string, filters *filter.Options, workers int, onProgress func(done, total int)) (Result, error) {
+	files, root, skipped, err := collectFolder(dir, filters)
+	if err != nil {
+		return Result{}, err
+	}
+	res := Files(files, workers, root, onProgress)
+	res.Skipped = skipped
+	return res, nil
+}
+
+// StreamFolder collects the files worth fingerprinting under dir and streams their
+// fingerprints to w — Folder's collection with Stream's memory profile and contract:
+// block order is completion order, and nothing is retained.
+func StreamFolder(dir string, filters *filter.Options, workers int, w io.Writer, onProgress func(done, total int)) ([]error, error) {
+	files, root, _, err := collectFolder(dir, filters)
+	if err != nil {
+		return nil, err
+	}
+	return Stream(files, workers, root, w, onProgress)
+}
+
+// collectFolder resolves what Folder and StreamFolder share: the files under dir per the
+// filters (nil = the fingerprinting profile), and the root the WFP labels are relative to.
+func collectFolder(dir string, filters *filter.Options) (files []string, root string, skipped int, err error) {
 	o := filter.Fingerprinting(nil)
 	if filters != nil {
 		o = *filters
@@ -141,22 +164,19 @@ func Folder(dir string, filters *filter.Options, workers int, onProgress func(do
 
 	collected, err := filter.Collect(dir, o)
 	if err != nil {
-		return Result{}, fmt.Errorf("collecting files: %w", err)
+		return nil, "", 0, fmt.Errorf("collecting files: %w", err)
 	}
 
 	// The WFP labels paths relative to the directory walked. A file handed to Folder is its
 	// own collection of one, and the label belongs to the directory holding it.
-	root := dir
+	root = dir
 	if info, statErr := os.Stat(dir); statErr == nil && !info.IsDir() {
 		root = filepath.Dir(dir)
 	}
 	if abs, absErr := filepath.Abs(root); absErr == nil {
 		root = abs
 	}
-
-	res := Files(collected.Files, workers, root, onProgress)
-	res.Skipped = collected.SkippedCount
-	return res, nil
+	return collected.Files, root, collected.SkippedCount, nil
 }
 
 // Files fingerprints the given files through a bounded worker pool. onProgress, if non-nil, is
