@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`wfp.Stream`** fingerprints into an `io.Writer`, writing each file's block as it
   completes instead of holding the whole WFP in memory. Block order is completion
   order — scan results are unaffected; use `Files` for byte-reproducible output.
+  `wfp.StreamFolder` is `Folder`'s collection with `Stream`'s memory profile.
+- **`Scan.WFPReader`** scans a WFP read from an `io.ReaderAt` — `Scan.WFP` without the
+  in-memory requirement, for a caller whose WFP lives in a file.
 
 ### Fixed
 
@@ -43,8 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The combined WFP stream is built once, as bytes** — the string-to-bytes conversion that
   duplicated the whole WFP in memory at its peak is gone.
 - **The scan upload reads the WFP from any positional source** (`io.ReaderAt`) instead of
-  requiring it in memory, so it can stream from a file next. Chunk requests keep their
-  explicit length and can be replayed on a retry. No public API change.
+  requiring it in memory. Chunk requests keep their explicit length and can be replayed
+  on a retry. No public API change.
+- **`Scan.Folder` and `Scan.Files` spill the WFP to a temporary file and upload from
+  it** — the stream never sits in memory whole, so peak memory no longer grows with the
+  tree scanned. The uploaded WFP's block order is completion order and varies between
+  runs; scan results are unaffected. `Scan.WFP` still takes the bytes it is handed.
 - **BREAKING — the filter profiles read the project's settings themselves:**
   `filter.Scanning(s)`, `Fingerprinting(s)`, `Dependencies(s)`; `DefaultOptions` is gone.
 - **BREAKING — `filter.Options` renames:** `FolderDefaults`/`FileDefaults` →
@@ -55,6 +62,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING — `scanpipeline`:** `Build`/`Enrich` give way to `Enricher` (returns an error);
   `Options.Filter`/`DependencySettings` → `ScanFilters`/`DependencyFilters`;
   `Result.ProcessErrors` is `[]error`; new `EnrichError`.
+- **BREAKING — `scanpipeline` streams the WFP through a temporary file:** peak memory no
+  longer grows with the tree scanned. `Result.WFP` is gone — pass `Options.WFPWriter` to
+  keep the stream as it is generated (a file to save it, a `bytes.Buffer` for the old
+  behavior). Block order is completion order and varies between runs.
 - **BREAKING — `DependencyParser.ParseFiles` returns the per-file errors**
   (`map[string]error`) instead of printing them.
 - **BREAKING — the `Service` values `DecorationPipeline` rejects are unexported.**

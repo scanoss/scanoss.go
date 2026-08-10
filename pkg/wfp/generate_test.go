@@ -265,6 +265,30 @@ func TestFilesProgressCountsFailures(t *testing.T) {
 	}
 }
 
+// StreamFolder is Folder's collection wired to Stream: the filters apply (the .md is
+// excluded) and the surviving file is streamed with its label relative to the folder.
+func TestStreamFolderCollectsAndStreams(t *testing.T) {
+	root := t.TempDir()
+	writeSized(t, filepath.Join(root, "code.c"), 200)
+	writeSized(t, filepath.Join(root, "notes.md"), 200)
+
+	var buf bytes.Buffer
+	fileErrs, err := StreamFolder(root, nil, 2, &buf, nil)
+	if err != nil {
+		t.Fatalf("StreamFolder: %v", err)
+	}
+	if len(fileErrs) > 0 {
+		t.Fatalf("file errors = %v", fileErrs)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "file=") || !strings.Contains(out, "code.c") {
+		t.Errorf("stream missing code.c; got:\n%s", out)
+	}
+	if strings.Contains(out, "notes.md") {
+		t.Errorf("stream contains notes.md, which the filters exclude; got:\n%s", out)
+	}
+}
+
 // Folder filters and Files does not: the difference is the whole reason both exist. The same
 // directory through each yields a fingerprinted .md from Files and none from Folder.
 func TestFolderFiltersAndFilesDoesNot(t *testing.T) {

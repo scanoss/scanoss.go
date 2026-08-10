@@ -31,9 +31,11 @@
 package scanpipeline
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -80,19 +82,24 @@ type Options struct {
 	DependencyFilters filter.Options
 	ScanOptions       []scanoss.ScanOption // per-scan tuning (chunk size, poll interval, BOM, ...)
 
+	// WFPWriter, when set, receives the WFP as it is generated, block by block. It is how a
+	// caller keeps the WFP: pass a file to save it, a bytes.Buffer to hold it in memory. Nil
+	// discards it after upload, which costs nothing. Block order is completion order.
+	WFPWriter io.Writer
+
 	// OnProgress receives every layer's progress. Optional; nil reports nothing. The pipeline runs
 	// layers concurrently, so it must be safe for concurrent use.
 	OnProgress func(Progress)
 }
 
-// Result is the outcome of Run: the gathered inventory, the generated WFP for a caller that wants
-// to keep it, the files that could not be fingerprinted, and whether enrichment came back whole.
+// Result is the outcome of Run: the gathered inventory, the files that could not be
+// fingerprinted, and whether enrichment came back whole. The WFP is not here — it streams
+// through a temporary file, and a caller that wants it passes Options.WFPWriter.
 //
 // What the filters excluded is not here: it is reported as the collect layer completing, while the
 // scan is still ahead, rather than handed back once everything is over.
 type Result struct {
 	Inventory sbom.Inventory
-	WFP       []byte
 
 	// ProcessErrors are the files that could not be fingerprinted, as pkg/wfp reported them.
 	// A scan of 3000 files that skipped 3 unreadable ones still produced a usable WFP, so these
@@ -183,7 +190,6 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 	// both, since it decorates detected and declared components together.
 	var (
 		scanResult     *scanossapi.ScanResult
-		fingerprints   []byte
 		procErrors     []error
 		scanErr        error
 		fingerprintErr error
@@ -195,23 +201,59 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 	go func() {
 		defer wg.Done()
 
-		// Fingerprinting stays here rather than going through Scan.Files, which would do it too:
+		// Fingerprinting stays here rather than going through Scan.Folder, which would do it too:
 		// this package already has the file list, the root and the worker count as plain values,
-		// and handing them to the SDK instead would mean three scan options existing for no reason
-		// but to carry them back. It reports the stage itself and hands over a finished WFP.
-		fp := wfp.Files(files, threads, scanRoot, r.Fingerprinting)
-		fingerprints, procErrors = fp.WFP, fp.Errors
+		// and handing them to the SDK instead would mean scan options existing for no reason but
+		// to carry back what Stream already returns (per-file errors) and takes (the WFP tee).
+		//
+		// The WFP streams block by block into a temporary spill file — and into the caller's
+		// WFPWriter when one is set — so it never sits in memory whole. The upload then reads
+		// the spill in ranges; it is removed once the goroutine ends, since a resumable scan is
+		// recovered by its id, never by re-reading the spill.
+		spill, err := os.CreateTemp("", "scanoss-wfp-*")
+		if err != nil {
+			scanErr = fmt.Errorf("creating the WFP spill file: %w", err)
+			return
+		}
+		defer func() {
+			_ = spill.Close()
+			_ = os.Remove(spill.Name())
+		}()
+
+		dest := io.Writer(spill)
+		if opts.WFPWriter != nil {
+			dest = io.MultiWriter(spill, opts.WFPWriter)
+		}
+		// Buffered so each ~2 KB fingerprint block does not become its own syscall. The flush
+		// must land before Stat sizes the spill.
+		buffered := bufio.NewWriterSize(dest, 64<<10)
+		fileErrs, err := wfp.Stream(files, threads, scanRoot, buffered, r.Fingerprinting)
+		procErrors = fileErrs
+		if err == nil {
+			err = buffered.Flush()
+		}
+		if err != nil {
+			scanErr = fmt.Errorf("writing the WFP: %w", err)
+			emit(Progress{Layer: LayerFingerprint, Status: StatusFailed, Total: len(files)})
+			return
+		}
+
+		info, err := spill.Stat()
+		if err != nil {
+			scanErr = fmt.Errorf("sizing the WFP spill file: %w", err)
+			return
+		}
 		// An empty WFP is a failed stage, not a completed one: there is nothing to upload, so
-		// the scan cannot run. Reporting it as completed and returning a nil error made a scan
-		// that fingerprinted nothing indistinguishable from one that matched nothing.
+		// the scan cannot run. A successfully fingerprinted file always writes bytes, so empty
+		// separates all-files-failed from the filters having excluded every file.
 		//
 		// Whether that is fatal is not decided here: the manifest stage runs alongside, and a
 		// project whose scannable files are all filtered can still have a dependency inventory
 		// worth handing back. The verdict waits until both stages are in.
-		if len(fp.WFP) == 0 {
-			if len(fp.Errors) > 0 {
+		if info.Size() == 0 {
+			if len(fileErrs) > 0 {
 				fingerprintErr = fmt.Errorf("no file could be fingerprinted (%d failed): %w",
-					len(fp.Errors), errors.Join(fp.Errors...))
+					len(fileErrs), errors.Join(fileErrs...))
 			} else {
 				fingerprintErr = errors.New("no files to fingerprint: the filters excluded every file")
 			}
@@ -229,7 +271,7 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 		scanOpts = append(scanOpts, opts.ScanOptions...)
 		scanOpts = append(scanOpts, scanoss.WithScanReporter(r))
 
-		res, err := opts.Client.Scan.WFP(ctx, fp.WFP, scanOpts...)
+		res, err := opts.Client.Scan.WFPReader(ctx, spill, info.Size(), scanOpts...)
 		if err != nil {
 			scanErr = err
 			return
@@ -275,9 +317,7 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 		return Result{}, fingerprintErr
 	}
 	if scanResult == nil && len(declaredComps) == 0 {
-		// The WFP travels back even here: it cost the fingerprinting work, and a caller that
-		// keeps it wants it whatever the scan then found.
-		return Result{WFP: fingerprints, ProcessErrors: procErrors}, nil
+		return Result{ProcessErrors: procErrors}, nil
 	}
 
 	// The enrichment layers report to r as well.
@@ -286,7 +326,6 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 	enrichErr := Enricher{Client: opts.Client, Services: opts.Services, Reporter: r}.Enrich(ctx, &inv)
 	return Result{
 		Inventory:     inv,
-		WFP:           fingerprints,
 		ProcessErrors: procErrors,
 		EnrichError:   enrichErr,
 	}, nil

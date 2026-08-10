@@ -25,6 +25,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -436,6 +437,19 @@ func runScan(cmd *cobra.Command, args []string) error {
 	depOpts := filter.Dependencies(scanSettings)
 	applyCollectFlags(&depOpts, minSize, maxSize, allExtensions, allFolders, applyGitignore, allHidden)
 
+	// The WFP copy streams to its destination while the scan generates it, so the file is
+	// opened before the run and there is nothing left to save afterwards.
+	var wfpOut *os.File
+	if saveWFPFile != "" {
+		wfpOut, err = os.Create(saveWFPFile)
+		if err != nil {
+			return fmt.Errorf("cannot create WFP file: %w", err)
+		}
+		// Safety net for the error paths; the success path closes explicitly below,
+		// so this second Close is a harmless ErrClosed.
+		defer func() { _ = wfpOut.Close() }()
+	}
+
 	result, err := scanpipeline.Run(ctx, scanpipeline.Options{
 		Client:            client,
 		Services:          servicesFor(layers),
@@ -445,15 +459,18 @@ func runScan(cmd *cobra.Command, args []string) error {
 		ScanFilters:       collectOpts,
 		DependencyFilters: depOpts,
 		ScanOptions:       scanTuning(cmd, scanSettings, prog),
+		WFPWriter:         wfpWriterOrNil(wfpOut),
 		OnProgress:        prog.layer,
 	})
 	prog.finish()
 	if err != nil {
 		return renderAPIError(fmt.Errorf("scan failed: %w", err))
 	}
-	if saveWFPFile != "" && len(result.WFP) > 0 {
-		if err := os.WriteFile(saveWFPFile, result.WFP, 0o644); err != nil {
-			warnf("failed to write WFP file: %v", err)
+	// Close before claiming success: a buffered write error can surface only here,
+	// and "saved" must not be printed over an incomplete file.
+	if wfpOut != nil {
+		if cerr := wfpOut.Close(); cerr != nil {
+			warnf("failed to write WFP file: %v", cerr)
 		} else {
 			okf("WFP fingerprints saved to %s", saveWFPFile)
 		}
@@ -464,6 +481,15 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 	printErrorSummary(result.ProcessErrors)
 	return nil
+}
+
+// wfpWriterOrNil keeps a nil *os.File from becoming a non-nil io.Writer: an interface
+// holding a typed nil pointer is not nil, so the pipeline would write to it and panic.
+func wfpWriterOrNil(f *os.File) io.Writer {
+	if f == nil {
+		return nil
+	}
+	return f
 }
 
 // runScanWFP scans a pre-generated WFP file directly (no fingerprinting). A bare WFP has no

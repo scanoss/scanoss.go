@@ -33,11 +33,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	scanossapi "github.com/scanoss/scanoss.api-sdk"
 
 	"github.com/scanoss/scanoss.go/internal/logging"
 	"github.com/scanoss/scanoss.go/pkg/dependencies/parsers"
+	"github.com/scanoss/scanoss.go/pkg/filter"
 	"github.com/scanoss/scanoss.go/pkg/sbom"
 	"github.com/scanoss/scanoss.go/pkg/sbom/scansource"
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
@@ -366,6 +368,49 @@ func TestRunRequiresAClient(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "client is required") {
 		t.Errorf("error should name the missing client, got: %v", err)
+	}
+}
+
+// Run streams the WFP into the caller's WFPWriter while the scan generates it: the copy
+// arrives complete even though Result no longer carries the stream.
+func TestRunStreamsWFPToWriter(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "code.c"), []byte(strings.Repeat("int x;\n", 40)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// A minimal fake of the v3 scan endpoint: chunks are accepted, the first status
+	// poll answers completed with one detected component.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			w.WriteHeader(http.StatusAccepted)
+		case http.MethodGet:
+			_, _ = w.Write([]byte(`{"scan_id":"s1","status":"completed","phase":"done",
+				"result":{"files":[{"path":"code.c","match_type":"file","matches":[{"url_hash":"h1"}]}],
+				"components":{"h1":{"purls":["pkg:npm/lodash"],"version":"4.17.20"}}}}`))
+		}
+	}))
+	defer srv.Close()
+
+	var wfpCopy bytes.Buffer
+	res, err := Run(context.Background(), Options{
+		Client:      mustNewClient(t, srv.URL),
+		SourcePath:  root,
+		ScanFilters: filter.Scanning(nil),
+		ScanOptions: []scanoss.ScanOption{scanoss.WithPollInterval(10 * time.Millisecond)},
+		WFPWriter:   &wfpCopy,
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	out := wfpCopy.String()
+	if !strings.Contains(out, "file=") || !strings.Contains(out, "code.c") {
+		t.Errorf("WFPWriter did not receive the stream; got:\n%s", out)
+	}
+	if findComponent(res.Inventory, "pkg:npm/lodash") == nil {
+		t.Errorf("inventory missing the detected component; got %+v", res.Inventory.Components)
 	}
 }
 
