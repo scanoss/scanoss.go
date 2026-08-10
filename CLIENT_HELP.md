@@ -114,8 +114,9 @@ scanoss-cli scan ./src/main.go --api-key "$SCANOSS_API_KEY"
 scanoss-cli scan ./my-project --api-key "$SCANOSS_API_KEY" --output results.json
 ```
 
-**Tune workers and the upload block size.** The assembled WFP is uploaded in
-parallel blocks; `--chunk-size` sets the block size in bytes.
+**Tune workers and the upload block size.** The WFP streams through a temporary
+file and is uploaded in parallel blocks, so memory stays flat however large the
+tree; `--chunk-size` sets the upload block size in bytes.
 
 ```bash
 scanoss-cli scan ./my-project \
@@ -124,7 +125,9 @@ scanoss-cli scan ./my-project \
   --chunk-size 2097152          # 2 MiB blocks (default 1 MiB)
 ```
 
-**Keep the generated WFP** alongside the scan:
+**Keep the generated WFP** alongside the scan. The copy is written while the scan
+generates it; its entries are in completion order, which varies between runs — use
+the `wfp` command when you need byte-reproducible output to diff or hash.
 
 ```bash
 scanoss-cli scan ./my-project --api-key "$SCANOSS_API_KEY" --save-wfp project.wfp

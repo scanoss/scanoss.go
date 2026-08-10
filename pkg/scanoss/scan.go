@@ -45,12 +45,13 @@ import (
 	"github.com/scanoss/scanoss.go/pkg/wfp"
 )
 
-// ScanAPI is the batch scan service surface. Folder, Files and WFP each run the
-// full flow — upload (parallel byte-range chunks) + poll to completion — and
-// return the envelope with its Result populated. They differ only in the input:
-// a directory tree, an explicit file list, or an already-assembled WFP. The
-// caller never manages the scan id; stages are reported via WithScanReporter and
-// the client-generated id is surfaced via WithScanIDNotify for optional recovery.
+// ScanAPI is the batch scan service surface. Folder, Files, WFP and WFPReader each
+// run the full flow — upload (parallel byte-range chunks) + poll to completion — and
+// return the envelope with its Result populated. They differ only in the input: a
+// directory tree, an explicit file list, or an already-assembled WFP (in memory, or
+// read from a file). The caller never manages the scan id; stages are reported via
+// WithScanReporter and the client-generated id is surfaced via WithScanIDNotify for
+// optional recovery.
 type ScanAPI interface {
 	// Folder collects, fingerprints and scans a directory tree (or single file).
 	Folder(ctx context.Context, path string, opts ...ScanOption) (scanossapi.ScanEnvelope, error)

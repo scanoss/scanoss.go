@@ -22,13 +22,17 @@
  */
 
 // Package wfp turns files into WFP (Winnowing Fingerprint) fingerprints — the payload a
-// SCANOSS scan uploads. Both entry points fingerprint through a bounded worker pool and
-// return the combined stream together with the per-file detail behind it.
+// SCANOSS scan uploads. All entry points fingerprint through a bounded worker pool; they
+// differ in what they hand back. Folder and Files return the combined stream sorted by
+// path together with the per-file detail behind it. Stream and StreamFolder write each
+// file's block to an io.Writer as it completes and retain nothing, so memory stays
+// bounded whatever the tree size — at the price of completion-order output.
 //
-// Folder takes a directory and applies the filtering rules itself, which is what a caller
-// holding a tree wants. Files takes a list and applies none: it fingerprints whatever it is
-// given, because the list may have come from somewhere other than a walk — an explicit
-// selection, an archive stream, a file named on a command line.
+// Folder and StreamFolder take a directory and apply the filtering rules themselves,
+// which is what a caller holding a tree wants. Files and Stream take a list and apply
+// none: they fingerprint whatever they are given, because the list may have come from
+// somewhere other than a walk — an explicit selection, an archive stream, a file named
+// on a command line.
 //
 // The asymmetry is deliberate but not obvious from the names, so a caller building the list
 // from a directory itself should filter it first, with filter.Collect and one of its profiles.

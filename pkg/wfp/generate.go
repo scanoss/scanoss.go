@@ -41,7 +41,7 @@ import (
 // It is unexported because using it correctly takes three concurrent participants — one
 // submitting, one draining errors, one draining results — and the channels are buffered
 // at numWorkers*2, so anything that submits more files than that without draining
-// deadlocks. Generate is that dance, done once and tested; publishing the pool would
+// deadlocks. Files and Stream are that dance, done once and tested; publishing the pool would
 // publish a mandatory protocol whose only failure mode is a hang.
 type workerPool struct {
 	numWorkers int
@@ -112,7 +112,7 @@ func (wp *workerPool) close() {
 	close(wp.errors)
 }
 
-// Result is what Generate produced: the stream to upload, the per-file detail behind it,
+// Result is what Files and Folder produce: the stream to upload, the per-file detail behind it,
 // and the files it could not fingerprint.
 //
 // WFP and Files are two views of one run, not a choice: a scan uploads WFP, while a caller
@@ -251,7 +251,7 @@ func Files(files []string, workers int, root string, onProgress func(done, total
 // Stream fingerprints the files and writes each block to w as it completes, retaining
 // none of them: memory stays bounded by the in-flight window whatever the tree size.
 //
-// the server matches per block, so
+// Block order is completion order, by design: the server matches per block, so
 // order does not affect scan results. Use Files where byte-reproducible output matters.
 //
 // The []error lists the files that could not be fingerprinted — best-effort, like
