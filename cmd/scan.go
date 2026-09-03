@@ -561,9 +561,10 @@ func runScanWFP(cmd *cobra.Command, args []string) error {
 	}
 	// The header filter runs while fingerprinting, and this command is handed a WFP that is
 	// already assembled. Rejecting beats ignoring: a user who passed it expects its effect, and
-	// the file they should have filtered was written by an earlier command.
+	// the file they should have filtered was written by an earlier command. Only an explicit
+	// flag is rejected — the filter being on by default must not make this command unusable.
 	if changed := cmd.Flags().Changed("skip-headers") || cmd.Flags().Changed("skip-headers-limit"); changed {
-		return usageError(cmd, "--skip-headers applies while fingerprinting; regenerate the WFP with \"scan\" or \"wfp --skip-headers\"")
+		return usageError(cmd, "--skip-headers applies while fingerprinting, not to an assembled WFP; regenerate it with \"scan\" or \"wfp\" (the filter is on by default there)")
 	}
 
 	prog := &scanProgress{}

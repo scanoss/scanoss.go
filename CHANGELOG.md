@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `"identified": true` and moves them to the front of their file's matches. Naming an
   exact version is a stronger claim than naming the component alone. The flags accept a
   SCANOSS component list, CycloneDX, SPDX, or this client's raw output.
+- **`--skip-headers` is on by default** on `scan` and `wfp`. A licence header is boilerplate
+  shared by every file that carries it, so fingerprinting it makes unrelated files look alike.
+  `--skip-headers=false`, or `skip_headers: false` in `scanoss.json`, restores the old
+  behaviour. **This changes the WFP every scan produces**: a fingerprint taken with the filter
+  on does not match one taken with it off.
 - **`--skip-headers` / `--skip-headers-limit`** on `scan` and `wfp`, and
   `settings.file_snippet.skip_headers` / `skip_headers_limit` in `scanoss.json`. Drops each
   file's leading licence header, documentation comments and imports from its fingerprint,

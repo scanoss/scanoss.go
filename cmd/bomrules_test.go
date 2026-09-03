@@ -200,11 +200,17 @@ func TestResolveSkipHeadersSettingsWinOverFlags(t *testing.T) {
 		wantOn    bool
 		wantLimit int
 	}{
+		// The filter is on by default: a licence header is boilerplate shared by every file
+		// carrying it, so fingerprinting it makes unrelated files look alike.
+		{"no flag, no settings", nil, nil, true, 0},
 		{"flag alone", []string{"--skip-headers", "--skip-headers-limit", "10"}, nil, true, 10},
-		{"no flag, no settings", nil, nil, false, 0},
-		{"settings enable what the flag did not ask for", nil, settingsSaysOn, true, 25},
+		{"the flag can turn it off", []string{"--skip-headers=false"}, nil, false, 0},
+		{"settings agree with the default", nil, settingsSaysOn, true, 25},
 		{"settings override the flag", []string{"--skip-headers", "--skip-headers-limit", "10"}, settingsSaysOn, true, 25},
 		{"settings disable what the flag asked for", []string{"--skip-headers"}, settingsSaysOff, false, 0},
+		// The settings file wins in both directions, including over the default.
+		{"settings disable the default", nil, settingsSaysOff, false, 0},
+		{"settings re-enable what the flag turned off", []string{"--skip-headers=false"}, settingsSaysOn, true, 25},
 	}
 
 	for _, tt := range tests {
@@ -232,8 +238,8 @@ func rankingSettings(threshold int) *settings.Settings {
 	}}
 }
 
-// As with the header filter, scanoss.json wins over the command line, and out-of-range values
-// are clamped rather than rejected.
+// scanoss.json wins over the command line here too, and out-of-range values are clamped rather
+// than rejected.
 func TestResolveRankingThreshold(t *testing.T) {
 	tests := []struct {
 		name     string

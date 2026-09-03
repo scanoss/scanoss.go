@@ -93,13 +93,17 @@ scanoss-cli wfp ./my-project --min-size 100
 
 Flags: `-t, --threads` (10), `-o, --output`, `--settings`, `--gitignore` (true),
 `--min-size` (bytes, default 0), `--max-size` (0 = unlimited), `--all-extensions`,
-`--all-folders`, `--all-hidden`, `--skip-headers`, `--skip-headers-limit` (0 = no
-limit).
+`--all-folders`, `--all-hidden`, `--skip-headers` (**default true**),
+`--skip-headers-limit` (0 = no limit).
 
 `--skip-headers` drops each file's leading licence header, documentation comments
 and imports from its fingerprint, so two files sharing nothing but a common
 licence block do not look alike to the matcher. Only files whose extension names
 a language it recognizes are affected; anything else is fingerprinted whole.
+
+**It is on by default.** Pass `--skip-headers=false` to fingerprint files whole —
+note that this changes the WFP, so a fingerprint taken with it off will not match
+one taken with it on.
 
 The size bounds mean the same here as on `scan` — see
 [Skipping files](#skipping-files).
@@ -158,8 +162,9 @@ Flags (persistent flags are shared with `scan wfp`): `--api-url`, `--api-key`,
 `--ignore-cert-errors`, `-t, --threads` (10), `--save-wfp`, `--min-size` (bytes,
 default 0), `--max-size` (0 = unlimited), `--gitignore` (true),
 `--all-extensions`, `--all-folders`, `--all-hidden`, `-i, --identify`,
-`-n, --ignore`, `--ranking-threshold` (-1 = off), `--skip-headers`,
-`--skip-headers-limit` (0 = no limit).
+`-n, --ignore`, `--ranking-threshold` (-1 = off), `--skip-headers`
+(**default true**, `--skip-headers=false` to disable), `--skip-headers-limit`
+(0 = no limit).
 
 `-i, --identify` and `-n, --ignore` name a component list; see
 [BOM rules](#bom-rules). `--skip-headers` applies while fingerprinting, so
@@ -560,6 +565,7 @@ with `--settings`. It carries BOM context and file-skip rules.
   byte bounds (`0` disables a bound).
 - **`settings.file_snippet`** — `skip_headers` and `skip_headers_limit` drop the
   leading licence header, comments and imports of each file from its fingerprint.
+  `skip_headers` defaults to true; set it to `false` to fingerprint files whole.
   ⚠️ **These two override the `--skip-headers` / `--skip-headers-limit` flags**,
   not the other way round. That is the reverse of every other flag in this CLI,
   and is deliberate: it is what `scanoss.py` does, and two clients reading one

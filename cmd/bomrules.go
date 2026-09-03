@@ -207,9 +207,12 @@ func resolveRankingThreshold(cmd *cobra.Command, s *settings.Settings) int {
 }
 
 // addSkipHeaderFlags declares the fingerprinting header filter flags.
+//
+// The filter is on by default: a licence header is boilerplate shared by every file that carries
+// it, so fingerprinting it makes unrelated files look alike. --skip-headers=false turns it off.
 func addSkipHeaderFlags(cmd *cobra.Command) {
-	cmd.Flags().Bool("skip-headers", false,
-		"Skip licence headers, comments and imports at the beginning of files when fingerprinting")
+	cmd.Flags().Bool("skip-headers", true,
+		"Skip licence headers, comments and imports at the beginning of files when fingerprinting (--skip-headers=false to disable)")
 	cmd.Flags().Int("skip-headers-limit", 0,
 		"Maximum number of leading lines the header filter may drop (0 = no limit)")
 }
@@ -219,7 +222,8 @@ func addSkipHeaderFlags(cmd *cobra.Command) {
 // scanoss.json wins over the command line, which is the reverse of the usual convention and of
 // what the collection flags do (see applyCollectFlags) — it is what scanoss.py does, and the two
 // clients reading one settings file differently would be worse than the inconsistency. A user who
-// needs the flag to win has to edit or drop the settings file.
+// needs the flag to win has to edit or drop the settings file. That holds for switching the filter
+// off as much as on: skip_headers: false in the settings beats the on-by-default flag.
 func resolveSkipHeaders(cmd *cobra.Command, s *settings.Settings) (enabled bool, limit int) {
 	enabled, _ = cmd.Flags().GetBool("skip-headers")
 	limit, _ = cmd.Flags().GetInt("skip-headers-limit")
