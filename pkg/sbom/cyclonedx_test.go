@@ -360,3 +360,44 @@ func TestCycloneDXAffectsOnlyTheAffectedVersions(t *testing.T) {
 		}
 	}
 }
+
+// CycloneDX has no field for the identify verdict, so it rides as a property alongside the
+// url_hash. Both must survive together — the second must not overwrite the first.
+func TestCycloneDXIdentifiedProperty(t *testing.T) {
+	inv := Inventory{Components: []Component{
+		{Purl: "pkg:npm/vue", Version: "2.6.14", URLHash: "abc123", Identified: true},
+		{Purl: "pkg:npm/lodash", Version: "4.17.21", URLHash: "def456"},
+	}}
+
+	out, err := Generate(inv, FormatCycloneDX)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	var doc struct {
+		Components []struct {
+			Purl       string `json:"purl"`
+			Properties []struct {
+				Name  string `json:"name"`
+				Value string `json:"value"`
+			} `json:"properties"`
+		} `json:"components"`
+	}
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	for _, c := range doc.Components {
+		props := map[string]string{}
+		for _, p := range c.Properties {
+			props[p.Name] = p.Value
+		}
+		if props["scanoss:url_hash"] == "" {
+			t.Errorf("%s lost its url_hash property", c.Purl)
+		}
+		wantIdentified := strings.Contains(c.Purl, "vue")
+		if got := props["scanoss:identified"] == "true"; got != wantIdentified {
+			t.Errorf("%s identified property = %v, want %v", c.Purl, got, wantIdentified)
+		}
+	}
+}

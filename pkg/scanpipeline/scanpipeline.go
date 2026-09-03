@@ -47,6 +47,7 @@ import (
 	"github.com/scanoss/scanoss.go/pkg/dependencies"
 	"github.com/scanoss/scanoss.go/pkg/dependencies/parsers"
 	"github.com/scanoss/scanoss.go/pkg/filter"
+	"github.com/scanoss/scanoss.go/pkg/postprocess"
 	"github.com/scanoss/scanoss.go/pkg/sbom"
 	"github.com/scanoss/scanoss.go/pkg/sbom/scansource"
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
@@ -81,6 +82,9 @@ type Options struct {
 	ScanFilters       filter.Options
 	DependencyFilters filter.Options
 	ScanOptions       []scanoss.ScanOption // per-scan tuning (chunk size, poll interval, BOM, ...)
+	// WFPOptions tunes how each file is fingerprinted (see wfp.Option) — today, whether the
+	// leading licence header, comments and imports are dropped.
+	WFPOptions []wfp.Option
 
 	// WFPWriter, when set, receives the WFP as it is generated, block by block. It is how a
 	// caller keeps the WFP: pass a file to save it, a bytes.Buffer to hold it in memory. Nil
@@ -190,6 +194,7 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 	// both, since it decorates detected and declared components together.
 	var (
 		scanResult     *scanossapi.ScanResult
+		bomReport      postprocess.Report
 		procErrors     []error
 		scanErr        error
 		fingerprintErr error
@@ -227,7 +232,7 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 		// Buffered so each ~2 KB fingerprint block does not become its own syscall. The flush
 		// must land before Stat sizes the spill.
 		buffered := bufio.NewWriterSize(dest, 64<<10)
-		fileErrs, err := wfp.Stream(files, threads, scanRoot, buffered, r.Fingerprinting)
+		fileErrs, err := wfp.Stream(files, threads, scanRoot, buffered, r.Fingerprinting, opts.WFPOptions...)
 		procErrors = fileErrs
 		if err == nil {
 			err = buffered.Flush()
@@ -267,9 +272,15 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 		// A fresh slice rather than appending to the caller's: append writes into their array
 		// whenever it has spare capacity, so the caller's Options would sprout an option it never
 		// asked for. Options is exported, so the slice is theirs to reuse.
-		scanOpts := make([]scanoss.ScanOption, 0, len(opts.ScanOptions)+1)
+		scanOpts := make([]scanoss.ScanOption, 0, len(opts.ScanOptions)+2)
 		scanOpts = append(scanOpts, opts.ScanOptions...)
 		scanOpts = append(scanOpts, scanoss.WithScanReporter(r))
+		// The BOM identify verdict cannot ride back on the envelope (an API SDK type), so it is
+		// collected here and handed to the adapter below. Written from this goroutine and read
+		// after wg.Wait, like scanResult itself.
+		scanOpts = append(scanOpts, scanoss.WithBOMReport(func(rep postprocess.Report) {
+			bomReport = rep
+		}))
 
 		res, err := opts.Client.Scan.WFPReader(ctx, spill, info.Size(), scanOpts...)
 		if err != nil {
@@ -321,7 +332,7 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 	}
 
 	// The enrichment layers report to r as well.
-	inv := scansource.Inventory(scanResult)
+	inv := scansource.Inventory(scanResult, scansource.WithIdentified(bomReport.IsIdentified))
 	inv.Add(declaredComps...)
 	enrichErr := Enricher{Client: opts.Client, Services: opts.Services, Reporter: r}.Enrich(ctx, &inv)
 	return Result{

@@ -24,6 +24,7 @@
 package scansource
 
 import (
+	"strings"
 	"testing"
 
 	scanossapi "github.com/scanoss/scanoss.api-sdk"
@@ -341,5 +342,99 @@ func TestVulnerabilitiesWithoutAVersionKeepTheBarePurl(t *testing.T) {
 	got := Vulnerabilities(resp)
 	if len(got) != 1 || len(got[0].Purls) != 1 || got[0].Purls[0] != purl {
 		t.Errorf("purls = %v, want [%s]", got, purl)
+	}
+}
+
+// The identify verdict reaches the inventory through the option, since the scan result has
+// nowhere to carry it. It lands on the evidence, and the component summarises it.
+func TestInventoryMarksIdentifiedComponents(t *testing.T) {
+	result := &scanossapi.ScanResult{
+		Files: []scanossapi.FileResult{{
+			Path:      "src/app.js",
+			MatchType: "file",
+			Matches:   []scanossapi.MatchResult{{UrlHash: "h1"}, {UrlHash: "h2"}},
+		}},
+		Components: map[string]scanossapi.ComponentResult{
+			"h1": {Purls: []string{"pkg:npm/vue"}, Version: "2.6.14"},
+			"h2": {Purls: []string{"pkg:npm/lodash"}, Version: "4.17.21"},
+		},
+	}
+
+	inv := Inventory(result, WithIdentified(func(path, urlHash string) bool {
+		return urlHash == "h1"
+	}))
+
+	for _, c := range inv.Components {
+		want := c.Purl == "pkg:npm/vue"
+		if c.Identified != want {
+			t.Errorf("%s component identified = %v, want %v", c.Purl, c.Identified, want)
+		}
+		for _, e := range c.Evidence {
+			if e.Identified != want {
+				t.Errorf("%s evidence %s identified = %v, want %v", c.Purl, e.Path, e.Identified, want)
+			}
+		}
+	}
+}
+
+// A path-scoped rule claims a component in some of its files and not others. That is the whole
+// reason the flag is per-evidence: the component-level one cannot say which.
+func TestInventoryMarksIdentifiedPerFile(t *testing.T) {
+	result := &scanossapi.ScanResult{
+		Files: []scanossapi.FileResult{
+			{Path: "vendor/vue.js", MatchType: "file", Matches: []scanossapi.MatchResult{{UrlHash: "h1"}}},
+			{Path: "src/app.js", MatchType: "file", Matches: []scanossapi.MatchResult{{UrlHash: "h1"}}},
+		},
+		Components: map[string]scanossapi.ComponentResult{
+			"h1": {Purls: []string{"pkg:npm/vue"}, Version: "2.6.14"},
+		},
+	}
+
+	// As a rule scoped to "vendor/" would answer.
+	inv := Inventory(result, WithIdentified(func(path, urlHash string) bool {
+		return strings.HasPrefix(path, "vendor/")
+	}))
+
+	if len(inv.Components) != 1 {
+		t.Fatalf("got %d components, want 1", len(inv.Components))
+	}
+	c := inv.Components[0]
+	if !c.Identified {
+		t.Error("the component should be identified: one of its files was claimed")
+	}
+	byPath := map[string]bool{}
+	for _, e := range c.Evidence {
+		byPath[e.Path] = e.Identified
+	}
+	if !byPath["vendor/vue.js"] {
+		t.Error("vendor/vue.js should be identified")
+	}
+	if byPath["src/app.js"] {
+		t.Error("src/app.js is outside the rule's scope and must not be identified")
+	}
+}
+
+// Without the option nothing is marked: an inventory built from a result alone makes no claim
+// about what the user declared.
+func TestInventoryWithoutIdentifiedMarksNothing(t *testing.T) {
+	result := &scanossapi.ScanResult{
+		Files: []scanossapi.FileResult{{
+			Path: "src/app.js", MatchType: "file",
+			Matches: []scanossapi.MatchResult{{UrlHash: "h1"}},
+		}},
+		Components: map[string]scanossapi.ComponentResult{
+			"h1": {Purls: []string{"pkg:npm/vue"}, Version: "2.6.14"},
+		},
+	}
+
+	for _, c := range Inventory(result).Components {
+		if c.Identified {
+			t.Errorf("%s should not be marked identified", c.Purl)
+		}
+		for _, e := range c.Evidence {
+			if e.Identified {
+				t.Errorf("%s evidence %s should not be marked identified", c.Purl, e.Path)
+			}
+		}
 	}
 }

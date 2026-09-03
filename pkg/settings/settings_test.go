@@ -178,7 +178,9 @@ func TestHasBOM(t *testing.T) {
 	}{
 		{"empty BOM", Settings{}, false},
 		{"with identify", Settings{BOM: BOM{Identify: []BOMEntry{{Purl: "pkg:npm/test@1.0.0"}}}}, true},
+		{"with include", Settings{BOM: BOM{Include: []BOMEntry{{Purl: "pkg:npm/test@1.0.0"}}}}, true},
 		{"with ignore", Settings{BOM: BOM{Ignore: []BOMEntry{{Purl: "pkg:npm/test@1.0.0"}}}}, true},
+		{"with exclude", Settings{BOM: BOM{Exclude: []BOMEntry{{Purl: "pkg:npm/test@1.0.0"}}}}, true},
 		{"with remove", Settings{BOM: BOM{Remove: []BOMEntry{{Purl: "pkg:npm/test@1.0.0"}}}}, true},
 	}
 
@@ -227,5 +229,163 @@ func TestLoadSkip(t *testing.T) {
 	sizes := s.Settings.SkipSizes(OperationScanning)
 	if len(sizes) != 1 || sizes[0].Max != 1024 || len(sizes[0].Patterns) != 1 {
 		t.Fatalf("SkipSizes(scanning) = %+v, want one rule with max 1024", sizes)
+	}
+}
+
+func TestLoadFileSnippet(t *testing.T) {
+	dir := t.TempDir()
+	content := `{
+		"settings": {
+			"file_snippet": {
+				"skip_headers": true,
+				"skip_headers_limit": 25
+			}
+		}
+	}`
+	path := filepath.Join(dir, "scanoss.json")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if v, ok := s.Settings.SkipHeaders(); !ok || !v {
+		t.Errorf("SkipHeaders() = (%v, %v), want (true, true)", v, ok)
+	}
+	if v, ok := s.Settings.SkipHeadersLimit(); !ok || v != 25 {
+		t.Errorf("SkipHeadersLimit() = (%v, %v), want (25, true)", v, ok)
+	}
+}
+
+// A settings file that says nothing about the file_snippet knobs must be distinguishable from
+// one that sets them to their zero values: it is what decides whether the file overrides the
+// command line.
+func TestFileSnippetUnsetIsNotFalse(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "scanoss.json")
+	if err := os.WriteFile(path, []byte(`{"bom": {}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if v, ok := s.Settings.SkipHeaders(); ok {
+		t.Errorf("SkipHeaders() = (%v, %v), want ok=false for an absent section", v, ok)
+	}
+	if v, ok := s.Settings.SkipHeadersLimit(); ok {
+		t.Errorf("SkipHeadersLimit() = (%v, %v), want ok=false for an absent section", v, ok)
+	}
+}
+
+func TestFileSnippetExplicitZeroIsSet(t *testing.T) {
+	dir := t.TempDir()
+	content := `{"settings": {"file_snippet": {"skip_headers": false, "skip_headers_limit": 0}}}`
+	path := filepath.Join(dir, "scanoss.json")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if v, ok := s.Settings.SkipHeaders(); !ok || v {
+		t.Errorf("SkipHeaders() = (%v, %v), want (false, true): an explicit false is a decision", v, ok)
+	}
+	if v, ok := s.Settings.SkipHeadersLimit(); !ok || v != 0 {
+		t.Errorf("SkipHeadersLimit() = (%v, %v), want (0, true): 0 means 'no cap', not 'unset'", v, ok)
+	}
+}
+
+// A negative cap would ask to drop fewer than zero lines. It is reported as unset rather than
+// passed on to the fingerprinter.
+func TestSkipHeadersLimitRejectsNegative(t *testing.T) {
+	limit := -5
+	tuning := Tuning{FileSnippet: FileSnippet{SkipHeadersLimit: &limit}}
+	if v, ok := tuning.SkipHeadersLimit(); ok {
+		t.Errorf("SkipHeadersLimit() = (%v, %v), want ok=false for a negative cap", v, ok)
+	}
+}
+
+// bom.identify/bom.include and bom.ignore/bom.exclude each spell one rule. Both spellings must
+// reach the consumer, whichever the settings file happens to use.
+func TestRuleSpellingsAreFolded(t *testing.T) {
+	tests := []struct {
+		name  string
+		bom   BOM
+		rules func(BOM) []BOMEntry
+		want  []string
+	}{
+		{
+			"identify only",
+			BOM{Identify: []BOMEntry{{Purl: "pkg:npm/a"}}},
+			BOM.IdentifyRules, []string{"pkg:npm/a"},
+		},
+		{
+			"include only",
+			BOM{Include: []BOMEntry{{Purl: "pkg:npm/b"}}},
+			BOM.IdentifyRules, []string{"pkg:npm/b"},
+		},
+		{
+			"identify and include joined",
+			BOM{Identify: []BOMEntry{{Purl: "pkg:npm/a"}}, Include: []BOMEntry{{Purl: "pkg:npm/b"}}},
+			BOM.IdentifyRules, []string{"pkg:npm/a", "pkg:npm/b"},
+		},
+		{"no identify rules", BOM{}, BOM.IdentifyRules, nil},
+		{
+			"ignore only",
+			BOM{Ignore: []BOMEntry{{Purl: "pkg:npm/c"}}},
+			BOM.IgnoreRules, []string{"pkg:npm/c"},
+		},
+		{
+			"exclude only",
+			BOM{Exclude: []BOMEntry{{Purl: "pkg:npm/d"}}},
+			BOM.IgnoreRules, []string{"pkg:npm/d"},
+		},
+		{
+			"ignore and exclude joined",
+			BOM{Ignore: []BOMEntry{{Purl: "pkg:npm/c"}}, Exclude: []BOMEntry{{Purl: "pkg:npm/d"}}},
+			BOM.IgnoreRules, []string{"pkg:npm/c", "pkg:npm/d"},
+		},
+		{"no ignore rules", BOM{}, BOM.IgnoreRules, nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.rules(tt.bom)
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %d rules, want %d: %+v", len(got), len(tt.want), got)
+			}
+			for i, purl := range tt.want {
+				if got[i].Purl != purl {
+					t.Errorf("rule %d = %q, want %q", i, got[i].Purl, purl)
+				}
+			}
+		})
+	}
+}
+
+// Folding must copy rather than extend one of the source slices: appending to a slice with spare
+// capacity would write into whatever the settings file's own list shares memory with.
+func TestJoinRulesDoesNotAliasItsInputs(t *testing.T) {
+	identify := make([]BOMEntry, 1, 4) // spare capacity: append would write in place
+	identify[0] = BOMEntry{Purl: "pkg:npm/a"}
+	bom := BOM{Identify: identify, Include: []BOMEntry{{Purl: "pkg:npm/b"}}}
+
+	joined := bom.IdentifyRules()
+	joined[1].Purl = "pkg:npm/mutated"
+
+	if bom.Identify[0].Purl != "pkg:npm/a" {
+		t.Errorf("identify rule mutated to %q", bom.Identify[0].Purl)
+	}
+	if bom.Include[0].Purl != "pkg:npm/b" {
+		t.Errorf("include rule mutated to %q", bom.Include[0].Purl)
 	}
 }

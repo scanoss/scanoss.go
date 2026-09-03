@@ -39,11 +39,13 @@ import (
 	"github.com/scanoss/scanoss.go/internal/config"
 	"github.com/scanoss/scanoss.go/internal/output"
 	"github.com/scanoss/scanoss.go/pkg/filter"
+	"github.com/scanoss/scanoss.go/pkg/postprocess"
 	"github.com/scanoss/scanoss.go/pkg/sbom"
 	"github.com/scanoss/scanoss.go/pkg/sbom/scansource"
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
 	"github.com/scanoss/scanoss.go/pkg/scanpipeline"
 	"github.com/scanoss/scanoss.go/pkg/settings"
+	"github.com/scanoss/scanoss.go/pkg/wfp"
 )
 
 // scanProgress draws pipeline layers as terminal progress bars, one bar per layer in a shared mpb
@@ -366,6 +368,15 @@ func init() {
 	scanCmd.Flags().Bool("all-folders", false, "Fingerprint every folder: do not apply the built-in directory skip lists")
 	scanCmd.Flags().Bool("gitignore", true, "Honor .gitignore files when collecting files")
 	scanCmd.Flags().Bool("all-hidden", false, "Include hidden files and folders, version-control metadata included")
+	addSkipHeaderFlags(scanCmd)
+
+	// The BOM rule flags are declared on both, since either can apply them: `scan wfp` cannot
+	// fingerprint, but it still post-processes a result.
+	addBOMRuleFlags(scanCmd)
+	addBOMRuleFlags(scanWFPCmd)
+	addRankingFlag(scanCmd)
+	addRankingFlag(scanWFPCmd)
+	addSkipHeaderFlags(scanWFPCmd) // declared so the flag is rejected with a reason, see runScanWFP
 }
 
 // runScan fingerprints a file or folder and scans it. Collection, fingerprinting, the scan, and
@@ -411,12 +422,17 @@ func runScan(cmd *cobra.Command, args []string) error {
 	applyGitignore, _ := cmd.Flags().GetBool("gitignore")
 	allHidden, _ := cmd.Flags().GetBool("all-hidden")
 
-	// Settings drive file filtering. Of the BOM rules, bom.remove and bom.replace are applied
-	// (SDK-side, post-scan, via WithBOM); identify/ignore are not.
+	// Settings drive file filtering and the BOM rules, which are applied SDK-side, post-scan,
+	// via WithBOM. --identify and --ignore contribute to the same BOM.
 	scanSettings, err := resolveSettings(settingsFlag, targetPath)
 	if err != nil {
 		return fmt.Errorf("error loading settings: %w", err)
 	}
+	scanSettings, err = mergeBOMRuleFlags(cmd, scanSettings)
+	if err != nil {
+		return err
+	}
+	skipHeaders, skipHeadersLimit := resolveSkipHeaders(cmd, scanSettings)
 
 	prog := &scanProgress{}
 	client, err := buildScanClient(cmd)
@@ -459,6 +475,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 		ScanFilters:       collectOpts,
 		DependencyFilters: depOpts,
 		ScanOptions:       scanTuning(cmd, scanSettings, prog),
+		WFPOptions:        fingerprintOptions(skipHeaders, skipHeadersLimit),
 		WFPWriter:         wfpWriterOrNil(wfpOut),
 		OnProgress:        prog.layer,
 	})
@@ -538,6 +555,16 @@ func runScanWFP(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("error loading settings: %w", err)
 	}
+	scanSettings, err = mergeBOMRuleFlags(cmd, scanSettings)
+	if err != nil {
+		return err
+	}
+	// The header filter runs while fingerprinting, and this command is handed a WFP that is
+	// already assembled. Rejecting beats ignoring: a user who passed it expects its effect, and
+	// the file they should have filtered was written by an earlier command.
+	if changed := cmd.Flags().Changed("skip-headers") || cmd.Flags().Changed("skip-headers-limit"); changed {
+		return usageError(cmd, "--skip-headers applies while fingerprinting; regenerate the WFP with \"scan\" or \"wfp --skip-headers\"")
+	}
 
 	prog := &scanProgress{}
 	client, err := buildScanClient(cmd)
@@ -552,7 +579,8 @@ func runScanWFP(cmd *cobra.Command, args []string) error {
 	// follows. Without it this path draws the enrichment bars and nothing for the scan itself.
 	rep := scanpipeline.NewReporter(prog.layer)
 
-	scanOpts := append(scanTuning(cmd, scanSettings, prog), scanoss.WithScanReporter(rep))
+	var bom bomReport
+	scanOpts := append(scanTuning(cmd, scanSettings, prog), scanoss.WithScanReporter(rep), bom.option())
 	res, err := client.Scan.WFP(ctx, wfp, scanOpts...)
 	if err != nil {
 		return renderAPIError(fmt.Errorf("scan failed: %w", err))
@@ -561,7 +589,7 @@ func runScanWFP(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("scan completed without a result")
 	}
 
-	inv := scansource.Inventory(res.Result)
+	inv := scansource.Inventory(res.Result, scansource.WithIdentified(bom.report.IsIdentified))
 	enricher := scanpipeline.Enricher{Client: client, Services: servicesFor(layers), Reporter: rep}
 	enrichErr := enricher.Enrich(ctx, &inv)
 	prog.finish()
@@ -582,8 +610,8 @@ func buildScanClient(cmd *cobra.Command) (*scanoss.Client, error) {
 	return scanoss.New(cfg)
 }
 
-// scanTuning builds the per-scan options — chunk size, poll interval, bom.remove, and the
-// scan-id notice — from the flags and settings.
+// scanTuning builds the per-scan options — chunk size, poll interval, the BOM rules, the ranking
+// threshold and the scan-id notice — from the flags and settings.
 func scanTuning(cmd *cobra.Command, scanSettings *settings.Settings, prog *scanProgress) []scanoss.ScanOption {
 	chunkSize, _ := cmd.Flags().GetInt("chunk-size")
 	pollInterval, _ := cmd.Flags().GetDuration("poll-interval")
@@ -607,7 +635,34 @@ func scanTuning(cmd *cobra.Command, scanSettings *settings.Settings, prog *scanP
 	if scanSettings != nil && scanSettings.HasBOM() {
 		scanOpts = append(scanOpts, scanoss.WithBOM(&scanSettings.BOM))
 	}
+	if threshold := resolveRankingThreshold(cmd, scanSettings); threshold > 0 {
+		scanOpts = append(scanOpts, scanoss.WithRankingThreshold(threshold))
+	}
 	return scanOpts
+}
+
+// bomReport collects what the BOM selection rules concluded during a scan, so the inventory
+// adapter can mark the components the user declared. It exists because the verdict cannot travel
+// on the scan envelope: that is an API SDK type, carrying what the server said.
+//
+// The commands that drive a scan themselves need this; `scan <path>` does not, because
+// scanpipeline collects the same verdict internally.
+type bomReport struct{ report postprocess.Report }
+
+// option registers the collector with a scan. Safe to pass when no BOM rules are set: it simply
+// never fires, and the zero Report answers "not identified" for everything.
+func (b *bomReport) option() scanoss.ScanOption {
+	return scanoss.WithBOMReport(func(r postprocess.Report) { b.report = r })
+}
+
+// fingerprintOptions maps the resolved header-filter settings onto the fingerprinting options.
+// Nothing is passed when the filter is off, so a run without it takes the same path it always
+// did.
+func fingerprintOptions(skipHeaders bool, limit int) []wfp.Option {
+	if !skipHeaders {
+		return nil
+	}
+	return []wfp.Option{wfp.WithSkipHeaders(limit)}
 }
 
 // emitInventory renders inv in the --format and writes it to the --output target. scanPath names

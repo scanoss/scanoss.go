@@ -61,6 +61,11 @@ func init() {
 	resultsCmd.Flags().Duration("poll-interval", scanoss.DefaultScanPollInterval, "How often to poll for scan status")
 	resultsCmd.Flags().StringP("format", "f", config.DefaultFormat, "Result output format: raw, spdx, cyclonedx")
 	resultsCmd.Flags().StringSlice("include", nil, "Output layers to gather (comma-separated): vulns, licenses, crypto, geo")
+	// A resumed scan must reach the same deliverable as a direct one, and the BOM rules are part
+	// of that: without them, `results <id>` reported components the project's settings dismissed.
+	resultsCmd.Flags().String("settings", "", "Path to settings file (scanoss.json/settings.json)")
+	addBOMRuleFlags(resultsCmd)
+	addRankingFlag(resultsCmd)
 }
 
 func runResults(cmd *cobra.Command, args []string) error {
@@ -78,6 +83,7 @@ func runResults(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	pollInterval, _ := cmd.Flags().GetDuration("poll-interval")
+	settingsFlag, _ := cmd.Flags().GetString("settings")
 
 	// Checked before the scan is polled: waiting for a scan to finish only to reject a format that
 	// was wrong from the start spends the wait for nothing.
@@ -115,7 +121,29 @@ func runResults(cmd *cobra.Command, args []string) error {
 	ctx, cancel := createCancellableContext()
 	defer cancel()
 
-	res, err := client.Scan.Wait(ctx, scanID, scanoss.WithPollInterval(pollInterval), scanoss.WithScanReporter(rep))
+	// Resuming by id reaches a result, not the tree it came from, so the settings are looked for
+	// in the working directory unless --settings names one.
+	scanSettings, err := resolveSettings(settingsFlag, ".")
+	if err != nil {
+		return fmt.Errorf("error loading settings: %w", err)
+	}
+	scanSettings, err = mergeBOMRuleFlags(cmd, scanSettings)
+	if err != nil {
+		return err
+	}
+
+	var bom bomReport
+	waitOpts := []scanoss.ScanOption{
+		scanoss.WithPollInterval(pollInterval), scanoss.WithScanReporter(rep), bom.option(),
+	}
+	if scanSettings != nil && scanSettings.HasBOM() {
+		waitOpts = append(waitOpts, scanoss.WithBOM(&scanSettings.BOM))
+	}
+	if threshold := resolveRankingThreshold(cmd, scanSettings); threshold > 0 {
+		waitOpts = append(waitOpts, scanoss.WithRankingThreshold(threshold))
+	}
+
+	res, err := client.Scan.Wait(ctx, scanID, waitOpts...)
 	if err != nil {
 		return renderAPIError(fmt.Errorf("failed to retrieve results: %w", err))
 	}
@@ -127,7 +155,7 @@ func runResults(cmd *cobra.Command, args []string) error {
 	// same deliverable: the raw envelope carries schema_version and metadata, and
 	// the SBOM formats are convertible by `sbom`. Emitting the API response
 	// verbatim made a resumed scan a dead end.
-	inv := scansource.Inventory(res.Result)
+	inv := scansource.Inventory(res.Result, scansource.WithIdentified(bom.report.IsIdentified))
 	enricher := scanpipeline.Enricher{Client: client, Services: servicesFor(layers), Reporter: rep}
 	if err := enricher.Enrich(ctx, &inv); err != nil {
 		warnf("Enrichment incomplete: %v", err)

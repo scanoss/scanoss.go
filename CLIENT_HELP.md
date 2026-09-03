@@ -93,7 +93,13 @@ scanoss-cli wfp ./my-project --min-size 100
 
 Flags: `-t, --threads` (10), `-o, --output`, `--settings`, `--gitignore` (true),
 `--min-size` (bytes, default 0), `--max-size` (0 = unlimited), `--all-extensions`,
-`--all-folders`, `--all-hidden`.
+`--all-folders`, `--all-hidden`, `--skip-headers`, `--skip-headers-limit` (0 = no
+limit).
+
+`--skip-headers` drops each file's leading licence header, documentation comments
+and imports from its fingerprint, so two files sharing nothing but a common
+licence block do not look alike to the matcher. Only files whose extension names
+a language it recognizes are affected; anything else is fingerprinted whole.
 
 The size bounds mean the same here as on `scan` — see
 [Skipping files](#skipping-files).
@@ -151,7 +157,13 @@ Flags (persistent flags are shared with `scan wfp`): `--api-url`, `--api-key`,
 `--chunk-size` (1 MiB), `--poll-interval` (2s), `--proxy`, `--ca-cert`,
 `--ignore-cert-errors`, `-t, --threads` (10), `--save-wfp`, `--min-size` (bytes,
 default 0), `--max-size` (0 = unlimited), `--gitignore` (true),
-`--all-extensions`, `--all-folders`, `--all-hidden`.
+`--all-extensions`, `--all-folders`, `--all-hidden`, `-i, --identify`,
+`-n, --ignore`, `--ranking-threshold` (-1 = off), `--skip-headers`,
+`--skip-headers-limit` (0 = no limit).
+
+`-i, --identify` and `-n, --ignore` name a component list; see
+[BOM rules](#bom-rules). `--skip-headers` applies while fingerprinting, so
+`scan wfp` rejects it — the WFP it is handed was already assembled.
 
 ### Skipping files
 
@@ -221,7 +233,7 @@ match (a rule with no `patterns` matches nothing and is ignored). Use the flags
 for a blanket bound, and `skip.sizes` when one file type deserves different limits
 from the rest.
 
-### BOM context
+### BOM rules
 
 Configure a Bill of Materials in `scanoss.json` (auto-detected in the target, or
 pass `--settings`):
@@ -241,13 +253,55 @@ scanoss-cli scan ./my-project --api-key "$SCANOSS_API_KEY"            # auto-det
 scanoss-cli scan ./my-project --api-key "$SCANOSS_API_KEY" --settings my-config.json
 ```
 
-> **Note:** `bom.remove` and `bom.replace` are applied client-side, after results
-> come back and in that order: matching components are dropped, then the
-> survivors covered by a replace rule are re-pointed at their `replace_with`
-> component. An entry may be scoped by `purl`, by `path`, or by both; where
-> several cover the same file the most specific one wins. `bom.include` only
-> protects its PURLs from removal and is **not yet honored server-side**;
-> `identify`/`ignore` are not applied.
+> **Note:** every BOM rule is applied client-side, after results come back, in
+> this order:
+>
+> 1. **`bom.ignore`** (alias `bom.exclude`) drops the components it names from
+>    each file's matches. A file left with none is reported unmatched.
+> 2. **`bom.identify`** (alias `bom.include`) marks the components it names as
+>    `"identified": true` and moves them to the front of their file's matches,
+>    so the component you declared leads. Naming an exact version is a stronger
+>    claim than naming the component alone, and wins where both apply.
+>
+>    The flag is written on each matched file's evidence **and** on the component
+>    as a summary, because a `path`-scoped rule claims a component in the files it
+>    covers and not in the ones outside — which the component-level flag alone
+>    cannot say:
+>
+>    ```json
+>    { "purl": "pkg:pypi/west", "identified": true,
+>      "evidence": [
+>        { "path": "src/west/app/main.py", "identified": true },
+>        { "path": "src/west/util.py" }
+>      ] }
+>    ```
+>
+>    In CycloneDX the component-level flag rides as a `scanoss:identified`
+>    property; the per-file detail appears in `raw` output only.
+> 3. **`--ranking-threshold`** drops matches whose component ranks worse than the
+>    threshold. Rank is the scanner's ordering of how well a component explains a
+>    match — lowest is strongest, and ranks run 1..9 in practice.
+> 4. **`bom.remove`** neutralizes whole files.
+> 5. **`bom.replace`** re-points the survivors at their `replace_with` component.
+>
+> `bom.ignore` and `bom.identify` match a component's **canonical PURL**, not its
+> aliases: one project mined from several registries yields catalog entries that
+> each carry the others' PURLs, so matching aliases would make one rule claim
+> every candidate at once. (`bom.remove` and `bom.replace` do match aliases.)
+>
+> An entry may be scoped by `purl`, by `path`, or by both; where several cover the
+> same file the most specific one wins. **`bom.identify` protects its PURLs from
+> every filter** — `bom.ignore`, `bom.remove` and the ranking threshold alike. An
+> explicit "this component is here" outranks both a blanket "drop this one" and a
+> generic quality bar. (The engine does the opposite with the threshold, letting
+> it overwrite the identified flag; reproducing that would discard a component the
+> user stated was present because of a rule that names no component at all.)
+>
+> `--identify` and `--ignore` contribute unscoped PURLs to the same rules, so
+> they can be combined with `--settings` (scanoss.py rejects that combination).
+> Both accept a SCANOSS component list (`{"components":[{"purl":"..."}]}`),
+> CycloneDX, SPDX, or this client's own raw output — the shape is detected from
+> the content.
 
 ### Output layers (`--include`)
 
@@ -476,8 +530,8 @@ with `--settings`. It carries BOM context and file-skip rules.
 {
   "bom": {
     "include":  [{ "purl": "pkg:github/scanoss/engine" }],
-    "identify": [],
-    "ignore":   [],
+    "identify": [{ "purl": "pkg:npm/vue@2.6.14", "path": "vendor/vue/" }],
+    "ignore":   [{ "purl": "pkg:npm/debug" }],
     "remove":   [{ "purl": "pkg:github/scanoss/scanoss" }],
     "replace":  [{ "purl": "pkg:github/wrong/lib", "replace_with": "pkg:github/right/lib@2.1.0" }]
   },
@@ -485,18 +539,41 @@ with `--settings`. It carries BOM context and file-skip rules.
     "skip": {
       "patterns": { "scanning": ["dist/**", "**/*.min.js"] },
       "sizes":    { "scanning": [{ "patterns": ["*.bin"], "min": 0, "max": 1048576 }] }
+    },
+    "file_snippet": {
+      "skip_headers": true,
+      "skip_headers_limit": 50,
+      "ranking_threshold": 5
     }
   }
 }
 ```
 
-- **`bom`** — `bom.remove` then `bom.replace` are applied client-side, post-scan.
-  Entries are scoped by `purl`, `path` or both, and the most specific match wins.
-  `bom.include` protects its PURLs from removal but is not yet honored
-  server-side; `identify`/`ignore` are not applied.
+- **`bom`** — applied client-side, post-scan, in the order `ignore` → `identify`
+  → `remove` → `replace` (see [BOM rules](#bom-rules)). Entries are
+  scoped by `purl`, `path` or both, and the most specific match wins.
+  `identify`/`include` and `ignore`/`exclude` are two spellings of one rule each:
+  the first is this client's, the second the published schema's, and both are
+  read.
 - **`settings.skip`** — keyed by operation (`scanning`, `fingerprinting`,
   `dependencies`). `patterns` are gitignore-style globs; `sizes` set per-pattern
   byte bounds (`0` disables a bound).
+- **`settings.file_snippet`** — `skip_headers` and `skip_headers_limit` drop the
+  leading licence header, comments and imports of each file from its fingerprint.
+  ⚠️ **These two override the `--skip-headers` / `--skip-headers-limit` flags**,
+  not the other way round. That is the reverse of every other flag in this CLI,
+  and is deliberate: it is what `scanoss.py` does, and two clients reading one
+  settings file differently would be worse than the inconsistency. To let the
+  flag win, remove the key from `scanoss.json`.
+  `ranking_threshold` (`-1`..`10`; `-1` or `0` = off) is the same filter as
+  `--ranking-threshold`, and overrides it the same way. Out-of-range values are
+  clamped with a warning rather than rejected.
+  In `scanoss.py` this was sent to the server, which filtered before reporting;
+  here it is applied to the result, which carries every candidate match with its
+  rank — same outcome, no server involvement.
+  The other `file_snippet` keys (`min_snippet_hits`, `ranking_enabled`,
+  `honour_file_exts`, …) tune the matching engine and are ignored here: this
+  client does not forward scan settings to the server.
 
 ## Default values
 

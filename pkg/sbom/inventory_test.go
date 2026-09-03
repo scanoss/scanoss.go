@@ -263,3 +263,90 @@ func evidencePaths(inv Inventory) []string {
 	}
 	return out
 }
+
+// Identified is a statement about the component, not about one origin's view of it: whichever
+// side of a merge carries it, the folded component keeps it.
+func TestAddPreservesIdentifiedAcrossMerge(t *testing.T) {
+	cases := []struct {
+		name  string
+		first Component
+		next  Component
+	}{
+		{
+			"detected identified, then declared",
+			Component{Purl: "pkg:npm/vue", Version: "2.6.14", Scope: ScopeDetected, Identified: true},
+			Component{Purl: "pkg:npm/vue", Version: "2.6.14", Scope: ScopeDeclared},
+		},
+		{
+			// The declared-then-detected path replaces the component wholesale; the flag must
+			// survive that too.
+			"declared identified, then detected",
+			Component{Purl: "pkg:npm/vue", Version: "2.6.14", Scope: ScopeDeclared, Identified: true},
+			Component{Purl: "pkg:npm/vue", Version: "2.6.14", Scope: ScopeDetected},
+		},
+		{
+			"declared, then detected identified",
+			Component{Purl: "pkg:npm/vue", Version: "2.6.14", Scope: ScopeDeclared},
+			Component{Purl: "pkg:npm/vue", Version: "2.6.14", Scope: ScopeDetected, Identified: true},
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			var inv Inventory
+			inv.Add(tt.first)
+			inv.Add(tt.next)
+
+			if len(inv.Components) != 1 {
+				t.Fatalf("got %d components, want them folded into 1", len(inv.Components))
+			}
+			if !inv.Components[0].Identified {
+				t.Error("the folded component lost its identified flag")
+			}
+		})
+	}
+}
+
+// Nothing invents the flag: two unidentified components fold into an unidentified one.
+func TestAddDoesNotInventIdentified(t *testing.T) {
+	var inv Inventory
+	inv.Add(Component{Purl: "pkg:npm/vue", Version: "2.6.14", Scope: ScopeDeclared})
+	inv.Add(Component{Purl: "pkg:npm/vue", Version: "2.6.14", Scope: ScopeDetected})
+
+	if inv.Components[0].Identified {
+		t.Error("component marked identified when neither side was")
+	}
+}
+
+// Merging two entries for one path drops the duplicate but must not drop its claim: the file was
+// either declared present or it was not, whichever origin said so.
+func TestAddEvidencePreservesIdentifiedOnDuplicates(t *testing.T) {
+	cases := []struct{ first, second bool }{{true, false}, {false, true}, {true, true}}
+	for _, tt := range cases {
+		var inv Inventory
+		inv.Add(Component{Purl: "pkg:npm/vue", Version: "1.0.0", Evidence: []FileEvidence{
+			{Path: "src/a.js", MatchType: "file", Identified: tt.first},
+		}})
+		inv.Add(Component{Purl: "pkg:npm/vue", Version: "1.0.0", Evidence: []FileEvidence{
+			{Path: "src/a.js", MatchType: "file", Identified: tt.second},
+		}})
+
+		if n := len(inv.Components[0].Evidence); n != 1 {
+			t.Fatalf("got %d evidence entries, want them folded into 1", n)
+		}
+		if !inv.Components[0].Evidence[0].Identified {
+			t.Errorf("(%v, %v): the folded evidence lost its identified flag", tt.first, tt.second)
+		}
+	}
+
+	// And nothing is invented when neither side claimed it.
+	var inv Inventory
+	for i := 0; i < 2; i++ {
+		inv.Add(Component{Purl: "pkg:npm/x", Version: "1.0.0", Evidence: []FileEvidence{
+			{Path: "src/a.js", MatchType: "file"},
+		}})
+	}
+	if inv.Components[0].Evidence[0].Identified {
+		t.Error("evidence marked identified when neither side was")
+	}
+}

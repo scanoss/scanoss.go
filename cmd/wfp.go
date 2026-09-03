@@ -64,6 +64,7 @@ func init() {
 	wfpCmd.Flags().Bool("all-folders", false, "Fingerprint every folder: do not apply the built-in directory skip lists")
 	wfpCmd.Flags().Bool("gitignore", true, "Honor .gitignore files when collecting files")
 	wfpCmd.Flags().Bool("all-hidden", false, "Include hidden files and folders, version-control metadata included")
+	addSkipHeaderFlags(wfpCmd)
 }
 
 func runWFP(cmd *cobra.Command, args []string) error {
@@ -103,6 +104,8 @@ func runWFP(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("error loading settings: %w", err)
 	}
+
+	skipHeaders, skipHeadersLimit := resolveSkipHeaders(cmd, wfpSettings)
 
 	// Report WFP paths relative to the scanned root (a folder, or the file's
 	// directory for a single-file target), matching the `scan` command.
@@ -149,7 +152,7 @@ func runWFP(cmd *cobra.Command, args []string) error {
 	// relative to the scan root.
 	fp := wfp.Files(files, threads, scanRoot, func(done, total int) {
 		bar.SetCurrent(int64(done))
-	})
+	}, fingerprintOptions(skipHeaders, skipHeadersLimit)...)
 	bar.SetCurrent(int64(len(files)))
 	p.Wait()
 

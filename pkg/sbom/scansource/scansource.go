@@ -36,16 +36,39 @@ import (
 	"github.com/scanoss/scanoss.go/pkg/sbom"
 )
 
+// InventoryOption tunes how a scan result is adapted.
+type InventoryOption func(*inventoryOptions)
+
+type inventoryOptions struct {
+	identified func(path, urlHash string) bool
+}
+
+// WithIdentified supplies the verdict the BOM identify rules reached: given a scanned path and
+// the url_hash of a component matched there, whether the user declared that component present.
+// postprocess.Report.IsIdentified has exactly this shape.
+//
+// It is passed in rather than read off the result because the result's types come from the API
+// SDK: they carry what the server said, and have nowhere to record a conclusion the client
+// reached on its own. A function rather than a map so this package needs no type in common with
+// whatever produced the verdict.
+func WithIdentified(fn func(path, urlHash string) bool) InventoryOption {
+	return func(o *inventoryOptions) { o.identified = fn }
+}
+
 // Inventory builds one from a v3 scan result. The deduplicated component catalog becomes the
 // components; each component's matched files (joined by url_hash) become its file evidence. The
 // version is taken from the component entry. Licenses and vulnerabilities are not populated here
 // — they come from the decoration services (see Licenses, Vulnerabilities).
-func Inventory(result *scanossapi.ScanResult) sbom.Inventory {
+func Inventory(result *scanossapi.ScanResult, opts ...InventoryOption) sbom.Inventory {
 	if result == nil {
 		return sbom.Inventory{}
 	}
 
-	filesByHash := filesByURLHash(result.Files)
+	var o inventoryOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+	filesByHash := filesByURLHash(result.Files, o.identified)
 
 	// Iterate the catalog in sorted url_hash order so output is deterministic
 	// (Go map iteration order is random).
@@ -69,6 +92,7 @@ func Inventory(result *scanossapi.ScanResult) sbom.Inventory {
 		components = append(components, sbom.Component{
 			Purl:         comp.Purls[0],
 			Scope:        sbom.ScopeDetected,
+			Identified:   anyIdentified(filesByHash[hash]),
 			AliasPurls:   comp.Purls[1:],
 			Vendor:       comp.Vendor,
 			Name:         comp.Component,
@@ -239,7 +263,11 @@ func Vulnerabilities(resp *scanossapi.VulnerabilitiesResponse) []sbom.Vulnerabil
 
 // filesByURLHash groups matched files (file/snippet) by component url_hash, emitting one
 // evidence per match, sorted by path for deterministic output.
-func filesByURLHash(files []scanossapi.FileResult) map[string][]sbom.FileEvidence {
+//
+// identified, when non-nil, says which of those matches the user declared present. It is asked
+// per (path, url_hash) because that is the granularity a path-scoped bom.identify rule works at:
+// the same component can be declared in the files under "vendor/" and not in the ones outside.
+func filesByURLHash(files []scanossapi.FileResult, identified func(path, urlHash string) bool) map[string][]sbom.FileEvidence {
 	byHash := make(map[string][]sbom.FileEvidence)
 	for _, f := range files {
 		if f.MatchType == "" || f.MatchType == "none" {
@@ -256,6 +284,9 @@ func filesByURLHash(files []scanossapi.FileResult) map[string][]sbom.FileEvidenc
 				InputLineRanges: lineRanges(m.InputLineRanges),
 				OssLineRanges:   lineRanges(m.OssLineRanges),
 			}
+			if identified != nil {
+				ev.Identified = identified(f.Path, m.UrlHash)
+			}
 			byHash[m.UrlHash] = append(byHash[m.UrlHash], ev)
 		}
 	}
@@ -264,6 +295,18 @@ func filesByURLHash(files []scanossapi.FileResult) map[string][]sbom.FileEvidenc
 		sort.Slice(evs, func(i, j int) bool { return evs[i].Path < evs[j].Path })
 	}
 	return byHash
+}
+
+// anyIdentified reports whether the user declared this component present in any of the files it
+// matched. It is how Component.Identified stays a summary of the evidence rather than a second,
+// independently-computed answer that could disagree with it.
+func anyIdentified(evidence []sbom.FileEvidence) bool {
+	for _, e := range evidence {
+		if e.Identified {
+			return true
+		}
+	}
+	return false
 }
 
 // lineRanges maps the scan result's line ranges onto the inventory's own type, or nil when
