@@ -27,6 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   emitting a `start_line=` marker. Verified against the live API: filtering a GNU-licensed
   source moved the reported match from `[4-414]` to `[21-414]` and its percentage from 77% to
   75%, so the shared licence boilerplate no longer contributes to the match.
+- **`--ranking-threshold`** treats rank `999` as unranked, not as the worst possible rank. It is
+  `COMPONENT_DEFAULT_RANK`, the engine's sentinel for a component it has no ranking information
+  about, and the engine's own "accept everything" bound is that value plus one. Because 999
+  exceeds every threshold, filtering it would have dropped those components under *every*
+  setting: a live scan of rdkb-2024q4 returned 23 of its 552 components at 999, accounting for
+  2027 matched files that a threshold of 1 would otherwise have discarded for missing data
+  rather than for explaining a match poorly. Rank `0` (an absent field) was already exempt.
 - **`--ranking-threshold`** on `scan` and `results`, and
   `settings.file_snippet.ranking_threshold` in `scanoss.json`: drops matches whose component
   ranks worse than the threshold (`-1`..`10`; `-1` or `0` = off, out-of-range clamped with a

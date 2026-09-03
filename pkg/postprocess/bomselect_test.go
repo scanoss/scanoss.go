@@ -437,22 +437,54 @@ func TestRankingThresholdNeverDropsAnIdentifiedMatch(t *testing.T) {
 	}
 }
 
-// Rank 0 means "not reported" — the field is omitted when empty, so the client cannot tell it
-// from the strongest possible rank. Filtering nothing is the safe reading.
+// Two rank values mean "not ranked" rather than "ranked badly", and neither may be filtered.
+//
+// 0 is an absent field: the JSON omits it when empty, so the client cannot tell it from a rank
+// of zero. 999 is COMPONENT_DEFAULT_RANK, the engine's sentinel for a component it has no
+// ranking information about — and the one that matters in practice, because it exceeds every
+// threshold and so would otherwise be dropped by all of them. A live scan of rdkb-2024q4
+// returned 23 of its 552 components at rank 999.
 func TestRankingThresholdIgnoresUnrankedComponents(t *testing.T) {
+	for name, rank := range map[string]int{"absent (0)": 0, "sentinel (999)": unrankedComponent} {
+		t.Run(name, func(t *testing.T) {
+			res := &scanossapi.ScanResult{
+				Files: []scanossapi.FileResult{{
+					Path: "src/app.js", MatchType: "file",
+					Matches: []scanossapi.MatchResult{{UrlHash: "unranked"}},
+				}},
+				Components: map[string]scanossapi.ComponentResult{
+					"unranked": {Purls: []string{"pkg:npm/x"}, Version: "1.0.0", Rank: rank},
+				},
+			}
+			// Every threshold in range, since 999 exceeds all of them.
+			for t2 := 1; t2 <= settings.MaxRankingThreshold; t2++ {
+				fresh := *res
+				applySelect(&fresh, nil, t2)
+				if len(fresh.Files[0].Matches) != 1 {
+					t.Fatalf("threshold %d filtered an unranked component", t2)
+				}
+			}
+		})
+	}
+}
+
+// A component that really is ranked worse than the threshold is still dropped — the sentinel
+// exemption must not turn the filter off for everything above the bound.
+func TestRankingThresholdStillDropsGenuinelyWeakMatches(t *testing.T) {
 	res := &scanossapi.ScanResult{
 		Files: []scanossapi.FileResult{{
 			Path: "src/app.js", MatchType: "file",
-			Matches: []scanossapi.MatchResult{{UrlHash: "unranked"}},
+			Matches: []scanossapi.MatchResult{{UrlHash: "weak"}, {UrlHash: "unranked"}},
 		}},
 		Components: map[string]scanossapi.ComponentResult{
-			"unranked": {Purls: []string{"pkg:npm/x"}, Version: "1.0.0"}, // Rank left at 0
+			"weak":     {Purls: []string{"pkg:npm/weak"}, Rank: 9},
+			"unranked": {Purls: []string{"pkg:npm/x"}, Rank: unrankedComponent},
 		},
 	}
-	applySelect(res, nil, 1)
+	applySelect(res, nil, 5)
 
-	if len(res.Files[0].Matches) != 1 {
-		t.Error("an unranked component must not be filtered")
+	if got, want := hashOrder(res, 0), []string{"unranked"}; !equalStrings(got, want) {
+		t.Errorf("matches = %v, want %v: rank 9 is a real rank and fails a threshold of 5", got, want)
 	}
 }
 

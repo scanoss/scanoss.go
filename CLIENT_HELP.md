@@ -285,7 +285,10 @@ scanoss-cli scan ./my-project --api-key "$SCANOSS_API_KEY" --settings my-config.
 >    property; the per-file detail appears in `raw` output only.
 > 3. **`--ranking-threshold`** drops matches whose component ranks worse than the
 >    threshold. Rank is the scanner's ordering of how well a component explains a
->    match — lowest is strongest, and ranks run 1..9 in practice.
+>    match — lowest is strongest, and real ranks run 1..9. Two values mean
+>    *unranked* rather than *ranked badly* and are never filtered: an absent rank,
+>    and `999`, the engine's sentinel for a component it has no ranking
+>    information about.
 > 4. **`bom.remove`** neutralizes whole files.
 > 5. **`bom.replace`** re-points the survivors at their `replace_with` component.
 >

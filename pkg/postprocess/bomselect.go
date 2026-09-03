@@ -244,15 +244,23 @@ func identifyScore(rule settings.BOMEntry, filePath string, comp scanossapi.Comp
 	return identifiedPurl
 }
 
+// unrankedComponent is the rank the engine gives a component it has no ranking information for
+// (COMPONENT_DEFAULT_RANK in component.h). It is a sentinel, not a bad rank: the engine's own
+// "accept everything" bound is this value plus one, so an unranked component passes it.
+const unrankedComponent = 999
+
 // outranked reports whether a component ranks worse than the threshold, and so is not worth
 // reporting. Rank is the scanner's own ordering of how well a component explains a match, lowest
-// is strongest; ranks seen in practice run 1..9.
+// is strongest; real ranks run 1..9.
 //
-// A threshold of 0 means the filter is off. Rank 0 is treated as "no rank reported" rather than
-// the strongest possible: the field is omitted when empty, so the client cannot tell the two
-// apart, and filtering nothing is the safe reading of a value that may never have been set.
+// A threshold of 0 means the filter is off. Two rank values mean "not ranked" rather than
+// "ranked badly", and neither is filtered: 0, because the field is omitted when empty and the
+// client cannot tell an absent rank from a zero one; and 999, the engine's sentinel for a
+// component it has no ranking information about. Filtering either would discard a component for
+// missing data rather than for explaining a match poorly — and 999 exceeds every threshold, so
+// it would be discarded by all of them.
 func outranked(comp scanossapi.ComponentResult, threshold int) bool {
-	if threshold <= 0 || comp.Rank <= 0 {
+	if threshold <= 0 || comp.Rank <= 0 || comp.Rank >= unrankedComponent {
 		return false
 	}
 	return comp.Rank > threshold
