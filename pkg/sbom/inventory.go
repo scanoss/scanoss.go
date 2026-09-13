@@ -81,15 +81,22 @@ func componentKey(c Component) string { return c.Purl + "@" + c.Version }
 // declared as a whole, not just the scope tag: a declared entry carries nothing
 // but its identity and its manifest occurrence, so when a detected src arrives
 // its metadata (name, vendor, url, licenses, …) replaces dst's empty fields.
-// Evidence from both origins is kept either way.
+// Evidence from both origins is kept either way, and so is Identified.
 func mergeComponent(dst *Component, src Component) {
+	// Identified is a statement about the component, not about either origin's view of it: a
+	// user who declared it present declared it once. It survives whichever way the merge goes,
+	// including the wholesale replacement below.
+	identified := dst.Identified || src.Identified
+
 	if effectiveScope(*dst) == ScopeDeclared && effectiveScope(src) == ScopeDetected {
 		src.Evidence = addEvidence(dst.Evidence, src.Evidence...)
 		*dst = src
 		dst.Scope = ScopeDetected // src's zero scope must not render as ""
+		dst.Identified = identified
 		return
 	}
 	dst.Evidence = addEvidence(dst.Evidence, src.Evidence...)
+	dst.Identified = identified
 }
 
 // effectiveScope resolves the zero value to what the field documents it to mean.
@@ -102,11 +109,15 @@ func effectiveScope(c Component) ComponentScope {
 
 // addEvidence appends the occurrences not already recorded. Two occurrences are the same when
 // they name the same path with the same match type.
+//
+// A duplicate is dropped rather than appended, but its Identified claim is not: two entries for
+// one path can reach here from different origins, and the file was either claimed or it was not.
 func addEvidence(dst []FileEvidence, add ...FileEvidence) []FileEvidence {
 	for _, e := range add {
 		dup := false
-		for _, existing := range dst {
+		for i, existing := range dst {
 			if existing.Path == e.Path && existing.MatchType == e.MatchType {
+				dst[i].Identified = existing.Identified || e.Identified
 				dup = true
 				break
 			}
@@ -124,6 +135,7 @@ func addEvidence(dst []FileEvidence, add ...FileEvidence) []FileEvidence {
 type Component struct {
 	Purl             string            `json:"purl"`                        // canonical PURL (identity), e.g. "pkg:github/scanoss/engine"
 	Scope            ComponentScope    `json:"scope,omitempty"`             // detected (from the scan) | declared (from a manifest); "" == detected
+	Identified       bool              `json:"identified,omitempty"`        // a bom.identify rule claimed this component for at least one of its files (see FileEvidence.Identified for which)
 	AliasPurls       []string          `json:"alias_purls,omitempty"`       // additional PURLs identifying the same component (beyond Purl)
 	Vendor           string            `json:"vendor,omitempty"`            // supplier / namespace
 	Name             string            `json:"name,omitempty"`              // component name
@@ -243,6 +255,7 @@ type FileEvidence struct {
 	SourceHash      string      `json:"source_hash,omitempty"`       // hash of the scanned input file (from the WFP)
 	FileHash        string      `json:"file_hash,omitempty"`         // hash of the matched file (== source_hash for a file match; the OSS file's for a snippet)
 	MatchType       string      `json:"match_type,omitempty"`        // "file" (whole file) | "snippet" | "declared" (from a manifest)
+	Identified      bool        `json:"identified,omitempty"`        // a bom.identify rule claimed this component for this file
 	MatchPercentage int         `json:"match_percentage,omitempty"`  // match confidence (snippet only)
 	OssFilePath     string      `json:"oss_file_path,omitempty"`     // matched file path inside the OSS component
 	InputLineRanges []LineRange `json:"input_line_ranges,omitempty"` // matched line ranges in the scanned file (snippet only)

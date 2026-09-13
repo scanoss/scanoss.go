@@ -38,6 +38,11 @@ import (
 // (a CRC64), which has no standard CycloneDX hash algorithm.
 const scanossURLHashProp = "scanoss:url_hash"
 
+// scanossIdentifiedProp is the CycloneDX component property marking a component the user's
+// settings declared present (bom.identify). CycloneDX has no field for it, and SPDX has nowhere
+// to put it at all — the raw output is where it is stated plainly.
+const scanossIdentifiedProp = "scanoss:identified"
+
 // buildCycloneDX renders the inventory as a CycloneDX 1.7 JSON document using the
 // official cyclonedx-go encoder, whose version-aware serialization keeps the output
 // schema-valid.
@@ -138,9 +143,16 @@ func cycloneDXComponent(comp Component) cdx.Component {
 	}
 
 	// Preserve the scanoss url_hash (a CRC64) as a property — CycloneDX has no hash
-	// algorithm for it.
+	// algorithm for it — and the identify verdict, which it has no field for either.
+	var props []cdx.Property
 	if comp.URLHash != "" {
-		c.Properties = &[]cdx.Property{{Name: scanossURLHashProp, Value: comp.URLHash}}
+		props = append(props, cdx.Property{Name: scanossURLHashProp, Value: comp.URLHash})
+	}
+	if comp.Identified {
+		props = append(props, cdx.Property{Name: scanossIdentifiedProp, Value: "true"})
+	}
+	if len(props) > 0 {
+		c.Properties = &props
 	}
 
 	return c

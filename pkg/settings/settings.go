@@ -46,17 +46,50 @@ type BOMEntry struct {
 
 // BOM represents the Bill of Materials section in the settings file.
 // It contains lists of components to identify, ignore, or remove from scan results.
+//
+// Two of the rules are spelled two ways, because the published scanoss.json schema and this
+// client's own settings grew apart: the schema calls them "include" and "exclude", while this
+// client declared "identify" and "ignore". Both spellings are read, and are folded together by
+// IdentifyRules and IgnoreRules — which is what consumers should use rather than the fields.
 type BOM struct {
-	// Include specifies components that should be included in scan results (new format)
+	// Include specifies components declared to be present. Schema spelling of Identify.
 	Include []BOMEntry `json:"include,omitempty"`
 	// Identify specifies components that should be identified as declared dependencies
 	Identify []BOMEntry `json:"identify,omitempty"`
 	// Ignore specifies components that should be ignored/whitelisted in scan results
 	Ignore []BOMEntry `json:"ignore,omitempty"`
+	// Exclude specifies components to drop from matches. Schema spelling of Ignore.
+	Exclude []BOMEntry `json:"exclude,omitempty"`
 	// Remove specifies components that should be removed/blacklisted from scan results
 	Remove []BOMEntry `json:"remove,omitempty"`
 	// Replace specifies components that should be replaced with alternatives
 	Replace []BOMEntry `json:"replace,omitempty"`
+}
+
+// IdentifyRules returns the components the user declares are present: bom.identify and
+// bom.include together, since the two spell one rule.
+//
+// The order the two lists are joined in is not a precedence mechanism. Where several rules cover
+// one file, the most specific one wins (see the rule scoring in the postprocess package), so a
+// caller must not read "earlier in this slice" as "stronger".
+func (b BOM) IdentifyRules() []BOMEntry { return joinRules(b.Identify, b.Include) }
+
+// IgnoreRules returns the components to drop from a file's matches: bom.ignore and bom.exclude
+// together, since the two spell one rule. The ordering caveat on IdentifyRules applies here too.
+func (b BOM) IgnoreRules() []BOMEntry { return joinRules(b.Ignore, b.Exclude) }
+
+// joinRules concatenates two rule lists, returning the other one untouched when either is empty —
+// the common case, since a settings file uses one spelling or the other, not both.
+func joinRules(a, b []BOMEntry) []BOMEntry {
+	switch {
+	case len(a) == 0:
+		return b
+	case len(b) == 0:
+		return a
+	}
+	out := make([]BOMEntry, 0, len(a)+len(b))
+	out = append(out, a...)
+	return append(out, b...)
 }
 
 // Operation identifies which set of skip rules applies. Mirrors the operations
@@ -96,10 +129,77 @@ type Skip struct {
 	Sizes    SkipSizesByOp    `json:"sizes,omitempty"`
 }
 
-// Tuning mirrors the top-level settings section of scanoss.json: the
-// input-filtering skip rules applied during file collection.
+// FileSnippet mirrors settings.file_snippet: the knobs that tune how files are fingerprinted
+// and matched.
+//
+// Only the ones this client acts on are declared. The rest of the section
+// (min_snippet_hits, min_snippet_lines, ranking_enabled, honour_file_exts) tunes the matching
+// engine, not the client, and this client does not forward scan settings to the server — so
+// declaring them here would promise something nothing honors.
+//
+// ranking_threshold is the exception that proves the rule: scanoss.py sends it to the server,
+// which filters before reporting. Here it is applied to the result the batch scanner returns,
+// which reports every candidate match with its rank — so the same setting reaches the same
+// outcome without the server needing to know about it.
+//
+// The fields are pointers because the schema's "unset" is a value, not an absence: skip_headers
+// defaults to false, skip_headers_limit to 0 and ranking_threshold to 0, so a plain bool/int
+// cannot say whether the settings file asked for that or said nothing at all. That difference is
+// what decides whether the file overrides the command line.
+type FileSnippet struct {
+	// SkipHeaders skips license headers, comments and imports at the start of each file
+	// when fingerprinting.
+	SkipHeaders *bool `json:"skip_headers,omitempty"`
+	// SkipHeadersLimit caps how many leading lines SkipHeaders may drop (0 = no cap).
+	SkipHeadersLimit *int `json:"skip_headers_limit,omitempty"`
+	// RankingThreshold drops matches whose component ranks worse than this. Rank is the
+	// scanner's own ordering, lowest is strongest. Valid range -1..MaxRankingThreshold;
+	// anything at or below 0 disables the filter.
+	RankingThreshold *int `json:"ranking_threshold,omitempty"`
+}
+
+// MaxRankingThreshold is the largest ranking threshold the settings schema accepts. Ranks
+// observed in practice run 1..9, so a higher cap would filter nothing that 10 does not.
+const MaxRankingThreshold = 10
+
+// MinRankingThreshold is the smallest accepted value: -1 means "defer", which for a client-side
+// filter is the same as off.
+const MinRankingThreshold = -1
+
+// Tuning mirrors the top-level settings section of scanoss.json: the input-filtering skip rules
+// applied during file collection, and the file_snippet fingerprinting knobs.
 type Tuning struct {
-	Skip Skip `json:"skip,omitempty"`
+	Skip        Skip        `json:"skip,omitempty"`
+	FileSnippet FileSnippet `json:"file_snippet,omitempty"`
+}
+
+// SkipHeaders reports the configured skip_headers value, and whether the settings file set it
+// at all. An unset value is not "false": see the FileSnippet doc.
+func (t Tuning) SkipHeaders() (value, ok bool) {
+	if t.FileSnippet.SkipHeaders == nil {
+		return false, false
+	}
+	return *t.FileSnippet.SkipHeaders, true
+}
+
+// SkipHeadersLimit reports the configured skip_headers_limit, and whether the settings file set
+// it at all. A negative cap is meaningless — it would ask to drop fewer than zero lines — so it
+// is reported as unset rather than passed on.
+func (t Tuning) SkipHeadersLimit() (value int, ok bool) {
+	if t.FileSnippet.SkipHeadersLimit == nil || *t.FileSnippet.SkipHeadersLimit < 0 {
+		return 0, false
+	}
+	return *t.FileSnippet.SkipHeadersLimit, true
+}
+
+// RankingThreshold reports the configured ranking_threshold, and whether the settings file set it
+// at all. The value is returned as written, out-of-range included: clamping it is a decision that
+// owes the user a warning, which belongs where there is somewhere to print one.
+func (t Tuning) RankingThreshold() (value int, ok bool) {
+	if t.FileSnippet.RankingThreshold == nil {
+		return 0, false
+	}
+	return *t.FileSnippet.RankingThreshold, true
 }
 
 // SkipPatterns returns the skip patterns for the given operation, or nil.
@@ -141,6 +241,7 @@ func (s *Settings) HasBOM() bool {
 	return len(s.BOM.Include) > 0 ||
 		len(s.BOM.Identify) > 0 ||
 		len(s.BOM.Ignore) > 0 ||
+		len(s.BOM.Exclude) > 0 ||
 		len(s.BOM.Remove) > 0 ||
 		len(s.BOM.Replace) > 0
 }

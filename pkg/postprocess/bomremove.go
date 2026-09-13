@@ -35,22 +35,26 @@ import (
 // applyRemove applies bom.remove rules to a scan result in place. For each file whose
 // matched PURL matches a remove rule (and path), the match is neutralized (match_type
 // "none", matches cleared), preserving the file path and hash. A file's PURLs are
-// resolved by joining each match's url_hash to the component catalog. bom.include PURLs
-// are protected. Components no longer referenced by any file are pruned from the catalog.
+// resolved by joining each match's url_hash to the component catalog. PURLs the user declared
+// present (bom.identify / bom.include) are protected. Components no longer referenced by any
+// file are pruned from the catalog.
 // A nil result or nil/empty rules is a no-op.
 func applyRemove(result *scanossapi.ScanResult, bom *settings.BOM) {
 	if result == nil || bom == nil || len(bom.Remove) == 0 {
 		return
 	}
 
+	// Both spellings of the identify rule protect: bom.include is the schema's name for
+	// bom.identify, and honoring only one of them would make a settings file's protection
+	// depend on which word it happened to use.
 	includedPurls := make(map[string]bool)
-	for _, entry := range bom.Include {
+	for _, entry := range bom.IdentifyRules() {
 		includedPurls[stripVersion(entry.Purl)] = true
 	}
 
 	// If any of a file's matched PURLs matches a remove rule, the whole match is
-	// neutralized to "none" — a partial match is not trustworthy. bom.include
-	// PURLs are protected.
+	// neutralized to "none" — a partial match is not trustworthy. PURLs the user
+	// declared present are protected.
 	for i := range result.Files {
 		f := &result.Files[i]
 		if f.MatchType == "" || f.MatchType == "none" {
@@ -71,7 +75,7 @@ func applyRemove(result *scanossapi.ScanResult, bom *settings.BOM) {
 func filePurls(f *scanossapi.FileResult, components map[string]scanossapi.ComponentResult) []string {
 	var purls []string
 	for _, m := range f.Matches {
-		purls = append(purls, components[m.UrlHash].Purls...)
+		purls = append(purls, matchPurls(m, components)...)
 	}
 	return purls
 }

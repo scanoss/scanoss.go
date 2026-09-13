@@ -96,10 +96,13 @@ type scanOptions struct {
 	// scanned folder as its own root.
 	root string
 
-	bom          *settings.BOM // when set, BOM rules are applied to the result (post-scan)
-	pollInterval time.Duration // scan status poll cadence (WithPollInterval)
-	reporter     ScanReporter  // receives this scan's stages (WithScanReporter)
-	onScanID     func(string)  // receives this scan's id once it is resumable (WithScanIDNotify)
+	bom           *settings.BOM            // when set, BOM rules are applied to the result (post-scan)
+	onBOMReport   func(postprocess.Report) // receives what the BOM selection rules concluded (WithBOMReport)
+	wfpOptions    []wfp.Option             // per-file fingerprinting tuning (WithFingerprintOptions)
+	rankThreshold int                      // drop matches ranked worse than this (WithRankingThreshold)
+	pollInterval  time.Duration            // scan status poll cadence (WithPollInterval)
+	reporter      ScanReporter             // receives this scan's stages (WithScanReporter)
+	onScanID      func(string)             // receives this scan's id once it is resumable (WithScanIDNotify)
 }
 
 func resolveScanOptions(opts []ScanOption) scanOptions {
@@ -150,6 +153,34 @@ func WithBOM(bom *settings.BOM) ScanOption {
 	return func(o *scanOptions) { o.bom = bom }
 }
 
+// WithBOMReport registers a callback invoked once with what the BOM selection rules concluded —
+// today, which components a bom.identify rule claimed. It fires after the rules are applied and
+// only when there was a result to apply them to.
+//
+// It is a callback rather than a field on the returned envelope because the envelope is an API
+// SDK type: it carries what the server said, and has nowhere to put a verdict the client reached
+// on its own. Optional; a caller that only needs the rewritten result can ignore it.
+func WithBOMReport(fn func(postprocess.Report)) ScanOption {
+	return func(o *scanOptions) { o.onBOMReport = fn }
+}
+
+// WithRankingThreshold drops matches whose component ranks worse than threshold, post-scan.
+// Rank is the scanner's own ordering of how well a component explains a match, lowest is
+// strongest; ranks seen in practice run 1..9. A threshold at or below 0 disables the filter.
+//
+// It applies client-side, over the candidate matches the batch scanner reports with their ranks —
+// nothing is asked of the server. Matches a bom.identify rule claims are never dropped by it.
+func WithRankingThreshold(threshold int) ScanOption {
+	return func(o *scanOptions) { o.rankThreshold = threshold }
+}
+
+// WithFingerprintOptions tunes how each file is fingerprinted by Folder and Files — today,
+// whether the leading licence header, comments and imports are dropped (wfp.WithSkipHeaders).
+// It has no effect on WFP or WFPReader, which are handed a stream that is already assembled.
+func WithFingerprintOptions(opts ...wfp.Option) ScanOption {
+	return func(o *scanOptions) { o.wfpOptions = opts }
+}
+
 // WithPollInterval sets how often the scan status endpoint is polled while waiting
 // for a scan to finish (default DefaultScanPollInterval). Values <= 0 are ignored.
 // Very small intervals increase load on the server. Applies to the full scan flow
@@ -171,7 +202,7 @@ var _ ScanAPI = scanService{}
 func (s scanService) Folder(ctx context.Context, path string, opts ...ScanOption) (scanossapi.ScanEnvelope, error) {
 	o := resolveScanOptions(opts)
 	return s.scanStreamed(ctx, o, func(w io.Writer) ([]error, error) {
-		return wfp.StreamFolder(path, &o.filters, s.c.workers, w, s.onFingerprint(o))
+		return wfp.StreamFolder(path, &o.filters, s.c.workers, w, s.onFingerprint(o), o.wfpOptions...)
 	})
 }
 
@@ -183,7 +214,7 @@ func (s scanService) Files(ctx context.Context, files []string, opts ...ScanOpti
 		return scanossapi.ScanEnvelope{}, fmt.Errorf("no files to scan")
 	}
 	return s.scanStreamed(ctx, o, func(w io.Writer) ([]error, error) {
-		return wfp.Stream(files, s.c.workers, o.root, w, s.onFingerprint(o))
+		return wfp.Stream(files, s.c.workers, o.root, w, s.onFingerprint(o), o.wfpOptions...)
 	})
 }
 
@@ -265,10 +296,7 @@ func (s scanService) scan(ctx context.Context, r io.ReaderAt, size int64, o scan
 	if err != nil {
 		return scanossapi.ScanEnvelope{}, err
 	}
-	if o.bom != nil && env.Result != nil {
-		logging.Debug("applying BOM rules to scan result")
-		postprocess.Apply(env.Result, o.bom)
-	}
+	s.applyBOM(env, o)
 	logging.Debug("scan complete", "scanID", scanID)
 	return env, nil
 }
@@ -455,9 +483,34 @@ func (s scanService) Status(ctx context.Context, scanID string) (scanossapi.Scan
 // (with its Result populated). It honors ctx cancellation without cancelling the
 // server-side scan. The poll cadence defaults to DefaultScanPollInterval and can
 // be overridden with WithPollInterval.
+//
+// WithBOM applies here as it does to a full scan: resuming a scan by its id has to reach the
+// same result the scan itself would have, or the settings a project keeps would depend on
+// whether the run was interrupted.
 func (s scanService) Wait(ctx context.Context, scanID string, opts ...ScanOption) (scanossapi.ScanEnvelope, error) {
 	o := resolveScanOptions(opts)
-	return s.wait(ctx, scanID, o.pollInterval, o.reporter)
+	env, err := s.wait(ctx, scanID, o.pollInterval, o.reporter)
+	if err != nil {
+		return scanossapi.ScanEnvelope{}, err
+	}
+	s.applyBOM(env, o)
+	return env, nil
+}
+
+// applyBOM runs the BOM rules over a finished envelope and hands the selection verdict to the
+// caller's hook. Shared by the full scan flow and Wait, which is what keeps a resumed scan and a
+// direct one producing the same result.
+func (s scanService) applyBOM(env scanossapi.ScanEnvelope, o scanOptions) {
+	// The ranking threshold is checked alongside the BOM: it is not a statement about any
+	// component, so it applies with no settings file in sight.
+	if env.Result == nil || (o.bom == nil && o.rankThreshold <= 0) {
+		return
+	}
+	logging.Debug("post-processing scan result", "rankingThreshold", o.rankThreshold)
+	report := postprocess.Apply(env.Result, o.bom, postprocess.WithRankingThreshold(o.rankThreshold))
+	if o.onBOMReport != nil {
+		o.onBOMReport(report)
+	}
 }
 
 // DefaultScanPollInterval is the cadence for polling the scan status endpoint

@@ -96,7 +96,7 @@ func minHash(hashes []uint32) uint32 {
 // generateFingerprint generates the WFP fingerprint of a file. The file is read from
 // filePath; root, when non-empty, makes the WFP "file=" label relative to it (so the
 // scan result reports paths relative to the scanned folder, not absolute local paths).
-func generateFingerprint(filePath string, root string) (*FileFingerprint, error) {
+func generateFingerprint(filePath string, root string, opts options) (*FileFingerprint, error) {
 	// No filtering here: which files are worth fingerprinting is decided once,
 	// during collection (pkg/filter), which is the only stage that reports what
 	// it skipped. Deciding again at this depth would drop files the caller has
@@ -114,8 +114,17 @@ func generateFingerprint(filePath string, root string) (*FileFingerprint, error)
 		}
 	}
 
-	// Whole-file hash: CRC64 (ECMA), 16 hex digits.
+	// Whole-file hash: CRC64 (ECMA), 16 hex digits. It covers the whole file even when the
+	// header lines below are dropped from the snippet minutiae: the file= line states what was
+	// read, not what was fingerprinted.
 	hashHex := fmt.Sprintf("%016x", crc64.Checksum(f, crc64ECMA))
+
+	// How many leading lines are preamble rather than code. Zero unless --skip-headers asked
+	// for it, and zero for a file whose language the filter does not know.
+	headerLines := 0
+	if opts.skipHeaders {
+		headerLines = headerOffset(filePath, string(f), opts.skipHeadersLimit)
+	}
 
 	// Assemble the WFP into a builder. This was previously a `result += ...` string
 	// concat, which is O(n²) in the output size on large files.
@@ -164,7 +173,20 @@ func generateFingerprint(filePath string, root string) (*FileFingerprint, error)
 	sort.Ints(keys)
 
 	hexBuf := make([]byte, 0, 8)
+	startLineWritten := false
 	for _, k := range keys {
+		// Minutiae from the header lines are dropped, and the first surviving line is preceded
+		// by a start_line marker naming the offset — the shape scanoss.py emits, so a WFP from
+		// either client reads the same.
+		if k <= headerLines {
+			continue
+		}
+		if headerLines > 0 && !startLineWritten {
+			sb.WriteString("start_line=")
+			sb.WriteString(strconv.Itoa(headerLines))
+			sb.WriteByte('\n')
+			startLineWritten = true
+		}
 		sb.WriteString(strconv.Itoa(k))
 		sb.WriteByte('=')
 		v := wfp[k]

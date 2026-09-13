@@ -49,7 +49,8 @@ type workerPool struct {
 	results    chan *FileFingerprint
 	errors     chan error
 	wg         sync.WaitGroup
-	root       string // when set, WFP "file=" labels are made relative to it
+	root       string  // when set, WFP "file=" labels are made relative to it
+	opts       options // fingerprinting tuning, applied per file by the workers
 }
 
 // newWorkerPool creates a new worker pool
@@ -89,7 +90,7 @@ func (wp *workerPool) worker(id int) {
 			continue
 		}
 
-		fp, err := generateFingerprint(filePath, wp.root)
+		fp, err := generateFingerprint(filePath, wp.root, wp.opts)
 		if err != nil {
 			wp.errors <- err
 			continue
@@ -133,12 +134,12 @@ type Result struct {
 //
 // It is the entry point to reach for with a directory in hand: Files fingerprints whatever it is
 // given, so building the list yourself means deciding for yourself what a scan should skip.
-func Folder(dir string, filters *filter.Options, workers int, onProgress func(done, total int)) (Result, error) {
+func Folder(dir string, filters *filter.Options, workers int, onProgress func(done, total int), opts ...Option) (Result, error) {
 	files, root, skipped, err := collectFolder(dir, filters)
 	if err != nil {
 		return Result{}, err
 	}
-	res := Files(files, workers, root, onProgress)
+	res := Files(files, workers, root, onProgress, opts...)
 	res.Skipped = skipped
 	return res, nil
 }
@@ -146,12 +147,12 @@ func Folder(dir string, filters *filter.Options, workers int, onProgress func(do
 // StreamFolder collects the files worth fingerprinting under dir and streams their
 // fingerprints to w — Folder's collection with Stream's memory profile and contract:
 // block order is completion order, and nothing is retained.
-func StreamFolder(dir string, filters *filter.Options, workers int, w io.Writer, onProgress func(done, total int)) ([]error, error) {
+func StreamFolder(dir string, filters *filter.Options, workers int, w io.Writer, onProgress func(done, total int), opts ...Option) ([]error, error) {
 	files, root, _, err := collectFolder(dir, filters)
 	if err != nil {
 		return nil, err
 	}
-	return Stream(files, workers, root, w, onProgress)
+	return Stream(files, workers, root, w, onProgress, opts...)
 }
 
 // collectFolder resolves what Folder and StreamFolder share: the files under dir per the
@@ -190,13 +191,14 @@ func collectFolder(dir string, filters *filter.Options) (files []string, root st
 // TODO(#77): filter here as well, once the rules can be applied to a list. Folder filters and
 // Files does not, which their names do not suggest: a caller that hands over every file in a
 // directory gets a WFP full of files a scan would have skipped.
-func Files(files []string, workers int, root string, onProgress func(done, total int)) Result {
+func Files(files []string, workers int, root string, onProgress func(done, total int), opts ...Option) Result {
 	if workers < 1 {
 		workers = 1
 	}
 	logging.Debug("fingerprinting files", "count", len(files), "workers", workers)
 	pool := newWorkerPool(workers)
 	pool.root = root // WFP "file=" labels relative to root; empty = absolute
+	pool.opts = resolveOptions(opts)
 	pool.start()
 
 	go func() {
@@ -258,13 +260,14 @@ func Files(files []string, workers int, root string, onProgress func(done, total
 // Result.Errors. The error reports a failed write to w, which is fatal: a stream
 // missing a block is unusable, so nothing further is written, though the pool is
 // still drained so every worker finishes and progress reaches its total.
-func Stream(files []string, workers int, root string, w io.Writer, onProgress func(done, total int)) ([]error, error) {
+func Stream(files []string, workers int, root string, w io.Writer, onProgress func(done, total int), opts ...Option) ([]error, error) {
 	if workers < 1 {
 		workers = 1
 	}
 	logging.Debug("fingerprinting files (streaming)", "count", len(files), "workers", workers)
 	pool := newWorkerPool(workers)
 	pool.root = root // WFP "file=" labels relative to root; empty = absolute
+	pool.opts = resolveOptions(opts)
 	pool.start()
 
 	go func() {

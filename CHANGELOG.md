@@ -5,6 +5,87 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`--identify` / `--ignore`** on `scan` and `results`, and the matching `bom.identify`
+  (alias `bom.include`) and `bom.ignore` (alias `bom.exclude`) rules in `scanoss.json`.
+  Both are applied client-side, over the candidate matches the batch scanner returns for
+  each file: `ignore` drops the components it names, `identify` marks them
+  `"identified": true` and moves them to the front of their file's matches. Naming an
+  exact version is a stronger claim than naming the component alone. The flags accept a
+  SCANOSS component list, CycloneDX, SPDX, or this client's raw output.
+- **`--skip-headers` is on by default** on `scan` and `wfp`. A licence header is boilerplate
+  shared by every file that carries it, so fingerprinting it makes unrelated files look alike.
+  `--skip-headers=false`, or `skip_headers: false` in `scanoss.json`, restores the old
+  behaviour. **This changes the WFP every scan produces**: a fingerprint taken with the filter
+  on does not match one taken with it off.
+- **`--skip-headers` / `--skip-headers-limit`** on `scan` and `wfp`, and
+  `settings.file_snippet.skip_headers` / `skip_headers_limit` in `scanoss.json`. Drops each
+  file's leading licence header, documentation comments and imports from its fingerprint,
+  emitting a `start_line=` marker. Verified against the live API: filtering a GNU-licensed
+  source moved the reported match from `[4-414]` to `[21-414]` and its percentage from 77% to
+  75%, so the shared licence boilerplate no longer contributes to the match.
+- **`--ranking-threshold`** treats rank `999` as unranked, not as the worst possible rank. It is
+  `COMPONENT_DEFAULT_RANK`, the engine's sentinel for a component it has no ranking information
+  about, and the engine's own "accept everything" bound is that value plus one. Because 999
+  exceeds every threshold, filtering it would have dropped those components under *every*
+  setting: a live scan of rdkb-2024q4 returned 23 of its 552 components at 999, accounting for
+  2027 matched files that a threshold of 1 would otherwise have discarded for missing data
+  rather than for explaining a match poorly. Rank `0` (an absent field) was already exempt.
+- **`--ranking-threshold`** on `scan` and `results`, and
+  `settings.file_snippet.ranking_threshold` in `scanoss.json`: drops matches whose component
+  ranks worse than the threshold (`-1`..`10`; `-1` or `0` = off, out-of-range clamped with a
+  warning). Applied client-side over the ranks the batch scanner reports, so nothing is asked
+  of the server — `scanoss.py` sent this setting to the engine instead. Also
+  **`scanoss.WithRankingThreshold`** and **`postprocess.WithRankingThreshold`**.
+- **`scanoss.WithBOMReport`** hands back what the BOM selection rules concluded, and
+  **`scansource.WithIdentified`** writes it onto `sbom.FileEvidence.Identified` per matched
+  file, with `sbom.Component.Identified` summarising it. Per-file is the granularity a
+  `path`-scoped rule works at: it claims a component in the files it covers and not in the ones
+  outside. In CycloneDX the component-level flag rides as a `scanoss:identified` property; the
+  per-file detail is `raw`-only, and SPDX can represent neither.
+  `postprocess.Report` carries both answers, and `Report.IsIdentified(path, urlHash)` is the
+  shape `scansource.WithIdentified` takes — so the SBOM adapter needs no type in common with
+  the package that reached the verdict.
+- **`scanoss.WithFingerprintOptions`** and the `wfp.Option` set (`wfp.WithSkipHeaders`)
+  tune fingerprinting through `Scan.Folder`/`Scan.Files` and every `pkg/wfp` entry point.
+
+### Fixed
+
+- **`results <id>` now applies the BOM rules**, via a new `--settings` flag: `Scan.Wait`
+  post-processes its result like a full scan does, so resuming an interrupted scan reaches
+  the same output rather than reporting components the project's settings dismissed.
+- **`bom.remove` protection honors both spellings** of the identify rule: a settings file
+  using `bom.identify` rather than `bom.include` used to lose its protection from removal.
+
+### Notes
+
+- **`bom.identify` and `bom.ignore` match a component's canonical PURL, not its aliases.** One
+  upstream project mined from several registries yields catalog entries that each carry the
+  others' PURLs: scanning zephyr's `west` returns three components whose alias lists all name
+  `pkg:pypi/west`, `pkg:github/zephyrproject-rtos/west` and `pkg:conda/west`. Comparing against
+  aliases made one rule claim every candidate at once — which defeats `identify`, whose job is
+  to pick which candidate is right, and made `ignore` drop components the user never named.
+  This is what the engine does too (`asset_declared` reads `comp->purls[0]`). `bom.remove` and
+  `bom.replace` still match aliases, as they always have.
+- **The header filter counts newlines only**, diverging from `scanoss.py`, whose
+  `str.splitlines()` also breaks on `\f`, `\v`, `\x1c`-`\x1e`, `\x85`, U+2028 and U+2029. A form
+  feed — the GNU section separator — makes the reference implementation report an offset one
+  line too high per separator, in a coordinate system the WFP does not use (its minutiae are
+  numbered by `\n`), so it strips a line of real code. Offsets agree on 6527 of 6531 real source
+  files; the 4 that differ each hold one form feed above the first line of code. Worth
+  reporting upstream.
+
+- **`bom.identify` protects its components from every filter** — `bom.ignore`, `bom.remove`
+  and the ranking threshold. This diverges from the engine, which applies the threshold last
+  and lets it overwrite the identified flag (`url.c`): reproducing that would discard a
+  component the user stated was present because of a rule that names no component at all.
+- `settings.file_snippet` **overrides** the `--skip-headers` and `--ranking-threshold` flags,
+  the reverse of every other flag in this CLI. It is what `scanoss.py` does, and is
+  documented in `CLIENT_HELP.md`.
+
 ## [0.8.0] - 2026-08-10
 
 ### Added
