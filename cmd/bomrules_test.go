@@ -24,6 +24,7 @@
 package cmd
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -119,7 +120,7 @@ func bomRuleCmd(t *testing.T, args ...string) *cobra.Command {
 	addSkipHeaderFlags(cmd)
 	addRankingFlag(cmd)
 	cmd.SetArgs(args)
-	cmd.SetOut(os.NewFile(0, os.DevNull))
+	cmd.SetOut(io.Discard)
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("parsing %v: %v", args, err)
 	}
