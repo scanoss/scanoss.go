@@ -175,8 +175,10 @@ func WithRankingThreshold(threshold int) ScanOption {
 }
 
 // WithFingerprintOptions tunes how each file is fingerprinted by Folder and Files — today,
-// whether the leading licence header, comments and imports are dropped (wfp.WithSkipHeaders).
-// It has no effect on WFP or WFPReader, which are handed a stream that is already assembled.
+// whether the leading licence header, comments and imports are dropped. They are dropped by
+// default; wfp.WithoutSkipHeaders fingerprints files whole, and wfp.WithSkipHeaders caps how many
+// lines go. It has no effect on WFP or WFPReader, which are handed a stream that is already
+// assembled.
 func WithFingerprintOptions(opts ...wfp.Option) ScanOption {
 	return func(o *scanOptions) { o.wfpOptions = opts }
 }

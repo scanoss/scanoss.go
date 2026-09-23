@@ -657,11 +657,11 @@ func (b *bomReport) option() scanoss.ScanOption {
 }
 
 // fingerprintOptions maps the resolved header-filter settings onto the fingerprinting options.
-// Nothing is passed when the filter is off, so a run without it takes the same path it always
-// did.
+// Both states are passed explicitly: pkg/wfp filters by default too, so leaving the option out
+// when the user turned the filter off would switch it back on.
 func fingerprintOptions(skipHeaders bool, limit int) []wfp.Option {
 	if !skipHeaders {
-		return nil
+		return []wfp.Option{wfp.WithoutSkipHeaders()}
 	}
 	return []wfp.Option{wfp.WithSkipHeaders(limit)}
 }

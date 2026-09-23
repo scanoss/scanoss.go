@@ -40,7 +40,7 @@ var update = flag.Bool("update", false, "update the WFP golden file")
 // It guards refactors of the fingerprint assembly against any byte-level change.
 // Regenerate the golden with: go test ./pkg/wfp -run Golden -update
 func TestGenerateFingerprintGolden(t *testing.T) {
-	fp, err := generateFingerprint(filepath.Join("testdata", "sample.c"), "testdata", options{})
+	fp, err := generateFingerprint(filepath.Join("testdata", "sample.c"), "testdata", options{keepHeaders: true})
 	if err != nil {
 		t.Fatalf("generateFingerprint: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestGenerateFingerprintFields(t *testing.T) {
 		t.Fatalf("write fixture: %v", err)
 	}
 
-	fp, err := generateFingerprint(path, dir, options{})
+	fp, err := generateFingerprint(path, dir, options{keepHeaders: true})
 	if err != nil {
 		t.Fatalf("generateFingerprint: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestGenerateFingerprintRootLabel(t *testing.T) {
 		"root below the file still resolves": {filepath.Join(dir, "src"), "lib/a.c"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			fp, err := generateFingerprint(path, tc.root, options{})
+			fp, err := generateFingerprint(path, tc.root, options{keepHeaders: true})
 			if err != nil {
 				t.Fatalf("generateFingerprint: %v", err)
 			}
@@ -126,7 +126,7 @@ func TestGenerateFingerprintEmptyFile(t *testing.T) {
 		t.Fatalf("write fixture: %v", err)
 	}
 
-	fp, err := generateFingerprint(path, dir, options{})
+	fp, err := generateFingerprint(path, dir, options{keepHeaders: true})
 	if err != nil {
 		t.Fatalf("generateFingerprint: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestGenerateFingerprintEmptyFile(t *testing.T) {
 }
 
 func TestGenerateFingerprintUnreadableFile(t *testing.T) {
-	_, err := generateFingerprint(filepath.Join(t.TempDir(), "missing.c"), "", options{})
+	_, err := generateFingerprint(filepath.Join(t.TempDir(), "missing.c"), "", options{keepHeaders: true})
 	if err == nil {
 		t.Fatal("generateFingerprint succeeded on a missing file, want an error")
 	}
@@ -174,7 +174,7 @@ func BenchmarkGenerateFingerprint(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, err := generateFingerprint(path, "", options{}); err != nil {
+		if _, err := generateFingerprint(path, "", options{keepHeaders: true}); err != nil {
 			b.Fatalf("generateFingerprint: %v", err)
 		}
 	}
@@ -192,7 +192,7 @@ func bigSourceFile() string {
 	return sb.String()
 }
 
-// With --skip-headers the minutiae from the preamble are gone and the first surviving line is
+// With the header filter on the minutiae from the preamble are gone and the first surviving line is
 // announced by a start_line marker — the shape scanoss.py emits, so a WFP from either client
 // reads the same.
 func TestSkipHeadersStripsPreambleAndMarksTheStart(t *testing.T) {
@@ -202,11 +202,11 @@ func TestSkipHeadersStripsPreambleAndMarksTheStart(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plain, err := generateFingerprint(path, dir, options{})
+	plain, err := generateFingerprint(path, dir, options{keepHeaders: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	stripped, err := generateFingerprint(path, dir, options{skipHeaders: true})
+	stripped, err := generateFingerprint(path, dir, options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,11 +254,11 @@ func TestSkipHeadersLeavesUnknownLanguagesAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plain, err := generateFingerprint(path, dir, options{})
+	plain, err := generateFingerprint(path, dir, options{keepHeaders: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	stripped, err := generateFingerprint(path, dir, options{skipHeaders: true})
+	stripped, err := generateFingerprint(path, dir, options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,5 +290,108 @@ func TestWithSkipHeadersReachesTheWorkers(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "start_line=") {
 		t.Error("Stream did not apply WithSkipHeaders")
+	}
+}
+
+// entryPointWFPs fingerprints one file through every public entry point with the same options,
+// so a test can hold each of them to the same answer.
+func entryPointWFPs(t *testing.T, dir, path string, opts ...Option) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+
+	res := Files([]string{path}, 1, dir, nil, opts...)
+	if len(res.Errors) > 0 {
+		t.Fatalf("Files: %v", res.Errors)
+	}
+	out["Files"] = string(res.WFP)
+
+	var buf bytes.Buffer
+	if _, err := Stream([]string{path}, 1, dir, &buf, nil, opts...); err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+	out["Stream"] = buf.String()
+
+	folder, err := Folder(dir, nil, 1, nil, opts...)
+	if err != nil {
+		t.Fatalf("Folder: %v", err)
+	}
+	out["Folder"] = string(folder.WFP)
+
+	buf.Reset()
+	if _, err := StreamFolder(dir, nil, 1, &buf, nil, opts...); err != nil {
+		t.Fatalf("StreamFolder: %v", err)
+	}
+	out["StreamFolder"] = buf.String()
+	return out
+}
+
+func writeBigSource(t *testing.T) (dir, path string) {
+	t.Helper()
+	dir = t.TempDir()
+	path = filepath.Join(dir, "big.c")
+	if err := os.WriteFile(path, []byte(bigSourceFile()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dir, path
+}
+
+// A caller passing no option gets the header filter, with no limit, from every entry point: the
+// library default matches the CLI's.
+func TestHeaderFilterIsOnByDefault(t *testing.T) {
+	dir, path := writeBigSource(t)
+	offset := headerOffset(path, bigSourceFile(), 0)
+	if offset <= 1 {
+		t.Fatalf("fixture should have a multi-line header to strip, got offset %d", offset)
+	}
+	marker := fmt.Sprintf("start_line=%d\n", offset)
+
+	for entry, got := range entryPointWFPs(t, dir, path) {
+		if !strings.Contains(got, marker) {
+			t.Errorf("%s with no options: missing %q; got:\n%s", entry, marker, got)
+		}
+	}
+}
+
+// WithoutSkipHeaders fingerprints the file whole, from every entry point.
+func TestWithoutSkipHeadersFingerprintsWhole(t *testing.T) {
+	dir, path := writeBigSource(t)
+	whole, err := generateFingerprint(path, dir, options{keepHeaders: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(whole.Fingerprint, "start_line=") {
+		t.Fatal("the unfiltered reference must not carry a start_line marker")
+	}
+
+	for entry, got := range entryPointWFPs(t, dir, path, WithoutSkipHeaders()) {
+		if strings.Contains(got, "start_line=") {
+			t.Errorf("%s with WithoutSkipHeaders: WFP carries a start_line marker:\n%s", entry, got)
+		}
+		if !strings.Contains(got, whole.Fingerprint) {
+			t.Errorf("%s with WithoutSkipHeaders: WFP differs from the whole-file fingerprint", entry)
+		}
+	}
+}
+
+// WithSkipHeaders(limit) still caps the filter, and of it and WithoutSkipHeaders the last wins.
+func TestWithSkipHeadersHonoursTheLimit(t *testing.T) {
+	dir, path := writeBigSource(t)
+	if offset := headerOffset(path, bigSourceFile(), 0); offset <= 2 {
+		t.Fatalf("fixture header must be longer than the limit, got offset %d", offset)
+	}
+
+	for entry, got := range entryPointWFPs(t, dir, path, WithSkipHeaders(2)) {
+		if !strings.Contains(got, "start_line=2\n") {
+			t.Errorf("%s with WithSkipHeaders(2): want start_line=2; got:\n%s", entry, got)
+		}
+	}
+
+	res := Files([]string{path}, 1, dir, nil, WithoutSkipHeaders(), WithSkipHeaders(2))
+	if !strings.Contains(string(res.WFP), "start_line=2\n") {
+		t.Errorf("WithSkipHeaders after WithoutSkipHeaders should switch the filter back on; got:\n%s", res.WFP)
+	}
+	res = Files([]string{path}, 1, dir, nil, WithSkipHeaders(2), WithoutSkipHeaders())
+	if strings.Contains(string(res.WFP), "start_line=") {
+		t.Errorf("WithoutSkipHeaders after WithSkipHeaders should switch the filter off; got:\n%s", res.WFP)
 	}
 }

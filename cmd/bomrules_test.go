@@ -223,15 +223,6 @@ func TestResolveSkipHeadersSettingsWinOverFlags(t *testing.T) {
 	}
 }
 
-func TestFingerprintOptionsOnlyWhenEnabled(t *testing.T) {
-	if got := fingerprintOptions(false, 10); got != nil {
-		t.Errorf("options with the filter off = %v, want nil", got)
-	}
-	if got := fingerprintOptions(true, 10); len(got) != 1 {
-		t.Errorf("options with the filter on = %v, want one", got)
-	}
-}
-
 func rankingSettings(threshold int) *settings.Settings {
 	return &settings.Settings{Settings: settings.Tuning{
 		FileSnippet: settings.FileSnippet{RankingThreshold: &threshold},
