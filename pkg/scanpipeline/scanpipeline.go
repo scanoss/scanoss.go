@@ -83,7 +83,8 @@ type Options struct {
 	DependencyFilters filter.Options
 	ScanOptions       []scanoss.ScanOption // per-scan tuning (chunk size, poll interval, BOM, ...)
 	// WFPOptions tunes how each file is fingerprinted (see wfp.Option) — today, whether the
-	// leading licence header, comments and imports are dropped.
+	// leading licence header, comments and imports are dropped. Empty gets pkg/wfp's defaults,
+	// which drop them; pass wfp.WithoutSkipHeaders to fingerprint files whole.
 	WFPOptions []wfp.Option
 
 	// WFPWriter, when set, receives the WFP as it is generated, block by block. It is how a

@@ -27,6 +27,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -40,6 +41,7 @@ import (
 	scanossapi "github.com/scanoss/scanoss.api-sdk"
 
 	"github.com/scanoss/scanoss.go/pkg/settings"
+	"github.com/scanoss/scanoss.go/pkg/wfp"
 )
 
 func TestChunkRanges(t *testing.T) {
@@ -545,5 +547,67 @@ func TestScanChunkConflictCountsAsUploaded(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&posts); got != 2 {
 		t.Errorf("POSTs = %d, want 2 (the 503 then the 409)", got)
+	}
+}
+
+// uploadedWFP scans through fn against a scanMock and returns the bytes the client uploaded.
+func uploadedWFP(t *testing.T, fn func(c *Client) error) string {
+	t.Helper()
+	mock := &scanMock{completeAt: 1, result: json.RawMessage(`{"files":[],"components":{}}`)}
+	var (
+		mu   sync.Mutex
+		body []byte
+	)
+	h := mock.handler()
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			b, _ := io.ReadAll(r.Body)
+			mu.Lock()
+			body = append(body, b...)
+			mu.Unlock()
+		}
+		h(w, r)
+	}))
+	if err := fn(c); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	return string(body)
+}
+
+// Folder and Files fingerprint with the header filter on unless told otherwise, the same default
+// the CLI has; wfp.WithoutSkipHeaders is the way out.
+func TestScanSkipsHeadersByDefault(t *testing.T) {
+	dir := t.TempDir()
+	src := "/*\n * Copyright (c) 2026 Example Corp\n * Licensed under the MIT license\n */\n" +
+		"#include <stdio.h>\n\n" + strings.Repeat("int compute(int x) { return x * 42 + 7; }\n", 30)
+	path := filepath.Join(dir, "main.c")
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	fast := WithPollInterval(time.Millisecond)
+	off := WithFingerprintOptions(wfp.WithoutSkipHeaders())
+
+	scans := map[string]func(c *Client, opts ...ScanOption) error{
+		"Folder": func(c *Client, opts ...ScanOption) error {
+			_, err := c.Scan.Folder(ctx, dir, opts...)
+			return err
+		},
+		"Files": func(c *Client, opts ...ScanOption) error {
+			_, err := c.Scan.Files(ctx, []string{path}, opts...)
+			return err
+		},
+	}
+	for name, scan := range scans {
+		got := uploadedWFP(t, func(c *Client) error { return scan(c, fast) })
+		if !strings.Contains(got, "start_line=6\n") {
+			t.Errorf("%s with no fingerprint options: want start_line=6; uploaded:\n%s", name, got)
+		}
+		got = uploadedWFP(t, func(c *Client) error { return scan(c, fast, off) })
+		if !strings.Contains(got, "file=") || strings.Contains(got, "start_line=") {
+			t.Errorf("%s with WithoutSkipHeaders: want an unfiltered WFP; uploaded:\n%s", name, got)
+		}
 	}
 }

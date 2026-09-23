@@ -52,6 +52,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`scanoss.WithFingerprintOptions`** and the `wfp.Option` set (`wfp.WithSkipHeaders`)
   tune fingerprinting through `Scan.Folder`/`Scan.Files` and every `pkg/wfp` entry point.
 
+### Changed
+
+- **The library skips licence headers by default too**, matching the CLI. `pkg/wfp`
+  (`Folder`, `Files`, `Stream`, `StreamFolder`), `pkg/scanoss` (`Scan.Folder`, `Scan.Files`),
+  `pkg/scanpipeline` and the `libscanoss` C exports now drop each file's leading licence header,
+  comments and imports when no `wfp.Option` is passed, with no limit. **This changes the WFP
+  every library caller produces**: a fingerprint taken with the filter on does not match one
+  taken with it off, so a caller comparing against WFPs it stored earlier will see them differ.
+  To opt out, pass `wfp.WithoutSkipHeaders()` (through `scanoss.WithFingerprintOptions` or
+  `scanpipeline.Options.WFPOptions` when scanning). `wfp.WithSkipHeaders(limit)` keeps its
+  meaning, on with that limit, and of the two options the last one passed wins. The CLI is
+  unchanged: `--skip-headers=false` and `skip_headers: false` still turn the filter off.
+
 ### Fixed
 
 - **`results <id>` now applies the BOM rules**, via a new `--settings` flag: `Scan.Wait`

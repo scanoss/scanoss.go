@@ -119,10 +119,10 @@ func generateFingerprint(filePath string, root string, opts options) (*FileFinge
 	// read, not what was fingerprinted.
 	hashHex := fmt.Sprintf("%016x", crc64.Checksum(f, crc64ECMA))
 
-	// How many leading lines are preamble rather than code. Zero unless --skip-headers asked
-	// for it, and zero for a file whose language the filter does not know.
+	// How many leading lines are preamble rather than code. The filter is on unless the caller
+	// passed WithoutSkipHeaders, and it drops nothing from a file whose language it does not know.
 	headerLines := 0
-	if opts.skipHeaders {
+	if !opts.keepHeaders {
 		headerLines = headerOffset(filePath, string(f), opts.skipHeadersLimit)
 	}
 

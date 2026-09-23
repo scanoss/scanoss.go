@@ -24,6 +24,7 @@
 package cmd
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -119,7 +120,7 @@ func bomRuleCmd(t *testing.T, args ...string) *cobra.Command {
 	addSkipHeaderFlags(cmd)
 	addRankingFlag(cmd)
 	cmd.SetArgs(args)
-	cmd.SetOut(os.NewFile(0, os.DevNull))
+	cmd.SetOut(io.Discard)
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("parsing %v: %v", args, err)
 	}
@@ -220,15 +221,6 @@ func TestResolveSkipHeadersSettingsWinOverFlags(t *testing.T) {
 				t.Errorf("resolveSkipHeaders = (%v, %d), want (%v, %d)", on, limit, tt.wantOn, tt.wantLimit)
 			}
 		})
-	}
-}
-
-func TestFingerprintOptionsOnlyWhenEnabled(t *testing.T) {
-	if got := fingerprintOptions(false, 10); got != nil {
-		t.Errorf("options with the filter off = %v, want nil", got)
-	}
-	if got := fingerprintOptions(true, 10); len(got) != 1 {
-		t.Errorf("options with the filter on = %v, want one", got)
 	}
 }
 

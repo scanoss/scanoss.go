@@ -25,28 +25,42 @@ package wfp
 
 // Option tunes how fingerprints are generated. Every entry point (Folder, Files, Stream,
 // StreamFolder) takes the same set, so a caller does not have to know which one it reached for.
+//
+// Passing no option gets the defaults: the header filter on, with no limit (see WithSkipHeaders).
 type Option func(*options)
 
+// options is zero-valued at the defaults, so a path that builds one without resolveOptions still
+// fingerprints the way a caller passing no option would. That is why the filter is recorded as
+// its opt-out, keepHeaders, rather than as skipHeaders.
 type options struct {
-	skipHeaders      bool
-	skipHeadersLimit int
+	keepHeaders      bool // true fingerprints each file whole; see WithoutSkipHeaders
+	skipHeadersLimit int  // 0 = no limit
 }
 
 // WithSkipHeaders drops the leading licence header, documentation comments and imports of each
 // file from its fingerprint, so two files sharing nothing but a common licence block do not look
 // alike to the matcher.
 //
-// limit caps how many leading lines may be dropped; 0 or less means no cap. Passing the option
-// is what enables the behaviour — there is no separate on/off, because not passing it is off.
+// The filter is on by default; this option is how a caller caps it, and how it turns the filter
+// back on after WithoutSkipHeaders — the last of the two wins. limit caps how many leading lines
+// may be dropped; 0 or less means no cap.
 //
 // Only files whose extension names a language it understands are affected; anything else is
 // fingerprinted whole, since dropping lines by guesswork would corrupt the fingerprint.
 func WithSkipHeaders(limit int) Option {
 	return func(o *options) {
-		o.skipHeaders = true
-		if limit > 0 {
-			o.skipHeadersLimit = limit
-		}
+		o.keepHeaders = false
+		o.skipHeadersLimit = max(limit, 0)
+	}
+}
+
+// WithoutSkipHeaders turns the header filter off: every file is fingerprinted whole, with no
+// start_line marker. It is how a caller reproduces a WFP taken before the filter was the default,
+// since a fingerprint taken with the filter on does not match one taken with it off.
+func WithoutSkipHeaders() Option {
+	return func(o *options) {
+		o.keepHeaders = true
+		o.skipHeadersLimit = 0
 	}
 }
 

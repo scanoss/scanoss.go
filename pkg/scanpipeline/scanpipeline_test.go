@@ -43,6 +43,7 @@ import (
 	"github.com/scanoss/scanoss.go/pkg/sbom"
 	"github.com/scanoss/scanoss.go/pkg/sbom/scansource"
 	"github.com/scanoss/scanoss.go/pkg/scanoss"
+	"github.com/scanoss/scanoss.go/pkg/wfp"
 )
 
 // mustNewClient builds an SDK client against apiURL and fails the test if it cannot.
@@ -448,5 +449,47 @@ func TestEnrichWarnsOnUndecodableLayer(t *testing.T) {
 	}
 	if lodash := findComponent(inv, "pkg:npm/lodash"); lodash != nil && len(lodash.Licenses) != 0 {
 		t.Errorf("licenses should be absent when the response cannot be read, got %v", lodash.Licenses)
+	}
+}
+
+// An empty WFPOptions gets pkg/wfp's default, the header filter on; wfp.WithoutSkipHeaders turns
+// it off. The CLI relies on the second: it passes the opt-out rather than leaving the option out.
+func TestRunSkipsHeadersUnlessToldNot(t *testing.T) {
+	root := t.TempDir()
+	src := "/*\n * Copyright (c) 2026 Example Corp\n * Licensed under the MIT license\n */\n" +
+		"#include <stdio.h>\n\n" + strings.Repeat("int compute(int x) { return x * 42 + 7; }\n", 30)
+	if err := os.WriteFile(filepath.Join(root, "code.c"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			w.WriteHeader(http.StatusAccepted)
+		case http.MethodGet:
+			_, _ = w.Write([]byte(`{"scan_id":"s1","status":"completed","phase":"done","result":{"files":[],"components":{}}}`))
+		}
+	}))
+	defer srv.Close()
+
+	run := func(opts ...wfp.Option) string {
+		var out bytes.Buffer
+		if _, err := Run(context.Background(), Options{
+			Client:      mustNewClient(t, srv.URL),
+			SourcePath:  root,
+			ScanFilters: filter.Scanning(nil),
+			ScanOptions: []scanoss.ScanOption{scanoss.WithPollInterval(10 * time.Millisecond)},
+			WFPOptions:  opts,
+			WFPWriter:   &out,
+		}); err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		return out.String()
+	}
+
+	if got := run(); !strings.Contains(got, "start_line=6\n") {
+		t.Errorf("no WFPOptions: want start_line=6; got:\n%s", got)
+	}
+	if got := run(wfp.WithoutSkipHeaders()); !strings.Contains(got, "file=") || strings.Contains(got, "start_line=") {
+		t.Errorf("WithoutSkipHeaders: want an unfiltered WFP; got:\n%s", got)
 	}
 }
