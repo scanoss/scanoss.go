@@ -146,6 +146,11 @@ var defaultSkippedExts = []string{
 	".whl",
 	// SBOM-Workbench parity:
 	".mod", ".sum",
+	// Model weights: hundreds of megabytes each, read whole to fingerprint, and
+	// their bytes never produce a useful snippet match.
+	".safetensors", ".gguf", ".ggml", ".bin", ".onnx", ".pt", ".pth", ".ckpt",
+	".h5", ".hdf5", ".keras", ".tflite", ".pb", ".npy", ".npz", ".pkl",
+	".joblib", ".mlmodel", ".msgpack", ".ot", ".caffemodel", ".nemo",
 }
 
 // defaultSkippedFileEndings are file-name suffixes that are not extensions (no
