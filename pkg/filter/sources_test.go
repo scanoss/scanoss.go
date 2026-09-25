@@ -457,6 +457,33 @@ func TestWhlIsSkipped(t *testing.T) {
 	}
 }
 
+// Model weights are skipped whatever their case, through the real Collect walk,
+// while ordinary source beside them is still collected.
+func TestModelWeightsAreSkipped(t *testing.T) {
+	weights := []string{
+		".safetensors", ".gguf", ".ggml", ".bin", ".onnx", ".pt", ".pth", ".ckpt",
+		".h5", ".hdf5", ".keras", ".tflite", ".pb", ".npy", ".npz", ".pkl",
+		".joblib", ".mlmodel", ".msgpack", ".ot", ".caffemodel", ".nemo",
+	}
+	root := t.TempDir()
+	for _, ext := range weights {
+		writeFile(t, filepath.Join(root, "lower"+ext), 2000)
+		writeFile(t, filepath.Join(root, "UPPER"+strings.ToUpper(ext)), 2000)
+	}
+	writeFile(t, filepath.Join(root, "train.py"), 2000)
+
+	res, err := Collect(root, Scanning(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := baseNames(res.Files); !equalStrings(got, []string{"train.py"}) {
+		t.Fatalf("collected %v, want [train.py]", got)
+	}
+	if res.SkippedCount != 2*len(weights) {
+		t.Errorf("skipped %d, want %d", res.SkippedCount, 2*len(weights))
+	}
+}
+
 // Each layer's profile, asserted on the fields that define it. The point is not
 // that the numbers match, but that the three deliberate differences of the
 // dependency profile are pinned: its own directory list, manifests preserved,

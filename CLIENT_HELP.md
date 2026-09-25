@@ -173,7 +173,8 @@ default 0), `--max-size` (0 = unlimited), `--gitignore` (true),
 ### Skipping files
 
 Files are filtered before scanning (build dirs, vendored deps, generated/binary
-files, oversized files). Toggle the sources with flags, or configure project rules
+files, model weights such as `.safetensors`, `.gguf`, `.onnx`, `.pt` and `.bin`,
+oversized files). Toggle the sources with flags, or configure project rules
 in `scanoss.json` — see [`scanoss.json` reference](#scanossjson-reference).
 
 **There is no minimum file size by default** — however small a file is, it is

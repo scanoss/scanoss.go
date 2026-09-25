@@ -54,6 +54,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Model weight files are skipped by the default scanning and fingerprinting filters.**
+  `filter.Scanning` and `filter.Fingerprinting` now drop `.safetensors`, `.gguf`, `.ggml`,
+  `.bin`, `.onnx`, `.pt`, `.pth`, `.ckpt`, `.h5`, `.hdf5`, `.keras`, `.tflite`, `.pb`, `.npy`,
+  `.npz`, `.pkl`, `.joblib`, `.mlmodel`, `.msgpack`, `.ot`, `.caffemodel` and `.nemo`. Each
+  such file was read whole into memory to be fingerprinted, so a repository holding a few
+  hundred-megabyte weights drove memory into gigabytes, and their bytes never produced a
+  useful snippet match. `.bin` is included, so any other `.bin` file is skipped too. Callers
+  that need these files must collect them separately, or pass `--all-extensions`
+  (`BuiltinFileRules: false`) to drop the built-in file rules altogether.
 - **The library skips licence headers by default too**, matching the CLI. `pkg/wfp`
   (`Folder`, `Files`, `Stream`, `StreamFolder`), `pkg/scanoss` (`Scan.Folder`, `Scan.Files`),
   `pkg/scanpipeline` and the `libscanoss` C exports now drop each file's leading licence header,
