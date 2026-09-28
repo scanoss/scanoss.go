@@ -257,6 +257,7 @@ type FileEvidence struct {
 	MatchType       string      `json:"match_type,omitempty"`        // "file" (whole file) | "snippet" | "declared" (from a manifest)
 	Identified      bool        `json:"identified,omitempty"`        // a bom.identify rule claimed this component for this file
 	MatchPercentage int         `json:"match_percentage,omitempty"`  // match confidence (snippet only)
+	Confidence      string      `json:"confidence,omitempty"`        // attribution reliability grade: LOW, MEDIUM or HIGH
 	OssFilePath     string      `json:"oss_file_path,omitempty"`     // matched file path inside the OSS component
 	InputLineRanges []LineRange `json:"input_line_ranges,omitempty"` // matched line ranges in the scanned file (snippet only)
 	OssLineRanges   []LineRange `json:"oss_line_ranges,omitempty"`   // matched line ranges in the OSS component (snippet only)
