@@ -280,6 +280,7 @@ func filesByURLHash(files []scanossapi.FileResult, identified func(path, urlHash
 				FileHash:        f.FileHash,
 				MatchType:       string(f.MatchType),
 				MatchPercentage: m.MatchPercentage,
+				Confidence:      string(m.Confidence),
 				OssFilePath:     m.OssFilePath,
 				InputLineRanges: lineRanges(m.InputLineRanges),
 				OssLineRanges:   lineRanges(m.OssLineRanges),
