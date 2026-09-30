@@ -1,4 +1,4 @@
-# Makefile for scanoss — tests, linting, and common dev tasks.
+git # Makefile for scanoss — tests, linting, and common dev tasks.
 
 GO               ?= go
 GOLANGCI_LINT    ?= golangci-lint
@@ -67,6 +67,13 @@ tidy: ## Tidy go.mod / go.sum
 # OpenAPI model types are consumed from the published SDK module
 # github.com/scanoss/scanoss.api-sdk (pinned in go.mod). To update them,
 # bump that dependency: `go get github.com/scanoss/scanoss.api-sdk@latest`.
+
+# github.com/scanoss/snippets-classifier is a PRIVATE module (snippet false-positive
+# classifier, used by --classify-snippets). Building needs Go told it is private and git
+# given a credential that can read it:
+#   export GOPRIVATE=github.com/scanoss/*
+#   git config --global url."git@github.com:".insteadOf "https://github.com/"   # or a PAT
+# CI does this with the SCANOSS_MODULE_TOKEN secret (see .github/workflows/ci.yml).
 
 .PHONY: check
 check: fmt-check vet lint test ## Run fmt-check, vet, lint, and tests (local CI)

@@ -9,6 +9,13 @@ on:
 permissions:
   contents: read
 
+# The build depends on github.com/scanoss/snippets-classifier, a PRIVATE module. Go must be told
+# it is private (so it skips the public proxy and checksum DB) and git must be given a credential
+# that can read it. SCANOSS_MODULE_TOKEN is a repo/org secret: a PAT or a GitHub App token with
+# read access to scanoss/snippets-classifier. Every Go job that compiles sets this up the same way.
+env:
+  GOPRIVATE: github.com/scanoss/*
+
 jobs:
   test:
     name: Test Go Code
@@ -21,6 +28,9 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+
+      - name: Authenticate to private modules
+        run: git config --global url."https://x-access-token:${{ secrets.SCANOSS_MODULE_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
       - name: Run tests
         run: go test -v ./...
@@ -39,6 +49,9 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+
+      - name: Authenticate to private modules
+        run: git config --global url."https://x-access-token:${{ secrets.SCANOSS_MODULE_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
       - name: Build scanoss-cli
         run: go build -v -o scanoss-cli ./cmd/scanoss-cli
@@ -72,6 +85,9 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
+
+      - name: Authenticate to private modules
+        run: git config --global url."https://x-access-token:${{ secrets.SCANOSS_MODULE_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
       - name: Build libscanoss
         run: |
@@ -127,6 +143,9 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+
+      - name: Authenticate to private modules
+        run: git config --global url."https://x-access-token:${{ secrets.SCANOSS_MODULE_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
       - name: Check formatting (gofmt)
         run: make fmt-check
