@@ -8,6 +8,7 @@ require (
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/google/uuid v1.6.0
 	github.com/scanoss/scanoss.api-sdk v0.26.0
+	github.com/scanoss/snippets-classifier v0.1.0
 	github.com/spdx/tools-golang v0.5.7
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10

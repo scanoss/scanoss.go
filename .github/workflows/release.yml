@@ -37,6 +37,11 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # github.com/scanoss/snippets-classifier is a private module; GoReleaser's build needs a
+      # git credential that can read it. See ci.yml for SCANOSS_MODULE_TOKEN.
+      - name: Authenticate to private modules
+        run: git config --global url."https://x-access-token:${{ secrets.SCANOSS_MODULE_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
       - name: Download libscanoss artifacts
         uses: actions/download-artifact@v8
         with:
@@ -81,6 +86,7 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOPRIVATE: github.com/scanoss/*
 
   test-release-binaries:
     name: Test Release Binaries
