@@ -112,12 +112,21 @@ func effectiveScope(c Component) ComponentScope {
 //
 // A duplicate is dropped rather than appended, but its Identified claim is not: two entries for
 // one path can reach here from different origins, and the file was either claimed or it was not.
+//
+// When both carry a MatchIndex — two url_hashes of one component that matched the same file — the
+// one that stood first in the file's candidate list is kept, whole: the merged component stands
+// where its best-placed release stood, and the match details kept are that release's. Which of
+// them arrived first does not decide it, so neither does the order components are added in.
 func addEvidence(dst []FileEvidence, add ...FileEvidence) []FileEvidence {
 	for _, e := range add {
 		dup := false
 		for i, existing := range dst {
 			if existing.Path == e.Path && existing.MatchType == e.MatchType {
-				dst[i].Identified = existing.Identified || e.Identified
+				identified := existing.Identified || e.Identified
+				if lowerMatchIndex(e.MatchIndex, existing.MatchIndex) {
+					dst[i] = e
+				}
+				dst[i].Identified = identified
 				dup = true
 				break
 			}
@@ -261,6 +270,31 @@ type FileEvidence struct {
 	OssFilePath     string      `json:"oss_file_path,omitempty"`     // matched file path inside the OSS component
 	InputLineRanges []LineRange `json:"input_line_ranges,omitempty"` // matched line ranges in the scanned file (snippet only)
 	OssLineRanges   []LineRange `json:"oss_line_ranges,omitempty"`   // matched line ranges in the OSS component (snippet only)
+
+	// MatchIndex is where this component stood among the candidates the scan returned for this
+	// file, after the BOM rules: 0 is the file's primary match — the component the file
+	// originates from — and the ones after it redistribute it (forks, mirrors, packagings,
+	// projects that vendor it). Nil when there is no candidate list to stand in: declared
+	// evidence, or a document written before the field existed.
+	//
+	// It is the only place a file's candidate order survives. A component's evidence is sorted
+	// by path and the components are not in any file's order, so a consumer rebuilding "the
+	// candidates of this file" ranks them by this field, not by where it found them.
+	MatchIndex *int `json:"match_index,omitempty"`
+}
+
+// IsPrimary reports whether this evidence is its file's primary match (MatchIndex 0).
+func (e FileEvidence) IsPrimary() bool {
+	return e.MatchIndex != nil && *e.MatchIndex == 0
+}
+
+// lowerMatchIndex reports whether a stood ahead of b in their file's candidate list. A known
+// position beats an unknown one, so a merge never trades a position for its absence.
+func lowerMatchIndex(a, b *int) bool {
+	if a == nil {
+		return false
+	}
+	return b == nil || *a < *b
 }
 
 // Vulnerability is one known vulnerability affecting one or more components, in a

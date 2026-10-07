@@ -151,6 +151,32 @@ func TestReplaceReusesAnExistingComponent(t *testing.T) {
 	}
 }
 
+// When the replacement is one of the file's own candidates, that release is the one it is
+// re-pointed at — the earliest of them in the file's order — not whichever entry carrying the PURL
+// has the lowest url_hash.
+func TestReplacePrefersTheFilesOwnCandidate(t *testing.T) {
+	res := replaceFixture()
+	res.Files[0].Matches = append(res.Files[0].Matches,
+		scanossapi.MatchResult{UrlHash: "h8"}, scanossapi.MatchResult{UrlHash: "h9"})
+	res.Files = append(res.Files, scanossapi.FileResult{
+		Path: "src/other.c", MatchType: "file",
+		Matches: []scanossapi.MatchResult{{UrlHash: "h0"}},
+	})
+	res.Components["h0"] = scanossapi.ComponentResult{Purls: []string{"pkg:github/right/lib"}, Version: "3.0"}
+	res.Components["h8"] = scanossapi.ComponentResult{Purls: []string{"pkg:github/right/lib"}, Version: "2.0"}
+	res.Components["h9"] = scanossapi.ComponentResult{Purls: []string{"pkg:github/right/lib"}, Version: "1.0"}
+
+	applyReplace(res, &settings.BOM{Replace: []settings.BOMEntry{
+		{Purl: "pkg:github/wrong/lib", ReplaceWith: "pkg:github/right/lib"},
+	}})
+
+	for _, m := range res.Files[0].Matches {
+		if m.UrlHash != "h8" {
+			t.Fatalf("should re-point at h8, the file's first candidate carrying the PURL, got %+v", res.Files[0].Matches)
+		}
+	}
+}
+
 // Apply's contract is the order, so this is the test that earns it a single entry point.
 //
 // The remove rule names the PURL the scan found; the replace rule is scoped by path, so it covers

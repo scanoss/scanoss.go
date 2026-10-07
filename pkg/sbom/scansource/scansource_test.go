@@ -24,6 +24,7 @@
 package scansource
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -77,7 +78,7 @@ func TestInventory_Extraction(t *testing.T) {
 		t.Fatalf("want 2 components (empty-purl skipped), got %d", len(inv.Components))
 	}
 
-	// Components are sorted by url_hash: h1 (engine) before h2 (lodash).
+	// engine is the primary match of both files; lodash matches none, so it comes after.
 	engine := inv.Components[0]
 	if engine.Purl != "pkg:github/scanoss/engine" || engine.Vendor != "scanoss" {
 		t.Errorf("engine mapping wrong: %+v", engine)
@@ -436,5 +437,158 @@ func TestInventoryWithoutIdentifiedMarksNothing(t *testing.T) {
 				t.Errorf("%s evidence %s should not be marked identified", c.Purl, e.Path)
 			}
 		}
+	}
+}
+
+// orderedResult is one file the scanner matched to two components, origin first: "hb" is the
+// component the file comes from and "ha" a fork of it. Their url_hashes sort the other way round,
+// which is what grouping the result by url_hash used to report as the file's order.
+func orderedResult() *scanossapi.ScanResult {
+	return &scanossapi.ScanResult{
+		Files: []scanossapi.FileResult{{
+			Path: "src/x.c", MatchType: "file",
+			Matches: []scanossapi.MatchResult{{UrlHash: "hb"}, {UrlHash: "ha"}},
+		}},
+		Components: map[string]scanossapi.ComponentResult{
+			"ha": {Purls: []string{"pkg:github/fork/x"}, Version: "1.0"},
+			"hb": {Purls: []string{"pkg:github/origin/x"}, Version: "1.0"},
+		},
+	}
+}
+
+// evidenceAt returns the match index each component recorded for path, keyed by PURL. A missing
+// index is -1, so a test can tell it from the primary.
+func evidenceAt(inv sbom.Inventory, path string) map[string]int {
+	out := make(map[string]int)
+	for _, c := range inv.Components {
+		for _, e := range c.Evidence {
+			if e.Path != path {
+				continue
+			}
+			out[c.Purl] = -1
+			if e.MatchIndex != nil {
+				out[c.Purl] = *e.MatchIndex
+			}
+		}
+	}
+	return out
+}
+
+func TestInventory_MatchIndexKeepsTheFilesOrder(t *testing.T) {
+	inv := Inventory(orderedResult())
+
+	got := evidenceAt(inv, "src/x.c")
+	if got["pkg:github/origin/x"] != 0 || got["pkg:github/fork/x"] != 1 {
+		t.Fatalf("want origin at 0 and fork at 1, the scanner's order, got %v", got)
+	}
+	if inv.Components[0].Purl != "pkg:github/origin/x" {
+		t.Errorf("the file's primary should lead the inventory despite its later url_hash, got %s first",
+			inv.Components[0].Purl)
+	}
+	if !inv.Components[0].Evidence[0].IsPrimary() || inv.Components[1].Evidence[0].IsPrimary() {
+		t.Errorf("IsPrimary should hold for the origin's evidence only")
+	}
+}
+
+// The raw document is where a consumer reads the order back, so the primary's 0 must be written
+// rather than dropped as an empty value, and must survive being parsed again.
+func TestInventory_MatchIndexInRawDocument(t *testing.T) {
+	out, err := sbom.NewRawDocument(Inventory(orderedResult()), sbom.RawMetadata{}).Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var doc struct {
+		Components []struct {
+			Purl     string                       `json:"purl"`
+			Evidence []map[string]json.RawMessage `json:"evidence"`
+		} `json:"components"`
+	}
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"pkg:github/origin/x": "0", "pkg:github/fork/x": "1"}
+	for _, c := range doc.Components {
+		if got := string(c.Evidence[0]["match_index"]); got != want[c.Purl] {
+			t.Errorf("%s: match_index = %q, want %q", c.Purl, got, want[c.Purl])
+		}
+	}
+
+	parsed, err := sbom.ParseRaw([]byte(out))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := evidenceAt(parsed, "src/x.c")
+	if got["pkg:github/origin/x"] != 0 || got["pkg:github/fork/x"] != 1 {
+		t.Errorf("match_index lost on parse: %v", got)
+	}
+}
+
+// Two catalog entries for one PURL at one version fold into a single component. Each file keeps
+// the position its own match had; a file both entries matched keeps the better of the two.
+func TestInventory_MatchIndexSurvivesTheMerge(t *testing.T) {
+	res := &scanossapi.ScanResult{
+		Files: []scanossapi.FileResult{
+			{Path: "a.c", MatchType: "file", Matches: []scanossapi.MatchResult{{UrlHash: "h2"}, {UrlHash: "other"}}},
+			{Path: "b.c", MatchType: "file", Matches: []scanossapi.MatchResult{{UrlHash: "other"}, {UrlHash: "h1"}}},
+			{Path: "c.c", MatchType: "file", Matches: []scanossapi.MatchResult{
+				{UrlHash: "other"}, {UrlHash: "h2", OssFilePath: "second"}, {UrlHash: "h1", OssFilePath: "third"},
+			}},
+		},
+		Components: map[string]scanossapi.ComponentResult{
+			"h1":    {Purls: []string{"pkg:github/lib/lib"}, Version: "2.0"},
+			"h2":    {Purls: []string{"pkg:github/lib/lib"}, Version: "2.0"},
+			"other": {Purls: []string{"pkg:github/other/other"}, Version: "1.0"},
+		},
+	}
+	inv := Inventory(res)
+
+	if len(inv.Components) != 2 {
+		t.Fatalf("h1 and h2 should fold into one component, got %d", len(inv.Components))
+	}
+	var lib sbom.Component
+	for _, c := range inv.Components {
+		if c.Purl == "pkg:github/lib/lib" {
+			lib = c
+		}
+	}
+	want := map[string]int{"a.c": 0, "b.c": 1, "c.c": 1}
+	if len(lib.Evidence) != len(want) {
+		t.Fatalf("want one evidence per file, got %+v", lib.Evidence)
+	}
+	for _, e := range lib.Evidence {
+		if e.MatchIndex == nil || *e.MatchIndex != want[e.Path] {
+			t.Errorf("%s: match index %v, want %d", e.Path, e.MatchIndex, want[e.Path])
+		}
+		if e.Path == "c.c" && e.OssFilePath != "second" {
+			t.Errorf("c.c should keep the details of the better-placed match, got %q", e.OssFilePath)
+		}
+	}
+}
+
+// Components are ordered by how many files they are the primary match of, then by how many files
+// they match at all, and only then by url_hash.
+func TestInventory_ComponentOrder(t *testing.T) {
+	res := &scanossapi.ScanResult{
+		Files: []scanossapi.FileResult{
+			{Path: "1.c", MatchType: "file", Matches: []scanossapi.MatchResult{{UrlHash: "h9"}, {UrlHash: "h1"}, {UrlHash: "h2"}}},
+			{Path: "2.c", MatchType: "file", Matches: []scanossapi.MatchResult{{UrlHash: "h9"}, {UrlHash: "h1"}}},
+			{Path: "3.c", MatchType: "file", Matches: []scanossapi.MatchResult{{UrlHash: "h5"}, {UrlHash: "h1"}}},
+		},
+		Components: map[string]scanossapi.ComponentResult{
+			"h1": {Purls: []string{"pkg:github/mirror/one"}},
+			"h2": {Purls: []string{"pkg:github/mirror/two"}},
+			"h3": {Purls: []string{"pkg:github/mirror/three"}},
+			"h5": {Purls: []string{"pkg:github/vendored/dep"}},
+			"h9": {Purls: []string{"pkg:github/project/self"}},
+		},
+	}
+	var got []string
+	for _, c := range Inventory(res).Components {
+		got = append(got, c.URLHash)
+	}
+	// h9 leads two files, h5 one; h1 leads none but matches three, h2 one, h3 none.
+	if want := "h9 h5 h1 h2 h3"; strings.Join(got, " ") != want {
+		t.Errorf("order = %v, want %s", got, want)
 	}
 }
