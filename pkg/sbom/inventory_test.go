@@ -350,3 +350,33 @@ func TestAddEvidencePreservesIdentifiedOnDuplicates(t *testing.T) {
 		t.Error("evidence marked identified when neither side was")
 	}
 }
+
+// Two releases of one component that matched the same file fold into one evidence. The one that
+// stood first in the file's candidate list is kept — its position and its match details — however
+// the two arrive, and a position is never traded for the absence of one.
+func TestInventoryAddKeepsTheBetterMatchIndex(t *testing.T) {
+	at := func(i int) *int { return &i }
+	first := FileEvidence{Path: "x.c", MatchType: "file", MatchIndex: at(1), OssFilePath: "first"}
+	second := FileEvidence{Path: "x.c", MatchType: "file", MatchIndex: at(3), OssFilePath: "second", Identified: true}
+	unknown := FileEvidence{Path: "x.c", MatchType: "file", OssFilePath: "unknown"}
+
+	for _, order := range [][]FileEvidence{{first, second}, {second, first}, {first, unknown}, {unknown, first}} {
+		var inv Inventory
+		for _, e := range order {
+			inv.Add(Component{Purl: "pkg:github/a/b", Version: "1", Evidence: []FileEvidence{e}})
+		}
+		got := inv.Components[0].Evidence
+		if len(got) != 1 {
+			t.Fatalf("want one evidence for one file, got %+v", got)
+		}
+		if got[0].MatchIndex == nil || *got[0].MatchIndex != 1 || got[0].OssFilePath != "first" {
+			t.Errorf("adding %s then %s: kept %+v, want the index-1 match",
+				order[0].OssFilePath, order[1].OssFilePath, got[0])
+		}
+		identified := order[0].Identified || order[1].Identified
+		if got[0].Identified != identified {
+			t.Errorf("adding %s then %s: Identified = %v, want %v",
+				order[0].OssFilePath, order[1].OssFilePath, got[0].Identified, identified)
+		}
+	}
+}

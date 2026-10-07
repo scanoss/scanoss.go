@@ -70,8 +70,9 @@ func Inventory(result *scanossapi.ScanResult, opts ...InventoryOption) sbom.Inve
 	}
 	filesByHash := filesByURLHash(result.Files, o.identified)
 
-	// Iterate the catalog in sorted url_hash order so output is deterministic
-	// (Go map iteration order is random).
+	// Added in sorted url_hash order so that, when two catalog entries fold into one component,
+	// which one's metadata it keeps does not depend on Go's random map iteration order. It is not
+	// the order the components are reported in: see orderComponents.
 	hashes := make([]string, 0, len(result.Components))
 	for hash := range result.Components {
 		hashes = append(hashes, hash)
@@ -108,7 +109,44 @@ func Inventory(result *scanossapi.ScanResult, opts ...InventoryOption) sbom.Inve
 
 	var inv sbom.Inventory
 	inv.Add(components...)
+	orderComponents(inv.Components)
 	return inv
+}
+
+// orderComponents puts the components in the order a reader of the inventory would look for them:
+// first the ones the most files originate from, then the ones that match the most files, and
+// url_hash only to settle what is still tied.
+//
+// The count that leads is of primary matches — files where the component is the scanner's first
+// candidate — because that is what the scanner says about where a file comes from. In a self-scan
+// it puts the project itself first and its vendored dependencies after it, and leaves the forks
+// and mirrors that redistribute the same files at the end: they match as many files, and are the
+// origin of none. Ordering by url_hash alone, as this did before, placed them by an arbitrary CRC.
+//
+// Counted after the merge, so a component folded from several catalog entries is placed by all of
+// its evidence. The url_hash tie-break is total: no two components share one.
+func orderComponents(comps []sbom.Component) {
+	type standing struct{ primary, files int }
+	by := make(map[string]standing, len(comps))
+	for _, c := range comps {
+		s := standing{files: len(c.Evidence)}
+		for _, e := range c.Evidence {
+			if e.IsPrimary() {
+				s.primary++
+			}
+		}
+		by[c.URLHash] = s
+	}
+	sort.SliceStable(comps, func(i, j int) bool {
+		a, b := by[comps[i].URLHash], by[comps[j].URLHash]
+		if a.primary != b.primary {
+			return a.primary > b.primary
+		}
+		if a.files != b.files {
+			return a.files > b.files
+		}
+		return comps[i].URLHash < comps[j].URLHash
+	})
 }
 
 // Key is the join key matching a decoration response entry to a component: its PURL plus
@@ -264,6 +302,10 @@ func Vulnerabilities(resp *scanossapi.VulnerabilitiesResponse) []sbom.Vulnerabil
 // filesByURLHash groups matched files (file/snippet) by component url_hash, emitting one
 // evidence per match, sorted by path for deterministic output.
 //
+// Grouping by component is what loses each file's candidate order — the scanner lists a file's
+// matches origin first, then the components that redistribute it — so every evidence records
+// where its match stood in that list (FileEvidence.MatchIndex).
+//
 // identified, when non-nil, says which of those matches the user declared present. It is asked
 // per (path, url_hash) because that is the granularity a path-scoped bom.identify rule works at:
 // the same component can be declared in the files under "vendor/" and not in the ones outside.
@@ -273,7 +315,7 @@ func filesByURLHash(files []scanossapi.FileResult, identified func(path, urlHash
 		if f.MatchType == "" || f.MatchType == "none" {
 			continue
 		}
-		for _, m := range f.Matches {
+		for i, m := range f.Matches {
 			ev := sbom.FileEvidence{
 				Path:            f.Path,
 				SourceHash:      f.SourceHash,
@@ -284,6 +326,7 @@ func filesByURLHash(files []scanossapi.FileResult, identified func(path, urlHash
 				OssFilePath:     m.OssFilePath,
 				InputLineRanges: lineRanges(m.InputLineRanges),
 				OssLineRanges:   lineRanges(m.OssLineRanges),
+				MatchIndex:      &i,
 			}
 			if identified != nil {
 				ev.Identified = identified(f.Path, m.UrlHash)
@@ -293,7 +336,8 @@ func filesByURLHash(files []scanossapi.FileResult, identified func(path, urlHash
 	}
 	for hash := range byHash {
 		evs := byHash[hash]
-		sort.Slice(evs, func(i, j int) bool { return evs[i].Path < evs[j].Path })
+		// Stable, so a file that lists one component more than once keeps those in its own order.
+		sort.SliceStable(evs, func(i, j int) bool { return evs[i].Path < evs[j].Path })
 	}
 	return byHash
 }

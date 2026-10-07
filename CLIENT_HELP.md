@@ -351,6 +351,37 @@ package listed in both `package.json` and `package-lock.json`, or detected and a
 emitted once; different versions of the same PURL are kept. In SPDX, multiple licenses on a
 component are combined with `AND`.
 
+#### Which component a file comes from (`match_index`)
+
+The scanner returns each file's candidate components **origin first**: the first is the component
+the file originates from — for a file inside a vendored dependency, that dependency — and the ones
+after it redistribute the file (forks, mirrors, packagings, projects that vendor it). The `raw`
+output is grouped by component, so every matched file's evidence records where its component stood
+in that list, after the BOM rules have run:
+
+```json
+{ "purl": "pkg:github/curl/curl",
+  "evidence": [ { "path": "lib/url.c", "match_type": "file", "match_index": 0 } ] },
+{ "purl": "pkg:github/some-fork/curl",
+  "evidence": [ { "path": "lib/url.c", "match_type": "file", "match_index": 1 } ] }
+```
+
+- `match_index` `0` is the file's **primary** match. To rebuild a file's candidates, collect its
+  evidence across components and sort by `match_index`; the position of an evidence inside its
+  component's list (sorted by `path`) says nothing about the file.
+- It is absent on `declared` evidence, which has no candidate list, and in documents written by
+  earlier versions.
+- When two catalog entries of the same PURL and version are collapsed into one component and both
+  matched a file, that file keeps one evidence: the better-placed of the two.
+
+Components are listed by the number of files they are the primary match of, then by the number of
+files they match, then by `url_hash`. In a self-scan that puts the project first, its vendored
+dependencies next and the forks and mirrors of it last.
+
+CycloneDX and SPDX carry the component order but not `match_index`: a CycloneDX
+`evidence.occurrences` entry admits only `location`, `line`, `offset`, `symbol`, `additionalContext`
+and `bom-ref`, and SPDX Lite has no per-file evidence. The per-file order is `raw`-only.
+
 ## Resuming a scan (`results`)
 
 Retrieve the results of a scan by the id printed during `scan` (works after a

@@ -60,7 +60,7 @@ func applyReplace(result *scanossapi.ScanResult, bom *settings.BOM) {
 		if !ok {
 			continue
 		}
-		hash := componentForPurl(result, rule.ReplaceWith)
+		hash := componentForPurl(result, f, rule.ReplaceWith)
 		for j := range f.Matches {
 			f.Matches[j].UrlHash = hash
 		}
@@ -130,14 +130,24 @@ func purlsContain(purls []string, want string) bool {
 	return false
 }
 
-// componentForPurl resolves a replacement PURL to a catalog entry and returns its url_hash.
+// componentForPurl resolves a replacement PURL to a catalog entry for one file and returns its
+// url_hash.
 //
 // An entry the scan already carries is reused, so the replacement inherits what the KB knows about
-// that component instead of a thinner copy of it. Failing that the entry is synthesised from the
+// that component instead of a thinner copy of it. The file's own candidates are tried first, in
+// the order the scanner listed them: when the replacement is one of them, it is the release this
+// file actually matched, and the earliest of them is the one the scanner put closest to the file's
+// origin. Only then the rest of the catalog. Failing that the entry is synthesised from the
 // PURL alone — all that is known at this point — and keyed by the PURL itself, so every file
 // replaced with it lands on one entry rather than a catalog of duplicates.
-func componentForPurl(result *scanossapi.ScanResult, purl string) string {
+func componentForPurl(result *scanossapi.ScanResult, f *scanossapi.FileResult, purl string) string {
 	bare, _ := splitPurlVersion(purl)
+
+	for _, m := range f.Matches {
+		if purlsContain(result.Components[m.UrlHash].Purls, bare) {
+			return m.UrlHash
+		}
+	}
 
 	// Sorted, because map iteration order is random and two entries can carry the same PURL: the
 	// same result must always resolve to the same one.

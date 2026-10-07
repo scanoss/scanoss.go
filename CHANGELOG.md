@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`match_index` on each matched file's evidence** in `raw` output (`sbom.FileEvidence.MatchIndex`,
+  with `IsPrimary()`): where the component stood among the candidates the scanner returned for that
+  file, after the BOM rules — `0` is the component the file originates from. From batchScanner
+  v0.0.10 the scanner lists a file's matches origin first, and grouping the result by component
+  had lost that order: anyone rebuilding a file's candidates from `raw` got them by `url_hash`,
+  which put a fork or mirror first in ~12,000 files across the self-scans of known projects (curl
+  2,548, go 1,785, gstreamer 1,775, node 1,664). The field is additive and omitted on `declared`
+  evidence; consumers that do not read it are unaffected. When two catalog entries of one PURL and
+  version fold into one component and both matched a file, the better-placed one is kept. CycloneDX
+  and SPDX have no field for it (`evidence.occurrences` admits no properties), so it is `raw`-only.
+
 - **`--identify` / `--ignore`** on `scan` and `results`, and the matching `bom.identify`
   (alias `bom.include`) and `bom.ignore` (alias `bom.exclude`) rules in `scanoss.json`.
   Both are applied client-side, over the candidate matches the batch scanner returns for
@@ -54,6 +65,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Components are ordered by what they explain, not by `url_hash`** — in `raw`, CycloneDX and
+  SPDX alike: first by how many files they are the primary match of, then by how many files they
+  match, with `url_hash` only breaking ties. A self-scan now lists the project first and the forks
+  and mirrors that redistribute its files last.
+- **`bom.replace` re-points a file at its own candidate** when the replacement PURL is one of them
+  (the earliest in the file's order), instead of the catalog entry carrying that PURL with the
+  lowest `url_hash`, which could be another release matched by a different file.
 - **Model weight files are skipped by the default scanning and fingerprinting filters.**
   `filter.Scanning` and `filter.Fingerprinting` now drop `.safetensors`, `.gguf`, `.ggml`,
   `.bin`, `.onnx`, `.pt`, `.pth`, `.ckpt`, `.h5`, `.hdf5`, `.keras`, `.tflite`, `.pb`, `.npy`,
